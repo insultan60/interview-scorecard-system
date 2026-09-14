@@ -10,11 +10,32 @@ const { ApiKeyError, SpendCapError } = require('../utils/errors');
  */
 const SENIOR_ROLE_PATTERN = /\b(senior|chief executive|chief|director|\bvp\b|vice president|head of|president|\bceo\b|\bcfo\b|\bcoo\b|\bcto\b)\b/i;
 
+// const SYSTEM_PROMPT = `You are an expert interview designer helping an internal HR team build a structured, role-specific interview scorecard.
+
+// For each stage provided, generate 5-8 attributes to evaluate a candidate against. Each attribute must have:
+// - "name": a short label (e.g. "Quick Discovery")
+// - "question": the actual question an interviewer should ask
+// - "anchor5": what a score of 5 looks like — concrete, OBSERVABLE behavior (this is a Behaviorally Anchored Rating Scale anchor, not a vague trait)
+// - "redFlags": what a score of 1-2 looks like — concrete, observable red-flag behavior
+
+// Tailor every attribute to the ACTUAL role described in the job description. A "Closer" role gets discovery/objection-handling/closing attributes; an accountant role gets attention-to-detail/compliance/reconciliation attributes. Never reuse generic attributes across unrelated roles.
+
+// Respond ONLY with valid JSON matching this exact shape. No preamble, no markdown fences, no explanation:
+// {
+//   "stages": [
+//     { "stageKey": "hr_screen", "attributes": [
+//         { "name": "...", "question": "...", "anchor5": "...", "redFlags": "..." }
+//     ]}
+//   ]
+// }`;
+
+
+
 const SYSTEM_PROMPT = `You are an expert interview designer helping an internal HR team build a structured, role-specific interview scorecard.
 
 For each stage provided, generate 5-8 attributes to evaluate a candidate against. Each attribute must have:
 - "name": a short label (e.g. "Quick Discovery")
-- "question": the actual question an interviewer should ask
+- "question": the actual question an interviewer should ask (for resume screening stages like "resume_screen", this should check/evaluate the candidate's skills and experience in their resume rather than asking a live interview question)
 - "anchor5": what a score of 5 looks like — concrete, OBSERVABLE behavior (this is a Behaviorally Anchored Rating Scale anchor, not a vague trait)
 - "redFlags": what a score of 1-2 looks like — concrete, observable red-flag behavior
 
@@ -103,7 +124,7 @@ Job Description:
 ${requisition.jobDescription}
 
 Stages to generate attributes for:
-${batch.map((s) => `- stageKey: "${s.key}" (${s.label})`).join('\n')}`;
+${batch.map((s) => `- stageKey: "${s.key}" (${s.label}, inputType: ${s.inputType})`).join('\n')}`;
 
     try {
       // ~250 tokens per attribute (name/question/anchor5/redFlags) x up to 8
