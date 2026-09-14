@@ -468,7 +468,7 @@ const sendOffer = asyncHandler(async (req, res) => {
     emailResult = await emailNotifier.sendOfferEmail({
       candidateEmail: candidate.email,
       candidateName: candidate.name,
-      requisitionTitle: requisition?.title || 'your role',
+      requisitionTitle: requisition?.title,
       offerLetterUrl: interview.artifactFileUrl,
     });
   }
