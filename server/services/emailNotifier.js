@@ -88,4 +88,27 @@ async function sendMeetingLinkEmail({ candidateEmail, candidateName, requisition
   return sendEmail({ to: candidateEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail };
+/**
+ * Emails a candidate their formal job offer letter announcement & document link.
+ * @param {{candidateEmail:string, candidateName:string, requisitionTitle:string, offerLetterUrl?:string}} params
+ * @returns {Promise<{sent:boolean, reason?:string}>}
+ */
+async function sendOfferEmail({ candidateEmail, candidateName, requisitionTitle, offerLetterUrl }) {
+  const subject = `Job Offer — ${requisitionTitle}`;
+  const text = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    `Congratulations! We are delighted to extend a formal job offer for the ${requisitionTitle} position at Red Star Technologies.`,
+    '',
+    offerLetterUrl ? `You can view and download your official Offer Letter here:\n${offerLetterUrl}` : '',
+    '',
+    'Please review the details and let us know if you have any questions.',
+    '',
+    'Best regards,',
+    'Red Star Technologies Hiring Team',
+  ].filter(Boolean).join('\n');
+
+  return sendEmail({ to: candidateEmail, subject, text });
+}
+
+module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail };

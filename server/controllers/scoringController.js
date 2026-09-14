@@ -494,4 +494,4 @@ const passFail = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { approve, override, recompute, decision, passFail };
+module.exports = { approve, override, recompute, decision, passFail, recomputeAndPersist, getOrCreateNextInterview };

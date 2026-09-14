@@ -8,12 +8,13 @@ require('../models/Candidate'); // registers the Candidate model for populate('c
 const logger = require('../utils/logger');
 const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
-const { uploadBuffer } = require('../config/cloudinary');
+const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
 const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
 const { extractArtifactText } = require('../utils/textExtractor');
+const { recomputeAndPersist, getOrCreateNextInterview } = require('./scoringController');
 
 /**
  * Emails the candidate their current meeting link. Never throws — a missing
@@ -420,7 +421,91 @@ const googleOAuthCallback = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * POST /api/interviews/:id/send-offer
+ * Uploads an offer letter PDF document, emails the offer letter link
+ * to the candidate, and approves/completes the Offer stage in the pipeline!
+ */
+const sendOffer = asyncHandler(async (req, res) => {
+  const interview = await Interview.findById(req.params.id);
+  if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+
+  if (!req.file) {
+    throw new ValidationError(['offerLetter'], 'An offer letter PDF document is required.');
+  }
+
+  const isPdf = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
+  if (!isPdf) {
+    throw new ValidationError(['offerLetter'], 'Only PDF documents are supported for offer letters.');
+  }
+
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  if (req.file.size > MAX_FILE_SIZE) {
+    throw new ValidationError(['offerLetter'], 'Offer letter PDF file size must not exceed 5MB.');
+  }
+
+  const requisition = await Requisition.findById(interview.requisitionId);
+
+  // If a previous offer letter exists in Cloudinary, delete it first
+  if (interview.artifactFilePublicId) {
+    await destroyFile(interview.artifactFilePublicId);
+  }
+
+  // Upload offer letter PDF to Cloudinary
+  const uploaded = await uploadBuffer(req.file.buffer, {
+    folder: 'interview-offer-letters',
+    filename: `${Date.now()}-${req.file.originalname}`,
+  });
+  interview.artifactFileUrl = uploaded.secureUrl;
+  interview.artifactFilePublicId = uploaded.publicId;
+
+  // Find candidate details to send email
+  const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
+  const candidate = application?.candidateId;
+
+  let emailResult = { sent: false, reason: 'No candidate email on file.' };
+  if (candidate?.email) {
+    emailResult = await emailNotifier.sendOfferEmail({
+      candidateEmail: candidate.email,
+      candidateName: candidate.name,
+      requisitionTitle: requisition?.title || 'your role',
+      offerLetterUrl: interview.artifactFileUrl,
+    });
+  }
+
+  // Mark stage as approved
+  interview.status = 'approved';
+  await interview.save();
+
+  await AuditLog.create({
+    action: 'score_approve',
+    userId: req.user._id,
+    requisitionId: interview.requisitionId,
+    applicationId: interview.applicationId,
+    targetType: 'interview',
+    targetId: interview._id.toString(),
+    newValue: { status: 'approved', artifactFileUrl: interview.artifactFileUrl, emailSent: emailResult.sent },
+    reason: 'Offer letter uploaded, emailed to candidate, and stage approved.',
+  });
+
+  const progress = application.stageProgress.find((p) => p.stageKey === interview.stageKey);
+  if (progress) progress.status = 'approved';
+
+  const nextInterviewId = await getOrCreateNextInterview(application, requisition, interview.stageKey, req.user._id);
+  await recomputeAndPersist(application, requisition, req.user._id, 'Recomputed after offer stage completion.');
+
+  logger.info(`[Interview] Offer sent & stage approved for interview ${interview._id}. emailSent=${emailResult.sent}`);
+  res.json({
+    interview,
+    application,
+    passed: true,
+    nextInterviewId,
+    emailSent: emailResult.sent,
+    emailReason: emailResult.reason,
+  });
+});
+
 module.exports = {
   list, getOne, create, createMeeting, cancelMeeting, sendMeetingEmail, recordConsent, fetchTranscript,
-  uploadTranscript, uploadArtifact, score, googleOAuthCallback,
+  uploadTranscript, uploadArtifact, score, googleOAuthCallback, sendOffer,
 };
