@@ -14,7 +14,7 @@
  * }} props
  */
 export default function WeightConfig({ stages, onChangeWeight, readOnly }) {
-  const scoredStages = stages.filter((s) => s.enabled && (s.inputType === 'transcript' || s.inputType === 'artifact'));
+  const scoredStages = stages.filter((s) => s.enabled && s.inputType !== 'pass_fail' && s.inputType !== 'status_only');
 
   if (scoredStages.length === 0) {
     return <p className="text-sm text-gray-500">No enabled scored stages to weight.</p>;
