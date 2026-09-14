@@ -122,8 +122,8 @@ export default function ScorecardEditor({ scorecard, stageLabels, onSave, saving
                           <textarea
                             value={attr.question || ''}
                             onChange={(e) => updateAttribute(stageIndex, attrIndex, 'question', e.target.value)}
-                            rows={2}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-gray-500 focus:outline-none"
+                            rows={6}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-gray-500 focus:outline-none overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                           />
                         </div>
                         <div>
@@ -131,8 +131,8 @@ export default function ScorecardEditor({ scorecard, stageLabels, onSave, saving
                           <textarea
                             value={attr.anchor5 || ''}
                             onChange={(e) => updateAttribute(stageIndex, attrIndex, 'anchor5', e.target.value)}
-                            rows={2}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-gray-500 focus:outline-none"
+                            rows={6}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-gray-500 focus:outline-none overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                           />
                         </div>
                         <div>
@@ -140,8 +140,8 @@ export default function ScorecardEditor({ scorecard, stageLabels, onSave, saving
                           <textarea
                             value={attr.redFlags || ''}
                             onChange={(e) => updateAttribute(stageIndex, attrIndex, 'redFlags', e.target.value)}
-                            rows={2}
-                            className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-gray-500 focus:outline-none"
+                            rows={6}
+                            className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs focus:border-gray-500 focus:outline-none overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                           />
                         </div>
                       </div>
