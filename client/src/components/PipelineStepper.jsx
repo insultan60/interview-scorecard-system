@@ -46,17 +46,39 @@ export default function PipelineStepper({ stages, progress, stageLinks, currentS
     <div className="relative">
       <div className="flex items-center gap-1 overflow-x-auto pb-1">
         {enabledStages.map((stage, index) => {
-          const rawStatus = progress?.[stage.key] || 'pending';
+          const rawProgress = progress?.[stage.key];
+          let rawStatus = typeof rawProgress === 'string' ? rawProgress : rawProgress?.status || 'pending';
+          const passed = typeof rawProgress === 'object' ? rawProgress?.passed : null;
+
+          if (passed === false || rawStatus === 'failed') {
+            rawStatus = 'failed';
+          } else if (passed === true || rawStatus === 'passed' || (rawStatus === 'approved' && passed !== false)) {
+            rawStatus = 'passed';
+          }
+
           const isBlocked = priorStageFailed;
 
           if (rawStatus === 'failed') {
             priorStageFailed = true;
           }
 
-          const status = isBlocked ? 'disabled' : rawStatus;
+          const interviewId = isBlocked ? null : stageLinks?.[stage.key];
+          let status = isBlocked ? 'disabled' : rawStatus;
+          if (status === 'pending' && interviewId) {
+            status = 'scheduled';
+          }
+
+          console.log(`[DEBUG - PIPELINE STEPPER STAGE ${stage.key}]`, {
+            stageKey: stage.key,
+            rawProgress,
+            rawStatus,
+            finalStatus: status,
+            interviewId,
+            isBlocked,
+          });
+
           const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
           const Icon = style.icon;
-          const interviewId = isBlocked ? null : stageLinks?.[stage.key];
           const canStart = !isBlocked && !interviewId && onStartStage && stage.key === currentStageKey;
           const isStarting = startingStageKey === stage.key;
 

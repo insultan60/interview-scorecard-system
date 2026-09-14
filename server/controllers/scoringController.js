@@ -41,8 +41,24 @@ async function recomputeAndPersist(application, requisition, userId, reason) {
   });
 
   result.stageResults.forEach((r) => {
-    const progress = application.stageProgress.find((p) => p.stageKey === r.stageKey);
-    if (progress) { progress.stageAverage = r.stageAverage; progress.passed = r.passed; }
+    let progress = application.stageProgress.find((p) => p.stageKey === r.stageKey);
+    if (!progress) {
+      progress = {
+        stageKey: r.stageKey,
+        status: r.passed === true ? 'passed' : r.passed === false ? 'failed' : 'pending',
+        stageAverage: r.stageAverage,
+        passed: r.passed,
+      };
+      application.stageProgress.push(progress);
+    } else {
+      progress.stageAverage = r.stageAverage;
+      progress.passed = r.passed;
+      if (r.passed === true) {
+        progress.status = 'passed';
+      } else if (r.passed === false) {
+        progress.status = 'failed';
+      }
+    }
   });
 
   const oldDisposition = application.disposition;
@@ -159,11 +175,40 @@ const approve = asyncHandler(async (req, res) => {
     return res.json({ interview, stageAverage: null, passed: true, application, nextInterviewId });
   }
 
+  // If overrides array is passed in the request body (e.g. from manual rubric submit), process them first
+  const { overrides } = req.body;
+  if (Array.isArray(overrides) && overrides.length > 0) {
+    for (const { attributeId, approvedScore, reason } of overrides) {
+      const numScore = Number(approvedScore);
+      if (numScore < 1 || numScore > 5) {
+        throw new ValidationError(['approvedScore'], `approvedScore must be between 1 and 5 (attribute ${attributeId}).`);
+      }
+      let scoreEntry = interview.scores.find((s) => s.attributeId === attributeId);
+      if (scoreEntry) {
+        scoreEntry.approvedScore = numScore;
+        scoreEntry.overridden = true;
+        scoreEntry.overriddenBy = req.user._id;
+        scoreEntry.overrideReason = reason || 'Manual score entry';
+      } else {
+        interview.scores.push({
+          attributeId,
+          approvedScore: numScore,
+          overridden: true,
+          overriddenBy: req.user._id,
+          overrideReason: reason || 'Manual score entry',
+        });
+      }
+    }
+    interview.status = 'scored';
+    interview.markModified('scores');
+  }
+
   if (interview.status !== 'scored' && interview.status !== 'approved') {
     const isManual = stageConfigForType?.inputType === 'manual_rubric' || stageConfigForType?.stageType === 'simulation' || stageConfigForType?.stageType === 'task_performance' || (interview.scores && interview.scores.some((s) => s.approvedScore != null));
     if (isManual && interview.scores && interview.scores.length > 0) {
       interview.status = 'scored';
     } else {
+      console.log('[DEBUG - BACKEND APPROVE BLOCKED]', { interviewId: interview._id, status: interview.status, scores: interview.scores });
       throw new ValidationError(['status'], 'Interview must be scored before it can be approved.');
     }
   }
@@ -173,6 +218,7 @@ const approve = asyncHandler(async (req, res) => {
     if (s.approvedScore === undefined || s.approvedScore === null) s.approvedScore = s.aiScore;
   });
   interview.status = 'approved';
+  interview.markModified('scores');
   await interview.save();
 
   await AuditLog.create({
@@ -202,7 +248,7 @@ const approve = asyncHandler(async (req, res) => {
 
   const result = await recomputeAndPersist(application, requisitionForType, req.user._id, 'Recomputed after stage approval.');
 
-  console.log('[DEBUG - BACKEND APPROVE]', { interviewId: interview._id, passed, nextInterviewId });
+  console.log('[DEBUG - BACKEND APPROVE SUCCESS]', { interviewId: interview._id, stageAverage, passed, nextInterviewId, weightedTotal: result.weightedTotal, disposition: result.disposition });
   logger.info(`[Scoring] Approved interview ${interview._id}. stageAverage=${stageAverage} passed=${passed} weightedTotal=${result.weightedTotal} disposition=${result.disposition} nextInterviewId=${nextInterviewId}`);
   res.json({ interview, stageAverage, passed, application, nextInterviewId });
 });
@@ -218,37 +264,52 @@ const override = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
 
   const { overrides } = req.body;
+  console.log('[DEBUG - BACKEND OVERRIDE RECEIVED]', { interviewId: req.params.id, overrides, existingScoresCount: interview.scores?.length || 0 });
+
   if (!Array.isArray(overrides) || overrides.length === 0) {
     throw new ValidationError(['overrides'], 'overrides must be a non-empty array of { attributeId, approvedScore, reason }.');
   }
 
   for (const { attributeId, approvedScore, reason } of overrides) {
-    if (approvedScore < 1 || approvedScore > 5) {
+    const numScore = Number(approvedScore);
+    if (numScore < 1 || numScore > 5) {
       throw new ValidationError(['approvedScore'], `approvedScore must be between 1 and 5 (attribute ${attributeId}).`);
     }
     let scoreEntry = interview.scores.find((s) => s.attributeId === attributeId);
-    if (!scoreEntry) {
-      scoreEntry = { attributeId };
-      interview.scores.push(scoreEntry);
+    if (scoreEntry) {
+      const oldValue = scoreEntry.approvedScore;
+      scoreEntry.approvedScore = numScore;
+      scoreEntry.overridden = true;
+      scoreEntry.overriddenBy = req.user._id;
+      scoreEntry.overrideReason = reason || 'Manual score entry';
+
+      await AuditLog.create({
+        action: 'score_override', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
+        targetType: 'score', targetId: attributeId, oldValue, newValue: numScore, reason: reason || 'Manual score entry',
+      });
+    } else {
+      interview.scores.push({
+        attributeId,
+        approvedScore: numScore,
+        overridden: true,
+        overriddenBy: req.user._id,
+        overrideReason: reason || 'Manual score entry',
+      });
+
+      await AuditLog.create({
+        action: 'score_override', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
+        targetType: 'score', targetId: attributeId, oldValue: null, newValue: numScore, reason: reason || 'Manual score entry',
+      });
     }
-
-    const oldValue = scoreEntry.approvedScore;
-    scoreEntry.approvedScore = approvedScore;
-    scoreEntry.overridden = true;
-    scoreEntry.overriddenBy = req.user._id;
-    scoreEntry.overrideReason = reason || 'Manual score entry';
-
-    await AuditLog.create({
-      action: 'score_override', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
-      targetType: 'score', targetId: attributeId, oldValue, newValue: approvedScore, reason: reason || 'Manual score entry',
-    });
   }
 
   if (interview.status !== 'approved') {
     interview.status = 'scored';
   }
 
+  interview.markModified('scores');
   await interview.save();
+  console.log('[DEBUG - BACKEND OVERRIDE SAVED]', { interviewId: interview._id, scoresCount: interview.scores.length, status: interview.status });
   logger.info(`[Scoring] Overrode ${overrides.length} score(s) on interview ${interview._id}.`);
   res.json({ interview });
 });
