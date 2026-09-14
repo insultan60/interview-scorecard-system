@@ -17,6 +17,7 @@ export default function InterviewRoom() {
   const [scorecard, setScorecard] = useState(null);
   const [application, setApplication] = useState(null);
   const [stageLinks, setStageLinks] = useState({});
+  const [siblingInterviews, setSiblingInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
@@ -46,11 +47,13 @@ export default function InterviewRoom() {
     const { data: reqData } = await api.get(`/requisitions/${interviewData.interview.requisitionId}`);
     setRequisition(reqData.requisition);
     setScorecard(reqData.scorecard || null);
-    const app = reqData.applications.find((a) => a._id === interviewData.interview.applicationId);
+    const appId = String(interviewData.interview.applicationId?._id || interviewData.interview.applicationId);
+    const app = reqData.applications.find((a) => String(a._id) === appId);
     setApplication(app || null);
 
-    const { data: siblingData } = await api.get('/interviews', { params: { applicationId: interviewData.interview.applicationId } });
-    setStageLinks(Object.fromEntries(siblingData.interviews.map((iv) => [iv.stageKey, iv._id])));
+    const { data: siblingData } = await api.get('/interviews', { params: { applicationId: appId } });
+    setSiblingInterviews(siblingData.interviews || []);
+    setStageLinks(Object.fromEntries((siblingData.interviews || []).map((iv) => [iv.stageKey, iv._id])));
 
     return interviewData.interview;
   }, [id]);
@@ -325,7 +328,36 @@ export default function InterviewRoom() {
         <CardContent className="pt-6">
           <PipelineStepper
             stages={requisition.stages}
-            progress={Object.fromEntries((application?.stageProgress || []).map((p) => [p.stageKey, p.status]))}
+            progress={Object.fromEntries(
+              (requisition?.stages || []).map((stage) => {
+                const p = (application?.stageProgress || []).find((pr) => pr.stageKey === stage.key);
+                const sibIv = (siblingInterviews || []).find((iv) => iv.stageKey === stage.key);
+                const interviewId = stageLinks[stage.key];
+                const threshold = stage.passThreshold ?? 3;
+
+                const isFailed =
+                  p?.passed === false ||
+                  p?.status === 'failed' ||
+                  (sibIv?.stageAverage != null && sibIv.stageAverage < threshold) ||
+                  (interview?.stageKey === stage.key && interview?.stageAverage != null && interview.stageAverage < threshold);
+
+                const isPassed =
+                  !isFailed &&
+                  (p?.passed === true ||
+                    p?.status === 'passed' ||
+                    (p?.status === 'approved' && p?.passed !== false) ||
+                    (sibIv?.status === 'approved' && sibIv?.stageAverage != null && sibIv.stageAverage >= threshold) ||
+                    (interview?.stageKey === stage.key && interview?.status === 'approved' && interview?.stageAverage != null && interview.stageAverage >= threshold));
+
+                let status = isFailed
+                  ? 'failed'
+                  : isPassed
+                    ? 'passed'
+                    : p?.status || (interviewId ? 'scheduled' : 'pending');
+
+                return [stage.key, { stageKey: stage.key, status, passed: isFailed ? false : isPassed ? true : p?.passed }];
+              })
+            )}
             stageLinks={stageLinks}
             currentStageKey={application?.currentStageKey}
             onStartStage={handleStartNextStage}
@@ -620,8 +652,8 @@ export default function InterviewRoom() {
               {stageConfig?.inputType === 'artifact'
                 ? 'Requires an uploaded artifact first.'
                 : showConsentCard
-                ? 'Requires consent + a ready transcript first.'
-                : 'Requires a ready transcript first.'}
+                  ? 'Requires consent + a ready transcript first.'
+                  : 'Requires a ready transcript first.'}
             </p>
           )}
         </div>
@@ -633,9 +665,12 @@ export default function InterviewRoom() {
             interview={interview}
             attributes={stageAttributes}
             passThreshold={stageConfig?.passThreshold}
-            onUpdated={(updatedInterview, stageAverage, passed, nextInterviewId, wasAlreadyApproved) => {
-              console.log('[DEBUG - FRONTEND ONUPDATED]', { status: updatedInterview.status, passed, nextInterviewId, wasAlreadyApproved });
+            onUpdated={(updatedInterview, stageAverage, passed, nextInterviewId, wasAlreadyApproved, updatedApplication) => {
+              console.log('[DEBUG - FRONTEND ONUPDATED]', { status: updatedInterview.status, passed, nextInterviewId, wasAlreadyApproved, updatedApplication });
               setInterview(updatedInterview);
+              if (updatedApplication) {
+                setApplication(updatedApplication);
+              }
               if (updatedInterview.status === 'approved') {
                 if (passed !== false && nextInterviewId) {
                   toast.success('Stage passed! Moving to next stage...');

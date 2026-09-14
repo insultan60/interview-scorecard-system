@@ -57,17 +57,17 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
 
   const displayItems = (attributes && attributes.length > 0)
     ? attributes.map((attr) => {
-        const s = (interview?.scores || []).find((score) => score.attributeId === attr.attributeId);
-        return {
-          attributeId: attr.attributeId,
-          name: attr.name,
-          question: attr.question,
-          aiScore: s?.aiScore,
-          aiJustification: s?.aiJustification || (s?.aiScore == null ? 'Live Rating (Manual Entry)' : ''),
-          approvedScore: s?.approvedScore,
-          overridden: s?.overridden,
-        };
-      })
+      const s = (interview?.scores || []).find((score) => score.attributeId === attr.attributeId);
+      return {
+        attributeId: attr.attributeId,
+        name: attr.name,
+        question: attr.question,
+        aiScore: s?.aiScore,
+        aiJustification: s?.aiJustification || (s?.aiScore == null ? 'Live Rating (Manual Entry)' : ''),
+        approvedScore: s?.approvedScore,
+        overridden: s?.overridden,
+      };
+    })
     : (interview?.scores || []).map((s) => ({ ...s, name: attributeById[s.attributeId]?.name || s.attributeId }));
 
   function changedRows() {
@@ -79,13 +79,58 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
     });
   }
 
+  const isManualStage = displayItems.every((item) => item.aiScore == null);
+
+  async function handleManualSaveAndApprove() {
+    console.log('[DEBUG - FRONTEND MANUAL SAVE & APPROVE CLICKED]', {
+      interviewId: interview._id,
+      stageKey: interview.stageKey,
+      status: interview.status,
+      isApproved,
+      drafts,
+      displayItems,
+    });
+
+    const unrated = displayItems.filter((item) => {
+      const draft = drafts[item.attributeId];
+      return !draft || draft.approvedScore === '' || draft.approvedScore == null;
+    });
+
+    if (unrated.length > 0) {
+      console.log('[DEBUG - FRONTEND UNRATED ATTRIBUTES DETECTED]', { unrated, displayItems, drafts });
+      toast.error(`Please enter a rating (1-5) for all attributes (${displayItems.length - unrated.length}/${displayItems.length} rated).`);
+      return;
+    }
+
+    const wasAlreadyApproved = isApproved;
+    setApproving(true);
+    try {
+      const overrides = displayItems.map((item) => ({
+        attributeId: item.attributeId,
+        approvedScore: Number(drafts[item.attributeId].approvedScore),
+        reason: drafts[item.attributeId]?.reason?.trim() || 'Live Interview Rating',
+      }));
+
+      console.log('[DEBUG - FRONTEND SENDING MANUAL SAVE & APPROVE OVERRIDES]', overrides);
+      const res = await api.patch(`/scoring/interview/${interview._id}/approve`, { overrides });
+      console.log('[DEBUG - FRONTEND ATOMIC APPROVE SUCCESS]', res.data);
+
+      toast.success(wasAlreadyApproved ? 'Stage re-approved.' : 'Stage approved!');
+      onUpdated(res.data.interview, res.data.stageAverage, res.data.passed, res.data.nextInterviewId, wasAlreadyApproved);
+    } catch (err) {
+      console.error('[DEBUG - FRONTEND ERROR IN MANUAL SAVE & APPROVE]', err.response?.data || err.message, err);
+      toast.error(err.response?.data?.message || 'Could not approve stage scores.');
+    } finally {
+      setApproving(false);
+    }
+  }
+
   async function handleSaveOverrides() {
     const changed = changedRows();
     if (changed.length === 0) {
       toast.error('No scores changed.');
       return;
     }
-    const isManualStage = displayItems.every((item) => item.aiScore == null);
     const missingReason = !isManualStage && changed.find((item) => !drafts[item.attributeId]?.reason?.trim());
     if (missingReason) {
       toast.error('Every changed score needs a reason.');
@@ -176,11 +221,11 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
                           updateDraft(item.attributeId, 'approvedScore', '');
                           return;
                         }
-                        
+
                         val = val.slice(-1);
                         const parsed = parseInt(val, 10);
                         if (isNaN(parsed)) return;
-                        
+
                         if (parsed >= 1 && parsed <= 5) {
                           updateDraft(item.attributeId, 'approvedScore', parsed);
                         }
@@ -223,22 +268,33 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
               {isApproved && <span className="ml-2 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">approved</span>}
             </span>
           ) : (
-            <span className="text-gray-400">Approve the stage to compute the average and gate result.</span>
+            <span className="text-gray-400">Rate all attributes and approve the stage to compute the average and gate result.</span>
           )}
         </div>
         <div className="flex gap-2">
-          <button
-            type="button" onClick={handleSaveOverrides} disabled={saving}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Overrides'}
-          </button>
-          <button
-            type="button" onClick={handleApprove} disabled={approving}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {approving ? 'Approving...' : isApproved ? 'Re-approve Stage' : 'Approve Stage'}
-          </button>
+          {isManualStage ? (
+            <button
+              type="button" onClick={handleManualSaveAndApprove} disabled={approving || saving}
+              className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {approving ? 'Saving & Approving...' : isApproved ? 'Re-approve Stage Scores' : 'Save & Approve Stage'}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button" onClick={handleSaveOverrides} disabled={saving}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Overrides'}
+              </button>
+              <button
+                type="button" onClick={handleApprove} disabled={approving}
+                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {approving ? 'Approving...' : isApproved ? 'Re-approve Stage' : 'Approve Stage'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

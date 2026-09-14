@@ -282,7 +282,18 @@ export default function RequisitionDetail() {
           ) : (
             <ul className="divide-y divide-border">
               {paginatedApplications.map((app) => {
-                const progressMap = Object.fromEntries((app.stageProgress || []).map((p) => [p.stageKey, p.status]));
+                const appLinks = stageLinksByApp[app._id] || {};
+                const progressMap = Object.fromEntries(
+                  (requisition?.stages || []).map((stage) => {
+                    const p = (app.stageProgress || []).find((pr) => pr.stageKey === stage.key);
+                    const interviewId = appLinks[stage.key];
+                    const threshold = stage.passThreshold ?? 3;
+                    const isFailed = p?.passed === false || p?.status === 'failed';
+                    const isPassed = !isFailed && (p?.passed === true || p?.status === 'passed' || (p?.status === 'approved' && p?.passed !== false));
+                    let status = isFailed ? 'failed' : isPassed ? 'passed' : p?.status || (interviewId ? 'scheduled' : 'pending');
+                    return [stage.key, { stageKey: stage.key, status, passed: isFailed ? false : isPassed ? true : p?.passed }];
+                  })
+                );
                 const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
                 const allStagesPassed = enabledList.length > 0 && enabledList.every((s) => {
                   const p = (app.stageProgress || []).find((pr) => pr.stageKey === s.key);
@@ -374,22 +385,22 @@ export default function RequisitionDetail() {
       {/* ---------- scorecard ---------- */}
       {scorecard?.stages?.length > 0 && (
         <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Scorecard</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {scorecard ? (
-            <ScorecardEditor
-              scorecard={scorecard}
-              stageLabels={stageLabels}
-              onSave={handleSaveScorecard}
-              saving={savingScorecard}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">No scorecard generated yet.</p>
-          )}
-        </CardContent>
-      </Card>
+          <CardHeader>
+            <CardTitle>Scorecard</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {scorecard ? (
+              <ScorecardEditor
+                scorecard={scorecard}
+                stageLabels={stageLabels}
+                onSave={handleSaveScorecard}
+                saving={savingScorecard}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">No scorecard generated yet.</p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* ---------- close confirmation ---------- */}
