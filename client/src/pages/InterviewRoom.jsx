@@ -659,7 +659,7 @@ export default function InterviewRoom() {
         </div>
       )}
 
-      {(interview.scores?.length > 0 || isTranscriptStage || stageConfig?.inputType === 'artifact') && (
+      {(interview.scores?.length > 0 || isTranscriptDisabled) && (
         <div className="mt-4">
           <ScoreReviewTable
             interview={interview}
