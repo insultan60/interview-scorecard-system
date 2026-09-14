@@ -34,6 +34,9 @@ export default function InterviewRoom() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [startingStage, setStartingStage] = useState(false);
   const [sendingMeetingEmail, setSendingMeetingEmail] = useState(false);
+  const [sendingOffer, setSendingOffer] = useState(false);
+  const [offerFile, setOfferFile] = useState(null);
+  const [showReupload, setShowReupload] = useState(false);
 
   const [passFailResult, setPassFailResult] = useState('');
   const [passFailSaving, setPassFailSaving] = useState(false);
@@ -293,6 +296,59 @@ export default function InterviewRoom() {
       }
     } finally {
       setPassFailSaving(false);
+    }
+  }
+
+  async function handleSendOffer(e) {
+    if (e) e.preventDefault();
+
+    if (!offerFile) {
+      toast.error('Please select an offer letter PDF document before sending.');
+      return;
+    }
+
+    if (!offerFile.name.toLowerCase().endsWith('.pdf') && offerFile.type !== 'application/pdf') {
+      toast.error('Only PDF documents (.pdf) are supported for offer letters.');
+      return;
+    }
+
+    if (offerFile.size > 5 * 1024 * 1024) {
+      toast.error('Offer letter PDF file size must not exceed 5MB.');
+      return;
+    }
+
+    setSendingOffer(true);
+    try {
+      const formData = new FormData();
+      formData.append('offerLetter', offerFile);
+
+      const res = await api.post(`/interviews/${interview._id}/send-offer`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (res.data.emailSent) {
+        toast.success('Offer letter uploaded, emailed to candidate, and stage approved!');
+      } else {
+        toast.success(`Offer stage approved! (${res.data.emailReason || 'Email not sent.'})`);
+      }
+
+      setInterview(res.data.interview);
+      if (res.data.application) {
+        setApplication(res.data.application);
+      }
+      setShowReupload(false);
+      setOfferFile(null);
+
+      if (res.data.nextInterviewId) {
+        toast.success('Moving to next stage...');
+        navigate(`/interview/${res.data.nextInterviewId}`);
+      } else {
+        await load();
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to send offer.');
+    } finally {
+      setSendingOffer(false);
     }
   }
 
@@ -629,6 +685,96 @@ export default function InterviewRoom() {
                 className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
+          </CardContent>
+        </Card>
+      ) : stageConfig?.inputType === 'status_only' ? (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Job Offer</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {interview.status === 'approved' && !showReupload ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                    Offer Stage Complete ✓
+                  </span>
+                </div>
+                {interview.artifactFileUrl && (
+                  <div>
+                    <a href={interview.artifactFileUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-[#d21e2b] hover:underline">
+                      View Uploaded Offer Letter
+                    </a>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  The offer stage is complete and candidate progress has been updated.
+                </p>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowReupload(true)}
+                    className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                  >
+                    Replace / Re-upload Offer Letter
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {interview.status === 'approved'
+                    ? 'Upload a new official Offer Letter document (PDF, Max 5MB). Re-sending will replace the existing file and email the updated letter to the candidate.'
+                    : 'Upload the official Offer Letter document (PDF). Sending the offer will email the candidate.'}
+                </p>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    Select Offer Letter File (PDF, Max 5MB) <span className="text-red-500">*</span>:
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => {
+                      const selected = e.target.files[0] || null;
+                      if (selected && selected.size > 5 * 1024 * 1024) {
+                        toast.error('File size exceeds 5MB limit.');
+                        e.target.value = '';
+                        setOfferFile(null);
+                        return;
+                      }
+                      setOfferFile(selected);
+                    }}
+                    className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSendOffer}
+                    disabled={sendingOffer || !offerFile}
+                    className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {sendingOffer
+                      ? 'Sending...'
+                      : interview.status === 'approved'
+                      ? 'Re-send Offer Letter'
+                      : 'Send Offer & Complete Stage'}
+                  </button>
+                  {interview.status === 'approved' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowReupload(false);
+                        setOfferFile(null);
+                      }}
+                      className="rounded-md border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-slate-100"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (

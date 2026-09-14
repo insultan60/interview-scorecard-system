@@ -20,6 +20,7 @@ router.post('/:id/consent', interviewController.recordConsent);
 router.post('/:id/fetch-transcript', interviewController.fetchTranscript);
 router.post('/:id/upload-transcript', upload.single('transcript'), interviewController.uploadTranscript);
 router.post('/:id/upload-artifact', upload.single('artifact'), interviewController.uploadArtifact);
+router.post('/:id/send-offer', upload.single('offerLetter'), interviewController.sendOffer);
 router.post('/:id/score', interviewController.score);
 
 module.exports = router;
