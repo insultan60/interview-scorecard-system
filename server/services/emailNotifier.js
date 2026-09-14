@@ -25,28 +25,13 @@ async function getTransporter() {
     return cachedTransporter;
   }
 
-  // cachedTransporter = nodemailer.createTransport({
-  //   service: 'gmail',
-  //   auth: { user: gmailUser, pass: gmailAppPassword },
-  //   connectionTimeout: 10000,
-  //   greetingTimeout: 10000,
-  //   socketTimeout: 10000,
-  // });
-
   cachedTransporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    family: 4,
-    auth: {
-      user: gmailUser,
-      pass: gmailAppPassword,
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
+    service: 'gmail',
+    auth: { user: gmailUser, pass: gmailAppPassword },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
-
   cachedForUser = gmailUser;
   cachedForPassword = gmailAppPassword;
   return cachedTransporter;
