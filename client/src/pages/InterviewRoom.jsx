@@ -410,7 +410,7 @@ export default function InterviewRoom() {
         </Card>
       )}
 
-      {stageConfig?.inputType !== 'pass_fail' && stageConfig?.inputType !== 'status_only' && (
+      {stageConfig?.inputType === 'transcript' && !isTranscriptDisabled && (
         <div className={`mt-6 grid gap-4 ${showConsentCard ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
           <Card>
             <CardHeader>
