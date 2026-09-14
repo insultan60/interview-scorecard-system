@@ -17,14 +17,13 @@ const NAV_ITEMS = [
  * at `md:` and up it always renders exactly as before, ignoring that state entirely.
  * @param {{isOpen?: boolean, onClose?: () => void}} props
  */
-export default function Sidebar({ isOpen = false, onClose = () => {} }) {
+export default function Sidebar({ isOpen = false, onClose = () => { } }) {
   const { user, logout } = useAuth();
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 flex h-screen w-60 flex-shrink-0 flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
-        isOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}
+      className={`fixed inset-y-0 left-0 z-40 flex h-screen w-60 flex-shrink-0 flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
     >
       <div className="flex items-center justify-between px-4 py-5">
         <div>
@@ -48,8 +47,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
             end={end}
             onClick={onClose}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${
-                isActive ? 'bg-[#d21e2b] text-white' : 'text-gray-600 hover:bg-gray-100'
+              `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-[#d21e2b] text-white' : 'text-gray-600 hover:bg-gray-100'
               }`
             }
           >
@@ -60,7 +58,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
       </nav>
 
       <div className="border-t border-gray-200 p-4">
-        <div className="mb-2 text-xs text-gray-500">
+        <div className="mb-2 text-xs text-gray-500 px-4">
           <div className="font-medium text-gray-700">{user?.name}</div>
           <div>{user?.role}</div>
         </div>
