@@ -167,7 +167,7 @@ const DEFAULT_PIPELINE_STAGES = [
     key: 'reference',
     label: 'Reference Check',
     stageType: 'reference',
-    inputType: 'transcript',
+    inputType: 'pass_fail',
     enabled: false,
     order: 8,
     weight: 0,
