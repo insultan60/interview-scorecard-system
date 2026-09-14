@@ -133,7 +133,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
       setStages([...res.data.template.stages].sort((a, b) => a.order - b.order));
       setAutoWeights(res.data.template.autoWeights !== false);
       const scored = res.data.template.stages.filter(
-        (s) => s.enabled && (s.inputType === 'transcript' || s.inputType === 'artifact')
+        (s) => s.enabled && s.inputType !== 'pass_fail' && s.inputType !== 'status_only'
       );
       toast.success(
         scored.length ? `Saved — ${scored.length} scored stage${scored.length === 1 ? '' : 's'}, weights total 100%.` : 'Saved.'
