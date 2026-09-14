@@ -226,40 +226,43 @@ export default function RequisitionDetail() {
       <Card className="mt-6">
         <CardHeader className="space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
           <CardTitle>Candidates</CardTitle>
-          {applications.length > 0 && (
-            // Stacks on phones — a w-36 filter beside a w-56 search overflows a
-            // 375px viewport when forced into one row.
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Select value={dispositionFilter} onValueChange={handleDispositionFilterChange}>
-                <SelectTrigger className="h-8 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="HIRE">Hire</SelectItem>
-                  <SelectItem value="MAYBE">Maybe</SelectItem>
-                  <SelectItem value="NO_HIRE">No Hire</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="relative w-full sm:w-56">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={candidateSearch}
-                  onChange={(e) => handleCandidateSearchChange(e.target.value)}
-                  placeholder="Search by name or email…"
-                  className="h-8 pl-8 pr-8 text-xs"
-                />
-                {candidateSearch && (
-                  <button
-                    type="button"
-                    onClick={() => handleCandidateSearchChange('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {applications.length > 0 && (
+              <>
+                <Select value={dispositionFilter} onValueChange={handleDispositionFilterChange}>
+                  <SelectTrigger className="h-8 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="HIRE">Hire</SelectItem>
+                    <SelectItem value="MAYBE">Maybe</SelectItem>
+                    <SelectItem value="NO_HIRE">No Hire</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="relative w-full sm:w-56">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={candidateSearch}
+                    onChange={(e) => handleCandidateSearchChange(e.target.value)}
+                    placeholder="Search by name or email…"
+                    className="h-8 pl-8 pr-8 text-xs"
+                  />
+                  {candidateSearch && (
+                    <button
+                      type="button"
+                      onClick={() => handleCandidateSearchChange('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => navigate('/candidates')}>
+              Go to Candidates
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {applications.length === 0 ? (
