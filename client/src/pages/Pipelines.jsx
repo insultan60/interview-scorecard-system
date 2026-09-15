@@ -108,7 +108,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
   }
 
   function changeGate(key, value) {
-    setStages((prev) => prev.map((s) => (s.key === key ? { ...s, passThreshold: value === '' ? 1 : Number(value) } : s)));
+    setStages((prev) => prev.map((s) => (s.key === key ? { ...s, passThreshold: value === '' ? '' : Number(value) } : s)));
   }
 
   function moveStage(index, direction) {
