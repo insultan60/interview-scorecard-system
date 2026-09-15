@@ -94,6 +94,13 @@ export async function sendOfferEmailClient({ candidateEmail, candidateName, requ
     'Red Star Technologies Hiring Team',
   ].filter(Boolean).join('\n');
 
+  console.log('[EmailJS Browser] Preparing offer email payload:', {
+    candidateEmail,
+    candidateName,
+    requisitionTitle,
+    offerLetterUrl,
+  });
+
   try {
     await emailjs.send(
       SERVICE_ID,

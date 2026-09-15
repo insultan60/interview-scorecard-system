@@ -376,16 +376,20 @@ export default function InterviewRoom() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
+      console.log('[EmailNotifier] Server send-offer response:', res.data);
+      console.log('[EmailNotifier] Uploaded Offer Artifact URL:', res.data.interview?.artifactFileUrl || interview?.artifactFileUrl || '');
+
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Offer letter email successfully sent via BACKEND server.');
         toast.success('Offer letter uploaded, emailed to candidate, and stage approved!');
       } else {
         if (isBrowserEmailJSConfigured()) {
-          console.log('[EmailNotifier] Backend offer email not sent. Attempting send via BROWSER EmailJS...');
+          console.log('[EmailNotifier] Backend offer email not sent. Server response:', res.data);
           const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
           const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
           const requisitionTitle = requisition?.title || '';
           const offerUrl = res.data.interview?.artifactFileUrl || interview?.artifactFileUrl || res.data.interview?.offerLetterUrl || '';
+          console.log('[EmailNotifier] Resolved offerUrl for Browser EmailJS:', offerUrl);
           const clientRes = await sendOfferEmailClient({
             candidateEmail,
             candidateName,
