@@ -385,7 +385,7 @@ export default function InterviewRoom() {
           const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
           const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
           const requisitionTitle = requisition?.title || '';
-          const offerUrl = res.data.interview?.offerLetterUrl || res.data.application?.offerLetterUrl || '';
+          const offerUrl = res.data.interview?.artifactFileUrl || interview?.artifactFileUrl || res.data.interview?.offerLetterUrl || '';
           const clientRes = await sendOfferEmailClient({
             candidateEmail,
             candidateName,
