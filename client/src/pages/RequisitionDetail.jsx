@@ -318,7 +318,6 @@ export default function RequisitionDetail() {
                         currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
                         onStartStage={() => handleGoToInterview(app)}
                         startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
-                        compact
                       />
                     </div>
 
