@@ -135,8 +135,8 @@ export default function InterviewRoom() {
         if (isBrowserEmailJSConfigured()) {
           console.log('[EmailNotifier] Backend email not sent. Attempting send via BROWSER EmailJS...');
           const stageLabel = stageConfig?.label || res.data.interview?.stageKey || '';
-          const candidateName = application?.candidateName || '';
-          const candidateEmail = application?.candidateEmail || '';
+          const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
+          const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
           const requisitionTitle = requisition?.title || '';
           const clientRes = await sendMeetingEmailClient({
             candidateEmail,
@@ -168,8 +168,8 @@ export default function InterviewRoom() {
       if (isBrowserEmailJSConfigured()) {
         console.log('[EmailNotifier] Resend email requested. Attempting send via BROWSER EmailJS...');
         const stageLabel = stageConfig?.label || interview?.stageKey || '';
-        const candidateName = application?.candidateName || '';
-        const candidateEmail = application?.candidateEmail || '';
+        const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
+        const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
         const requisitionTitle = requisition?.title || '';
         const clientRes = await sendMeetingEmailClient({
           candidateEmail,
@@ -382,8 +382,8 @@ export default function InterviewRoom() {
       } else {
         if (isBrowserEmailJSConfigured()) {
           console.log('[EmailNotifier] Backend offer email not sent. Attempting send via BROWSER EmailJS...');
-          const candidateName = application?.candidateName || '';
-          const candidateEmail = application?.candidateEmail || '';
+          const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
+          const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
           const requisitionTitle = requisition?.title || '';
           const offerUrl = res.data.interview?.offerLetterUrl || res.data.application?.offerLetterUrl || '';
           const clientRes = await sendOfferEmailClient({

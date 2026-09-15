@@ -21,6 +21,10 @@ export async function sendMeetingEmailClient({ candidateEmail, candidateName, re
     return { sent: false, reason: 'Client EmailJS environment variables are not configured.' };
   }
 
+  if (!candidateEmail) {
+    return { sent: false, reason: 'No candidate email address found on file.' };
+  }
+
   const subject = `Your interview link — ${requisitionTitle} (${stageLabel})`;
   const message = [
     `Hi ${candidateName || 'there'},`,
@@ -70,6 +74,10 @@ export async function sendMeetingEmailClient({ candidateEmail, candidateName, re
 export async function sendOfferEmailClient({ candidateEmail, candidateName, requisitionTitle, offerLetterUrl }) {
   if (!isBrowserEmailJSConfigured()) {
     return { sent: false, reason: 'Client EmailJS environment variables are not configured.' };
+  }
+
+  if (!candidateEmail) {
+    return { sent: false, reason: 'No candidate email address found on file.' };
   }
 
   const subject = `Job Offer — ${requisitionTitle}`;
