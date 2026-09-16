@@ -183,16 +183,16 @@ const DEFAULT_PIPELINE_STAGES = [
     weight: 0,
     passThreshold: 3.0,
   },
-  {
-    key: 'offer',
-    label: 'Offer',
-    stageType: 'offer',
-    inputType: 'status_only',
-    enabled: false,
-    order: 10,
-    weight: 0,
-    passThreshold: 3.0,
-  },
+  // {
+  //   key: 'offer',
+  //   label: 'Offer',
+  //   stageType: 'offer',
+  //   inputType: 'status_only',
+  //   enabled: false,
+  //   order: 10,
+  //   weight: 0,
+  //   passThreshold: 3.0,
+  // },
 ];
 
 /** Default scalar settings, seeded into the Setting collection. */
