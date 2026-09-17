@@ -154,7 +154,7 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
 
   async function handleApprove() {
     if (changedRows().length > 0) {
-      toast.error('You have unsaved score changes — click "Save Overrides" first, or they will be discarded.');
+      toast.error('You have unsaved score changes — click "Save Overrides" first.');
       return;
     }
     const wasAlreadyApproved = isApproved;

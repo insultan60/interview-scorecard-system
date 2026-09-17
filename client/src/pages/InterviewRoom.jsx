@@ -430,9 +430,10 @@ export default function InterviewRoom() {
   }
 
 
-  const isTranscriptStage = stageConfig?.inputType === 'transcript' || stageConfig?.inputType === 'manual_rubric' || stageConfig?.stageType === 'simulation' || stageConfig?.stageType === 'task_performance';
+  const isTranscriptStage = stageConfig?.inputType === 'transcript' && stageConfig?.stageType !== 'simulation' && stageConfig?.stageType !== 'task_performance';
   const isTranscriptDisabled = stageConfig?.stageType === 'simulation' || stageConfig?.stageType === 'task_performance' || stageConfig?.inputType === 'manual_rubric';
   const showConsentCard = isTranscriptStage && !isTranscriptDisabled;
+  const showMeetingCard = stageConfig?.inputType === 'transcript' || stageConfig?.stageType === 'simulation' || stageConfig?.stageType === 'task_performance' || stageConfig?.inputType === 'manual_rubric';
 
   const canScore = (showConsentCard ? interview?.consentObtained : true)
     && (stageConfig?.inputType === 'artifact' ? !!interview.artifactFileUrl : interview?.transcriptStatus === 'ready')
@@ -543,7 +544,7 @@ export default function InterviewRoom() {
         </Card>
       )}
 
-      {stageConfig?.inputType === 'transcript' && !isTranscriptDisabled && (
+      {showMeetingCard && (
         <div className={`mt-6 grid gap-4 ${showConsentCard ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
           <Card>
             <CardHeader>
@@ -854,7 +855,7 @@ export default function InterviewRoom() {
             )}
           </CardContent>
         </Card>
-      ) : (
+      ) : stageConfig?.inputType === 'manual_rubric' || stageConfig?.stageType === 'simulation' || stageConfig?.stageType === 'task_performance' ? null : (
         <Card className="mt-4">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">This stage type ("{stageConfig?.inputType}") isn't scored via AI on this screen.</p>

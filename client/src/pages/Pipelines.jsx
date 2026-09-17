@@ -41,7 +41,7 @@ const STAGE_TYPE_DEFAULTS = [
   { key: 'final', label: 'Final / Executive', stageType: 'final', inputType: 'transcript' },
   { key: 'reference', label: 'Reference Check', stageType: 'reference', inputType: 'pass_fail' },
   { key: 'background', label: 'Background Check', stageType: 'background', inputType: 'pass_fail' },
-  { key: 'offer', label: 'Offer', stageType: 'offer', inputType: 'status_only' },
+  // { key: 'offer', label: 'Offer', stageType: 'offer', inputType: 'status_only' },
 ].map((s, i) => ({ ...s, enabled: false, order: i + 1, weight: 0, passThreshold: 3.0 }));
 
 const INPUT_TYPE_LABEL = {
