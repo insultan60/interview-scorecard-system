@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
+import api from '@/hooks/useApi';
 import {
   Briefcase, Calendar, CheckCircle2, FileText, Upload, AlertCircle, Sparkles, ArrowRight,
 } from 'lucide-react';
@@ -33,14 +33,19 @@ export default function CandidateApply() {
 
   useEffect(() => {
     async function fetchPublicRequisition() {
+      console.log(`[CandidateApply] Fetching public requisition with ID: "${id}"...`);
       setLoading(true);
       setError(null);
       try {
-        const res = await axios.get(`/api/requisitions/${id}/public`);
+        const res = await api.get(`/requisitions/${id}/public`);
+        console.log('[CandidateApply] Received requisition data:', res.data);
         setRequisition(res.data.requisition);
       } catch (err) {
-        console.error('Failed to load requisition:', err);
-        setError(err?.response?.data?.message || 'Requisition not found or is closed.');
+        console.error('[CandidateApply] Failed to load requisition error:', err);
+        const serverMsg = err?.response?.data?.message || err?.message;
+        const statusCode = err?.response?.status;
+        console.error(`[CandidateApply] Status: ${statusCode}, Message: ${serverMsg}`);
+        setError(serverMsg || 'Requisition not found or is closed.');
       } finally {
         setLoading(false);
       }
@@ -65,6 +70,7 @@ export default function CandidateApply() {
     }
 
     setSubmitting(true);
+    console.log('[CandidateApply] Submitting application for requisition:', id, { name, email, phone });
     try {
       const formData = new FormData();
       formData.append('name', name.trim());
@@ -73,15 +79,16 @@ export default function CandidateApply() {
       formData.append('questionnaireAnswers', JSON.stringify(answers));
       formData.append('resume', resumeFile);
 
-      const res = await axios.post(`/api/requisitions/${id}/apply`, formData, {
+      const res = await api.post(`/requisitions/${id}/apply`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
+      console.log('[CandidateApply] Application submission success:', res.data);
       setResult(res.data);
       setStep('success');
       toast.success('Application submitted successfully!');
     } catch (err) {
-      console.error('Application submission error:', err);
+      console.error('[CandidateApply] Application submission failed:', err);
       toast.error(err?.response?.data?.message || 'Failed to submit application. Please try again.');
     } finally {
       setSubmitting(false);
@@ -102,12 +109,24 @@ export default function CandidateApply() {
   if (error || !requisition) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full text-center border-red-200">
+        <Card className="max-w-lg w-full text-center border-red-200 shadow-lg">
           <CardHeader>
-            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-2" />
-            <CardTitle className="text-xl">Position Unavailable</CardTitle>
-            <CardDescription>{error || 'This position is no longer accepting applications.'}</CardDescription>
+            <AlertCircle className="h-14 w-14 text-red-500 mx-auto mb-2" />
+            <CardTitle className="text-2xl font-bold text-slate-900">Position Unavailable</CardTitle>
+            <CardDescription className="text-slate-600 text-sm mt-1">
+              {error || 'This position is no longer accepting applications or does not exist.'}
+            </CardDescription>
           </CardHeader>
+          <CardContent className="pt-2 text-left bg-slate-100/70 mx-6 mb-6 p-4 rounded-lg text-xs font-mono text-slate-700 space-y-1.5 border border-slate-200">
+            <div className="font-semibold text-slate-800 border-b border-slate-200 pb-1 text-[11px] uppercase tracking-wider">
+              Diagnostic Logs & Info:
+            </div>
+            <div><span className="font-bold text-slate-900">URL ID:</span> {id || '(none)'}</div>
+            <div><span className="font-bold text-slate-900">Error Detail:</span> {error || 'No requisition object returned'}</div>
+            <div className="pt-2 font-sans text-slate-600 border-t border-slate-200 text-[11px]">
+              Tip: Copy the public link directly from an active requisition in your dashboard (e.g. <strong>Requisitions &gt; Copy Link</strong>).
+            </div>
+          </CardContent>
         </Card>
       </div>
     );

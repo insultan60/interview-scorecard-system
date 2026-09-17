@@ -359,18 +359,20 @@ const score = asyncHandler(async (req, res) => {
     throw new ValidationError(['stageKey'], 'No rubric found for this stage — generate or edit the scorecard first.');
   }
 
+  const application = await Application.findById(interview.applicationId).populate('candidateId', 'name');
+
   const { interview: scored, message } = await scoreInterview({
     interview,
     stageType: stageConfig.stageType,
     attributes: scorecardStage.attributes,
     requisition,
+    application,
   });
 
   if (message) {
     return res.json({ interview: scored, message });
   }
 
-  const application = await Application.findById(interview.applicationId).populate('candidateId', 'name');
   const progress = application.stageProgress.find((p) => p.stageKey === interview.stageKey);
   if (progress) progress.status = 'scored';
   await application.save();

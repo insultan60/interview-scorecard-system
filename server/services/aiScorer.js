@@ -1,3 +1,4 @@
+const Application = require('../models/Application');
 const logger = require('../utils/logger');
 const { callClaude, getModelIds } = require('./claudeClient');
 const { STAGE_MODEL_TIER } = require('../utils/constants');
@@ -74,13 +75,18 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
  * @param {Array<{attributeId:string, name:string, question?:string, anchor5?:string, redFlags?:string}>} params.attributes
  *   The scorecard's rubric attributes for this stage.
  * @param {object} [params.requisition] - Optional requisition document for full context.
+ * @param {object} [params.application] - Optional application document for candidate source context.
  * @returns {Promise<{interview: import('mongoose').Document, message?: string}>}
  * @throws {import('../utils/errors').ApiKeyError} on 401/403 — never scored on a bad key.
  * @throws {import('../utils/errors').SpendCapError} if the monthly AI spend cap is reached.
  * @throws {import('../utils/errors').RateLimitError} if 429 persists through retries.
  * @throws {import('../utils/errors').ServiceError} on persistent network failure.
  */
-async function scoreInterview({ interview, stageType, attributes, requisition }) {
+async function scoreInterview({ interview, stageType, attributes, requisition, application }) {
+  if (!application && interview.applicationId) {
+    application = await Application.findById(interview.applicationId);
+  }
+
   const transcriptText = (interview.transcriptText || '').trim();
   const wordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
 
@@ -98,7 +104,7 @@ async function scoreInterview({ interview, stageType, attributes, requisition })
   const { text, inputTokens, outputTokens, costUsd } = await callClaude({
     model,
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(transcriptText, attributes, stageType, requisition, requisition) }],
+    messages: [{ role: 'user', content: buildUserPrompt(transcriptText, attributes, stageType, requisition, application) }],
     maxTokens: 4096,
     expectJson: true,
   });

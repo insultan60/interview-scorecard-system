@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Requisition = require('../models/Requisition');
 const PipelineTemplate = require('../models/PipelineTemplate');
 const Scorecard = require('../models/Scorecard');
@@ -391,15 +392,30 @@ const generateField = asyncHandler(async (req, res) => {
  * Public endpoint returning open requisition details for candidates.
  */
 const getPublic = asyncHandler(async (req, res) => {
+  logger.info(`[Requisition] Public GET request for ID: "${req.params.id}"`);
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    logger.warn(`[Requisition] Public GET failed: "${req.params.id}" is not a valid ObjectId`);
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
+  }
+
   const requisition = await Requisition.findById(req.params.id)
     .select('title jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
     .lean();
 
-  if (!requisition || requisition.status !== 'open') {
+  if (!requisition) {
+    logger.warn(`[Requisition] Public GET failed: Requisition "${req.params.id}" not found in database`);
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
+  }
+
+  if (requisition.status !== 'open') {
+    logger.warn(`[Requisition] Public GET failed: Requisition "${req.params.id}" status is "${requisition.status}" (must be "open")`);
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
   }
 
   const isExpired = requisition.applicationDeadline ? new Date() > new Date(requisition.applicationDeadline) : false;
+
+  logger.info(`[Requisition] Public GET success: Found open requisition "${requisition.title}" (${requisition._id})`);
 
   res.json({
     requisition: {
@@ -414,6 +430,10 @@ const getPublic = asyncHandler(async (req, res) => {
  * Public endpoint for candidate self-application submission with resume upload.
  */
 const applyPublic = asyncHandler(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'This position is closed or no longer accepting applications.' });
+  }
+
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition || requisition.status !== 'open') {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'This position is closed or no longer accepting applications.' });
@@ -487,6 +507,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     candidateId: candidate._id,
     requisitionId: requisition._id,
     currentStageKey: null,
+    source: 'public_link',
     stageProgress,
   });
 
