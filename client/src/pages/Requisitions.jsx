@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users,
+  Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -32,7 +33,15 @@ const STATUS_BADGE = {
 };
 const STATUS_LABEL = { open: 'Open', on_hold: 'On Hold', closed: 'Closed' };
 
-const EMPTY_FORM = { title: '', jobDescription: '', pipelineTemplateId: '' };
+const EMPTY_FORM = {
+  title: '',
+  jobDescription: '',
+  initialScreeningCriteria: '',
+  questionnaire: [''],
+  applicationDeadline: '',
+  aiScreeningEnabled: true,
+  pipelineTemplateId: '',
+};
 
 export default function Requisitions() {
   const navigate = useNavigate();
@@ -46,10 +55,84 @@ export default function Requisitions() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
+  const [generatingField, setGeneratingField] = useState({});
+  const [promptOpen, setPromptOpen] = useState({});
+  const [fieldPrompts, setFieldPrompts] = useState({});
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  function togglePromptBox(fieldType) {
+    if (!form.title.trim()) {
+      toast.error('Please enter a Job Title first so AI has context.');
+      return;
+    }
+    setPromptOpen((prev) => ({ ...prev, [fieldType]: !prev[fieldType] }));
+  }
+
+  async function handleRunFieldAiGeneration(fieldType) {
+    if (!form.title.trim()) {
+      toast.error('Please enter a Job Title first so AI has context.');
+      return;
+    }
+
+    const userInstruction = fieldPrompts[fieldType] || '';
+
+    setGeneratingField((prev) => ({ ...prev, [fieldType]: true }));
+    try {
+      const res = await api.post('/requisitions/generate-field', {
+        fieldType,
+        title: form.title,
+        jobDescription: form.jobDescription,
+        prompt: userInstruction,
+      });
+
+      if (fieldType === 'questionnaire') {
+        const questionsList = res.data.questions || [];
+        setForm((f) => ({ ...f, questionnaire: questionsList.length ? questionsList : [''] }));
+      } else {
+        setForm((f) => ({ ...f, [fieldType]: res.data.content || '' }));
+      }
+      setPromptOpen((prev) => ({ ...prev, [fieldType]: false }));
+      toast.success('Generated content with AI!');
+    } catch (err) {
+      console.error(`Field generation error for ${fieldType}:`, err);
+      toast.error(err?.response?.data?.message || `Failed to generate ${fieldType}.`);
+    } finally {
+      setGeneratingField((prev) => ({ ...prev, [fieldType]: false }));
+    }
+  }
+
+  function handleQuestionChange(index, value) {
+    setForm((prev) => {
+      const updated = [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : [])];
+      updated[index] = value;
+      return { ...prev, questionnaire: updated };
+    });
+  }
+
+  function handleAddQuestion() {
+    setForm((prev) => ({
+      ...prev,
+      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), ''],
+    }));
+  }
+
+  function handleRemoveQuestion(index) {
+    setForm((prev) => {
+      const current = Array.isArray(prev.questionnaire) ? prev.questionnaire : [];
+      const updated = current.filter((_, i) => i !== index);
+      return { ...prev, questionnaire: updated.length ? updated : [''] };
+    });
+  }
+
+  function copyApplyLink(reqId, e) {
+    if (e) e.stopPropagation();
+    const url = `${window.location.origin}/apply/${reqId}`;
+    navigator.clipboard.writeText(url);
+    toast.success('Candidate application link copied to clipboard!');
+  }
 
   async function loadRequisitions() {
     setLoading(true);
@@ -234,9 +317,24 @@ export default function Requisitions() {
                       onClick={() => navigate(`/requisitions/${r._id}`)}
                     >
                       <TableCell>
-                        <div className="text-sm font-medium text-foreground">{r.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {enabledStages} stage{enabledStages === 1 ? '' : 's'}
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-medium text-foreground">{r.title}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {enabledStages} stage{enabledStages === 1 ? '' : 's'}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            title="Copy Candidate Application Link"
+                            onClick={(e) => copyApplyLink(r._id, e)}
+                            className="h-8 text-xs gap-1 text-slate-600 hover:text-[#d21e2b] hover:bg-slate-100"
+                          >
+                            <Link2 className="h-3.5 w-3.5" />
+                            Apply Link
+                          </Button>
                         </div>
                       </TableCell>
 
@@ -307,7 +405,7 @@ export default function Requisitions() {
 
       {/* ---------- create dialog ---------- */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New requisition</DialogTitle>
             <DialogDescription>
@@ -315,27 +413,271 @@ export default function Requisitions() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreate} className="space-y-4">
+          <form onSubmit={handleCreate} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="req-title">Title</Label>
+              <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
               <Input
                 id="req-title" value={form.title} autoFocus
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="e.g. Sales Executive / Closer"
+                required
               />
             </div>
 
+            {/* Job Description with Generate AI button on right */}
             <div className="space-y-1.5">
-              <Label htmlFor="req-jd">Job description</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="req-jd">Job Description <span className="text-red-500">*</span></Label>
+                <button
+                  type="button"
+                  onClick={() => togglePromptBox('jobDescription')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  {promptOpen.jobDescription ? 'Close AI Prompt' : 'Generate with AI'}
+                </button>
+              </div>
+
+              {promptOpen.jobDescription && (
+                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                      Specify AI Instructions / Context:
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="e.g. Senior role, 5+ yrs React, remote position, competitive pay & stock options..."
+                    value={fieldPrompts.jobDescription || ''}
+                    onChange={(e) => setFieldPrompts({ ...fieldPrompts, jobDescription: e.target.value })}
+                    className="bg-white text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleRunFieldAiGeneration('jobDescription');
+                      }
+                    }}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => togglePromptBox('jobDescription')}
+                      className="h-7 text-xs text-slate-600"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={generatingField.jobDescription}
+                      onClick={() => handleRunFieldAiGeneration('jobDescription')}
+                      className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {generatingField.jobDescription ? 'Generating...' : 'Generate & Insert'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <Textarea
-                id="req-jd" rows={9} value={form.jobDescription}
+                id="req-jd" rows={5} value={form.jobDescription}
                 onChange={(e) => setForm({ ...form, jobDescription: e.target.value })}
-                placeholder="Paste the full job description here…"
+                placeholder="Paste or generate the full job description here…"
+                required
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="req-template">Pipeline template</Label>
+            {/* Initial Screening Criteria with Generate AI button on right (only shown when Job Description is written) */}
+            {Boolean(form.jobDescription?.trim()) && (
+              <div className="space-y-1.5 border-t pt-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="req-screening">Initial Screening Criteria (CV Review Text)</Label>
+                  <button
+                    type="button"
+                    onClick={() => togglePromptBox('initialScreeningCriteria')}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                    {promptOpen.initialScreeningCriteria ? 'Close AI Prompt' : 'Generate with AI'}
+                  </button>
+                </div>
+
+                {promptOpen.initialScreeningCriteria && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
+                        <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                        Specify AI Screening Requirements:
+                      </span>
+                    </div>
+                    <Input
+                      placeholder="e.g. Must have 3+ yrs React, Computer Science degree, sales background..."
+                      value={fieldPrompts.initialScreeningCriteria || ''}
+                      onChange={(e) => setFieldPrompts({ ...fieldPrompts, initialScreeningCriteria: e.target.value })}
+                      className="bg-white text-xs"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleRunFieldAiGeneration('initialScreeningCriteria');
+                        }
+                      }}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => togglePromptBox('initialScreeningCriteria')}
+                        className="h-7 text-xs text-slate-600"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={generatingField.initialScreeningCriteria}
+                        onClick={() => handleRunFieldAiGeneration('initialScreeningCriteria')}
+                        className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        {generatingField.initialScreeningCriteria ? 'Generating...' : 'Generate & Insert'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <Textarea
+                  id="req-screening" rows={3} value={form.initialScreeningCriteria}
+                  onChange={(e) => setForm({ ...form, initialScreeningCriteria: e.target.value })}
+                  placeholder="Specify criteria text for AI CV review (e.g. 3+ years React, computer science degree...)"
+                />
+              </div>
+            )}
+
+            {/* Application Questionnaire Array */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Application Questionnaire ({Array.isArray(form.questionnaire) ? form.questionnaire.filter(Boolean).length : 0} questions)</Label>
+                <button
+                  type="button"
+                  onClick={() => togglePromptBox('questionnaire')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  {promptOpen.questionnaire ? 'Close AI Prompt' : 'Generate with AI'}
+                </button>
+              </div>
+
+              {promptOpen.questionnaire && (
+                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                      Specify AI Questionnaire Instructions:
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="e.g. Generate 5 technical React & System Design questions..."
+                    value={fieldPrompts.questionnaire || ''}
+                    onChange={(e) => setFieldPrompts({ ...fieldPrompts, questionnaire: e.target.value })}
+                    className="bg-white text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleRunFieldAiGeneration('questionnaire');
+                      }
+                    }}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => togglePromptBox('questionnaire')}
+                      className="h-7 text-xs text-slate-600"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={generatingField.questionnaire}
+                      onClick={() => handleRunFieldAiGeneration('questionnaire')}
+                      className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {generatingField.questionnaire ? 'Generating...' : 'Generate & Insert'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {(Array.isArray(form.questionnaire) ? form.questionnaire : ['']).map((q, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500 w-5 text-right flex-shrink-0">{idx + 1}.</span>
+                    <Input
+                      placeholder={`Question ${idx + 1}...`}
+                      value={q}
+                      onChange={(e) => handleQuestionChange(idx, e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveQuestion(idx)}
+                      title="Remove question"
+                      className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddQuestion}
+                className="mt-1 text-xs gap-1 border-dashed text-slate-600 hover:text-[#d21e2b]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Question
+              </Button>
+            </div>
+
+            {/* Application Deadline & AI Screening Toggle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="req-deadline">Application Deadline</Label>
+                <Input
+                  id="req-deadline"
+                  type="date"
+                  value={form.applicationDeadline}
+                  onChange={(e) => setForm({ ...form, applicationDeadline: e.target.value })}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-6">
+                <Checkbox
+                  id="req-ai-screening"
+                  checked={form.aiScreeningEnabled}
+                  onCheckedChange={(checked) => setForm({ ...form, aiScreeningEnabled: Boolean(checked) })}
+                />
+                <Label htmlFor="req-ai-screening" className="text-sm font-medium cursor-pointer">
+                  Enable Automated AI Screening
+                </Label>
+              </div>
+            </div>
+
+            {/* Pipeline template picker */}
+            <div className="space-y-1.5 pt-1">
+              <Label htmlFor="req-template">Pipeline template <span className="text-red-500">*</span></Label>
               <Popover open={templatePickerOpen} onOpenChange={setTemplatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -384,7 +726,7 @@ export default function Requisitions() {
               )}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
                 {creating ? 'Creating & generating…' : 'Create & generate scorecard'}

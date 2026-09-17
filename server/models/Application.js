@@ -6,12 +6,23 @@ const applicationSchema = new mongoose.Schema({
   requisitionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Requisition', required: true, index: true },
 
   currentStageKey: String,     // Which stage they're on now
+  source: { type: String, enum: ['public_link', 'manual'], default: 'manual' },
   stageProgress: [{
     stageKey: String,
     status: { type: String, enum: STAGE_PROGRESS_STATUS, default: 'pending' },
     stageAverage: Number,      // 1-5 average of approved attribute scores
     passed: Boolean,           // stageAverage >= passThreshold
   }],
+
+  // Initial Screening (CV vs Criteria / Questionnaire)
+  initialScreening: {
+    aiScore: Number,
+    aiJustification: String,
+    passed: Boolean,
+    overridden: { type: Boolean, default: false },
+    overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    overrideReason: String,
+  },
 
   // Final results (computed by scoringEngine)
   weightedTotal: Number,       // 1-5

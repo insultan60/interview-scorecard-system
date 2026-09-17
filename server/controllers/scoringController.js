@@ -494,4 +494,87 @@ const passFail = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { approve, override, recompute, decision, passFail, recomputeAndPersist, getOrCreateNextInterview };
+/**
+ * PATCH /api/scoring/application/:id/override-initial-screening
+ * Body: { passed: boolean, score?: number, reason?: string }
+ * Overrides the candidate's initial screening pass/fail decision or AI score.
+ * If passed is set to true, automatically creates/advances the candidate to Stage 1
+ * of the requisition's pipeline.
+ */
+const overrideInitialScreening = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id);
+  if (!application) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  }
+
+  const requisition = await Requisition.findById(application.requisitionId);
+  if (!requisition) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  }
+
+  const { passed, score, reason } = req.body;
+  if (typeof passed !== 'boolean') {
+    throw new ValidationError(['passed'], 'passed must be a boolean.');
+  }
+
+  const oldScreening = application.initialScreening || {};
+  application.initialScreening = {
+    aiScore: score !== undefined ? Number(score) : (oldScreening.aiScore || 3.0),
+    aiJustification: oldScreening.aiJustification || 'Initial screening',
+    passed,
+    overridden: true,
+    overriddenBy: req.user._id,
+    overrideReason: reason || 'Manual HR override',
+  };
+
+  const enabledStages = (requisition.stages || []).filter((s) => s.enabled);
+  const firstStage = enabledStages[0] || requisition.stages[0];
+  const firstStageKey = firstStage ? firstStage.key : null;
+
+  let nextInterviewId = null;
+  if (passed && firstStageKey) {
+    application.disposition = null;
+    application.currentStageKey = firstStageKey;
+    
+    const Interview = require('../models/Interview');
+    let existing = await Interview.findOne({ applicationId: application._id, stageKey: firstStageKey });
+    if (!existing) {
+      existing = await Interview.create({
+        applicationId: application._id,
+        requisitionId: requisition._id,
+        stageKey: firstStageKey,
+        meetingMode: 'online',
+        provider: 'google_meet',
+        status: 'pending',
+      });
+    }
+    nextInterviewId = existing._id;
+    const progressItem = application.stageProgress.find((p) => p.stageKey === firstStageKey);
+    if (progressItem) progressItem.status = 'scheduled';
+  } else if (!passed) {
+    application.currentStageKey = null;
+    application.disposition = 'NO_HIRE';
+  }
+
+  await application.save();
+
+  await AuditLog.create({
+    action: 'score_override',
+    userId: req.user._id,
+    requisitionId: requisition._id,
+    applicationId: application._id,
+    targetType: 'application',
+    targetId: application._id.toString(),
+    oldValue: oldScreening,
+    newValue: application.initialScreening,
+    reason: reason || 'Initial screening overridden by HR.',
+  });
+
+  await rankApplications(requisition._id);
+
+  logger.info(`[Scoring] HR overridden initial screening for app ${application._id}: passed=${passed}, score=${score}, nextInterviewId=${nextInterviewId}`);
+  res.json({ application, nextInterviewId });
+});
+
+module.exports = { approve, override, recompute, decision, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
+

@@ -83,13 +83,23 @@ const DEFAULT_COST_RATE_TABLE = {
 /** The default pipeline template, exactly per the finalized spec / original Excel. */
 const DEFAULT_PIPELINE_STAGES = [
   {
+    key: 'resume_screen',
+    label: 'Résumé Screen',
+    stageType: 'resume_screen',
+    inputType: 'artifact',
+    enabled: true,
+    order: 1,
+    weight: 0.10,
+    passThreshold: 3.0,
+  },
+  {
     key: 'hr_screen',
     label: 'HR Screen',
     stageType: 'hr_screen',
     inputType: 'transcript',
     enabled: true,
-    order: 1,
-    weight: 0.10,
+    order: 2,
+    weight: 0.15,
     passThreshold: 3.0,
   },
   {
@@ -98,8 +108,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'simulation',
     inputType: 'manual_rubric',
     enabled: true,
-    order: 2,
-    weight: 0.35,
+    order: 3,
+    weight: 0.25,
     passThreshold: 3.0,
   },
   {
@@ -108,8 +118,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'technical',
     inputType: 'transcript',
     enabled: true,
-    order: 3,
-    weight: 0.35,
+    order: 4,
+    weight: 0.30,
     passThreshold: 3.0,
   },
   {
@@ -118,19 +128,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'final',
     inputType: 'transcript',
     enabled: true,
-    order: 4,
+    order: 5,
     weight: 0.20,
-    passThreshold: 3.0,
-  },
-  // Shipped disabled; HR enables per-requisition as needed.
-  {
-    key: 'resume_screen',
-    label: 'Résumé Screen',
-    stageType: 'resume_screen',
-    inputType: 'artifact',
-    enabled: false,
-    order: 0,
-    weight: 0,
     passThreshold: 3.0,
   },
   {

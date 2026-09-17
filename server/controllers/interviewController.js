@@ -363,6 +363,7 @@ const score = asyncHandler(async (req, res) => {
     interview,
     stageType: stageConfig.stageType,
     attributes: scorecardStage.attributes,
+    requisition,
   });
 
   if (message) {
@@ -507,5 +508,5 @@ const sendOffer = asyncHandler(async (req, res) => {
 
 module.exports = {
   list, getOne, create, createMeeting, cancelMeeting, sendMeetingEmail, recordConsent, fetchTranscript,
-  uploadTranscript, uploadArtifact, score, googleOAuthCallback, sendOffer,
+  uploadTranscript, uploadArtifact, score, googleOAuthCallback, sendOffer, getOrCreateNextInterview,
 };

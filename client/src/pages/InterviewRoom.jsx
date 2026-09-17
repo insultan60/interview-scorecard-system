@@ -500,6 +500,38 @@ export default function InterviewRoom() {
         </CardContent>
       </Card>
 
+      {/* Requisition Criteria & Questionnaire Context (Shown ONLY for Resume Screen stage) */}
+      {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
+        (requisition?.initialScreeningCriteria || (requisition?.questionnaire && requisition.questionnaire.length > 0)) && (
+        <Card className="mt-4 border-blue-500/20 bg-blue-50/20 dark:bg-blue-950/10">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-semibold text-foreground">
+              Role Criteria & Application Questionnaire Context
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0 pb-4 text-xs">
+            {requisition.initialScreeningCriteria && (
+              <div>
+                <span className="font-semibold text-foreground">Initial Screening Criteria:</span>
+                <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
+                  {requisition.initialScreeningCriteria}
+                </p>
+              </div>
+            )}
+            {requisition.questionnaire && requisition.questionnaire.length > 0 && (
+              <div>
+                <span className="font-semibold text-foreground">Application Questionnaire Questions:</span>
+                <ul className="mt-1 space-y-1 list-disc list-inside text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
+                  {requisition.questionnaire.map((q, idx) => (
+                    <li key={idx}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {stageAttributes.length > 0 && (
         <Card className="mt-4">
           <CardHeader

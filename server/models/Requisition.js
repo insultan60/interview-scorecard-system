@@ -36,6 +36,10 @@ const requisitionSchema = new mongoose.Schema({
   scorecardId: { type: mongoose.Schema.Types.ObjectId, ref: 'Scorecard' },
   hireThreshold: { type: Number, default: 3.5, min: 1, max: 5 },
   maybeThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
+  initialScreeningCriteria: { type: String, default: '' },
+  questionnaire: [{ type: String }],
+  applicationDeadline: { type: Date, default: null },
+  aiScreeningEnabled: { type: Boolean, default: true },
   closedAt: Date,                                          // Drives retention purge
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

@@ -27,12 +27,30 @@ async function resolveModelForStage(stageType) {
   return models[tier];
 }
 
-function buildUserPrompt(transcriptText, attributes) {
+function buildUserPrompt(transcriptText, attributes, stageType, requisition, application) {
   const rubric = attributes.map((a) => (
     `attributeId: "${a.attributeId}"\nname: ${a.name}\nquestion: ${a.question || '(none)'}\nwhat a 5 looks like: ${a.anchor5 || '(none)'}\nred flags (1-2): ${a.redFlags || '(none)'}`
   )).join('\n\n');
 
-  return `TRANSCRIPT:\n${transcriptText}\n\n---\nRUBRIC (score every attribute below):\n\n${rubric}`;
+  let contextHeader = 'INTERVIEW TRANSCRIPT:';
+  let requisitionContext = '';
+
+  const isManual = application?.source === 'manual';
+
+  console.log("Is it manual?", isManual);
+
+  // Apply requisition criteria & questionnaire context ONLY to resume_screen stage
+  if (stageType === 'resume_screen') {
+    contextHeader = isManual ? 'CANDIDATE RESUME TEXT:' : 'CANDIDATE RESUME & QUESTIONNAIRE TEXT:';
+    if (requisition) {
+      const qText = (!isManual && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0)
+        ? requisition.questionnaire.map((q) => `- ${q}`).join('\n')
+        : '';
+      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${requisition.initialScreeningCriteria ? `INITIAL SCREENING CRITERIA:\n${requisition.initialScreeningCriteria}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE:\n${qText}\n\n` : ''}---\n`;
+    }
+  }
+
+  return `${requisitionContext}${contextHeader}\n${transcriptText}\n\n---\nRUBRIC (score every attribute below):\n\n${rubric}`;
 }
 
 /**
@@ -55,13 +73,14 @@ function buildUserPrompt(transcriptText, attributes) {
  * @param {string} params.stageType - The stage's stageType (selects the model tier).
  * @param {Array<{attributeId:string, name:string, question?:string, anchor5?:string, redFlags?:string}>} params.attributes
  *   The scorecard's rubric attributes for this stage.
+ * @param {object} [params.requisition] - Optional requisition document for full context.
  * @returns {Promise<{interview: import('mongoose').Document, message?: string}>}
  * @throws {import('../utils/errors').ApiKeyError} on 401/403 — never scored on a bad key.
  * @throws {import('../utils/errors').SpendCapError} if the monthly AI spend cap is reached.
  * @throws {import('../utils/errors').RateLimitError} if 429 persists through retries.
  * @throws {import('../utils/errors').ServiceError} on persistent network failure.
  */
-async function scoreInterview({ interview, stageType, attributes }) {
+async function scoreInterview({ interview, stageType, attributes, requisition }) {
   const transcriptText = (interview.transcriptText || '').trim();
   const wordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
 
@@ -79,7 +98,7 @@ async function scoreInterview({ interview, stageType, attributes }) {
   const { text, inputTokens, outputTokens, costUsd } = await callClaude({
     model,
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(transcriptText, attributes) }],
+    messages: [{ role: 'user', content: buildUserPrompt(transcriptText, attributes, stageType, requisition, requisition) }],
     maxTokens: 4096,
     expectJson: true,
   });

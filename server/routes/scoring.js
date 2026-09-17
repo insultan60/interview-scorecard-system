@@ -9,6 +9,7 @@ router.use(requireAuth);
 router.patch('/interview/:id/approve', scoringController.approve);
 router.patch('/interview/:id/override', scoringController.override);
 router.patch('/interview/:id/pass-fail', scoringController.passFail);
+router.patch('/application/:id/override-initial-screening', scoringController.overrideInitialScreening);
 router.post('/application/:id/recompute', scoringController.recompute);
 router.patch('/application/:id/decision', scoringController.decision);
 

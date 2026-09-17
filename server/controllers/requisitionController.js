@@ -3,6 +3,7 @@ const Requisition = require('../models/Requisition');
 const PipelineTemplate = require('../models/PipelineTemplate');
 const Scorecard = require('../models/Scorecard');
 const Application = require('../models/Application');
+const Candidate = require('../models/Candidate');
 const Setting = require('../models/Setting');
 const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
@@ -10,6 +11,8 @@ const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
 const { generateScorecard } = require('../services/questionGenerator');
 const { rankApplications } = require('../services/scoringEngine');
+const { uploadBuffer } = require('../config/cloudinary');
+const { callClaude, getModelIds } = require('../services/claudeClient');
 
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
@@ -23,7 +26,10 @@ async function getSettingValue(key, fallback) {
  * so later template edits never mutate an already-open requisition.
  */
 const create = asyncHandler(async (req, res) => {
-  const { title, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold } = req.body;
+  const {
+    title, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+  } = req.body;
 
   if (!title || !jobDescription || !pipelineTemplateId) {
     throw new ValidationError(['title', 'jobDescription', 'pipelineTemplateId'], 'title, jobDescription, and pipelineTemplateId are required.');
@@ -51,6 +57,10 @@ const create = asyncHandler(async (req, res) => {
     stages,
     hireThreshold: hireThreshold ?? defaultHire,
     maybeThreshold: maybeThreshold ?? defaultMaybe,
+    initialScreeningCriteria: initialScreeningCriteria || '',
+    questionnaire: Array.isArray(questionnaire) ? questionnaire : (questionnaire ? questionnaire.split('\n').filter(Boolean) : []),
+    applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
+    aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
     createdBy: req.user._id,
   });
 
@@ -127,12 +137,23 @@ const update = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
 
-  const { title, jobDescription, status, hireThreshold, maybeThreshold, weights } = req.body;
+  const {
+    title, jobDescription, status, hireThreshold, maybeThreshold, weights,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+  } = req.body;
 
   if (title !== undefined) requisition.title = title;
   if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
+  if (initialScreeningCriteria !== undefined) requisition.initialScreeningCriteria = initialScreeningCriteria;
+  if (questionnaire !== undefined) {
+    requisition.questionnaire = Array.isArray(questionnaire)
+      ? questionnaire
+      : (questionnaire ? questionnaire.split('\n').filter(Boolean) : []);
+  }
+  if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
+  if (aiScreeningEnabled !== undefined) requisition.aiScreeningEnabled = Boolean(aiScreeningEnabled);
 
   if (status !== undefined && status !== requisition.status) {
     requisition.status = status;
@@ -318,10 +339,269 @@ const ranking = asyncHandler(async (req, res) => {
   res.json({ ranking: ranked });
 });
 
+/**
+ * POST /api/requisitions/generate-field
+ * Uses Anthropic Claude AI to auto-generate content for jobDescription,
+ * initialScreeningCriteria, or questionnaire based on title and optional prompt context.
+ */
+const generateField = asyncHandler(async (req, res) => {
+  const { fieldType, title, jobDescription, prompt: userPromptText } = req.body;
+  if (!fieldType || !title) {
+    throw new ValidationError(['fieldType', 'title'], 'fieldType and title are required.');
+  }
+
+  const modelIds = await getModelIds();
+  const cheapModel = modelIds.cheap;
+
+  let systemPrompt = '';
+  let userPrompt = '';
+  let expectJson = false;
+
+  if (fieldType === 'jobDescription') {
+    systemPrompt = 'You are an expert HR recruiter creating comprehensive, professional Job Descriptions.';
+    userPrompt = `Generate a detailed professional Job Description for the position: "${title}". ${userPromptText ? `Additional context: ${userPromptText}` : ''}`;
+  } else if (fieldType === 'initialScreeningCriteria') {
+    systemPrompt = 'You are an expert HR Screener defining clear, objective initial screening criteria for CV/Resume review.';
+    userPrompt = `Write concise, clear initial screening criteria text for candidate CV review for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Specify required skills, experience level, education, and key competencies.`;
+  } else if (fieldType === 'questionnaire') {
+    expectJson = true;
+    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions for job applicants.';
+    userPrompt = `Generate 4 to 6 concise, relevant application questionnaire questions for candidates applying for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Respond ONLY in JSON format: { "questions": ["Question 1", "Question 2", ...] }`;
+  } else {
+    throw new ValidationError(['fieldType'], 'Invalid fieldType specified.');
+  }
+
+  const result = await callClaude({
+    model: cheapModel,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }],
+    expectJson,
+  });
+
+  if (expectJson) {
+    const parsed = JSON.parse(result.text);
+    return res.json({ questions: parsed.questions || [] });
+  }
+
+  res.json({ content: result.text.trim() });
+});
+
+/**
+ * GET /api/requisitions/:id/public
+ * Public endpoint returning open requisition details for candidates.
+ */
+const getPublic = asyncHandler(async (req, res) => {
+  const requisition = await Requisition.findById(req.params.id)
+    .select('title jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .lean();
+
+  if (!requisition || requisition.status !== 'open') {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
+  }
+
+  const isExpired = requisition.applicationDeadline ? new Date() > new Date(requisition.applicationDeadline) : false;
+
+  res.json({
+    requisition: {
+      ...requisition,
+      isExpired,
+    },
+  });
+});
+
+/**
+ * POST /api/requisitions/:id/apply
+ * Public endpoint for candidate self-application submission with resume upload.
+ */
+const applyPublic = asyncHandler(async (req, res) => {
+  const requisition = await Requisition.findById(req.params.id);
+  if (!requisition || requisition.status !== 'open') {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'This position is closed or no longer accepting applications.' });
+  }
+
+  if (requisition.applicationDeadline && new Date() > new Date(requisition.applicationDeadline)) {
+    return res.status(400).json({ error: 'EXPIRED', message: 'The application deadline for this position has passed.' });
+  }
+
+  const { name, email, phone, questionnaireAnswers } = req.body;
+  if (!name || !email) {
+    throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
+  }
+
+  let resumeFileUrl = '';
+  let resumeFilePublicId = '';
+  let resumeText = '';
+
+  if (req.file) {
+    const uploaded = await uploadBuffer(req.file.buffer, {
+      folder: 'candidate-resumes',
+      filename: `${Date.now()}-${req.file.originalname}`,
+    });
+    resumeFileUrl = uploaded.secureUrl;
+    resumeFilePublicId = uploaded.publicId;
+
+    try {
+      const { extractArtifactText } = require('../utils/textExtractor');
+      resumeText = await extractArtifactText(req.file.buffer, req.file.originalname);
+    } catch (err) {
+      logger.warn(`[ApplyPublic] Text extraction failed for file ${req.file.originalname}: ${err.message}`);
+    }
+  }
+
+  let candidate = await Candidate.findOne({ email: email.toLowerCase().trim() });
+  if (!candidate) {
+    candidate = await Candidate.create({
+      name,
+      email: email.toLowerCase().trim(),
+      phone: phone || '',
+      resumeFileUrl,
+      resumeFilePublicId,
+    });
+  } else {
+    if (resumeFileUrl) {
+      candidate.resumeFileUrl = resumeFileUrl;
+      candidate.resumeFilePublicId = resumeFilePublicId;
+    }
+    if (phone) candidate.phone = phone;
+    await candidate.save();
+  }
+
+  // Check if application already exists for this requisition
+  let application = await Application.findOne({ candidateId: candidate._id, requisitionId: requisition._id });
+  if (application) {
+    return res.status(409).json({ error: 'DUPLICATE', message: 'You have already submitted an application for this position.' });
+  }
+
+  const enabledStages = (requisition.stages || []).filter((s) => s.enabled);
+  const firstStage = enabledStages[0] || requisition.stages[0];
+  const firstStageKey = firstStage ? firstStage.key : null;
+
+  const stageProgress = (requisition.stages || []).map((s) => ({
+    stageKey: s.key,
+    status: 'pending',
+    stageAverage: null,
+    passed: null,
+  }));
+
+  application = await Application.create({
+    candidateId: candidate._id,
+    requisitionId: requisition._id,
+    currentStageKey: null,
+    stageProgress,
+  });
+
+  let aiScore = null;
+  let aiJustification = '';
+  let passed = null;
+
+  try {
+    const modelIds = await getModelIds();
+    const cheapModel = modelIds.cheap;
+
+    const screeningCriteriaText = requisition.initialScreeningCriteria || 'Evaluate standard qualifications, skills, and background for the role.';
+    const jobDescriptionText = requisition.jobDescription || 'Standard position description.';
+
+    let questionnaireContext = '';
+    if (requisition.aiScreeningEnabled) {
+      const qAnswersText = typeof questionnaireAnswers === 'string'
+        ? questionnaireAnswers
+        : JSON.stringify(questionnaireAnswers || {});
+      questionnaireContext = `Questionnaire Responses:\n${qAnswersText}\n\n`;
+    }
+
+    const systemPrompt = `You are an expert HR Screener evaluating a candidate's application against the Position Title, Job Description, and Initial Screening Criteria.
+Evaluate how well the candidate meets the criteria on a scale of 1.0 to 5.0 (1=unqualified/no fit, 3=qualified/meets threshold, 5=exceptional fit).
+Respond ONLY with a JSON object in format:
+{
+  "score": number (1.0 to 5.0),
+  "justification": "Detailed explanation citing candidate qualifications vs initial screening criteria"
+}`;
+
+    const userPrompt = `Position: "${requisition.title}"
+
+Job Description:
+${jobDescriptionText}
+
+Initial Screening Criteria:
+${screeningCriteriaText}
+
+Candidate Name: ${name}
+${questionnaireContext}Candidate CV/Resume Text:
+${resumeText || 'No plain text resume extracted.'}
+`;
+
+    const aiResult = await callClaude({
+      model: cheapModel,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      expectJson: true,
+    });
+
+    const parsed = JSON.parse(aiResult.text);
+    aiScore = Number(parsed.score) || 3.0;
+    aiJustification = parsed.justification || 'Initial AI screening completed.';
+
+    const passThreshold = firstStage?.passThreshold ?? 3.0;
+    passed = aiScore >= passThreshold;
+
+    application.initialScreening = {
+      aiScore,
+      aiJustification,
+      passed,
+      overridden: false,
+    };
+
+    if (passed && firstStageKey) {
+      application.currentStageKey = firstStageKey;
+      const Interview = require('../models/Interview');
+      await Interview.create({
+        applicationId: application._id,
+        requisitionId: requisition._id,
+        stageKey: firstStageKey,
+        meetingMode: 'online',
+        provider: 'google_meet',
+        status: 'pending',
+        artifactFileUrl: resumeFileUrl,
+        artifactFilePublicId: resumeFilePublicId,
+        transcriptText: resumeText,
+      });
+
+      const progressItem = application.stageProgress.find((p) => p.stageKey === firstStageKey);
+      if (progressItem) {
+        progressItem.status = 'scheduled';
+      }
+    } else {
+      application.currentStageKey = null;
+      application.disposition = 'NO_HIRE';
+    }
+
+    await application.save();
+    await rankApplications(requisition._id);
+
+  } catch (err) {
+    logger.error(`[ApplyPublic] Automated AI screening error: ${err.message}`);
+  }
+
+  logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}`);
+
+  res.status(201).json({
+    success: true,
+    message: passed
+      ? 'Application submitted successfully! Initial screening passed.'
+      : 'Application submitted successfully! Your application is under review.',
+    aiScreeningEnabled: requisition.aiScreeningEnabled,
+    score: aiScore,
+    passed,
+  });
+});
+
 module.exports = {
   create, list, getOne, update, remove,
   generateScorecard: generateScorecardHandler,
   cloneScorecard,
   updateScorecard,
   ranking,
+  generateField,
+  getPublic,
+  applyPublic,
 };
