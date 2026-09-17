@@ -11,7 +11,8 @@ const logger = require('../utils/logger');
 const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
 const { generateScorecard } = require('../services/questionGenerator');
-const { rankApplications } = require('../services/scoringEngine');
+const { scoreInterview } = require('../services/aiScorer');
+const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
 const { uploadBuffer } = require('../config/cloudinary');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 
@@ -492,6 +493,21 @@ const applyPublic = asyncHandler(async (req, res) => {
     return res.status(409).json({ error: 'DUPLICATE', message: 'You have already submitted an application for this position.' });
   }
 
+  // 1. Ensure Scorecard exists for this requisition (auto-generate if missing)
+  let scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : await Scorecard.findOne({ requisitionId: requisition._id });
+  if (!scorecard) {
+    try {
+      const generated = await generateScorecard(requisition);
+      scorecard = await Scorecard.create({ requisitionId: requisition._id, generatedByAI: true, stages: generated.stages });
+      requisition.scorecardId = scorecard._id;
+      await requisition.save();
+      logger.info(`[ApplyPublic] Auto-generated missing scorecard for requisition ${requisition._id}`);
+    } catch (scErr) {
+      logger.warn(`[ApplyPublic] Could not auto-generate scorecard for requisition ${requisition._id}: ${scErr.message}`);
+    }
+  }
+
+  // 2. Create Application document
   const enabledStages = (requisition.stages || []).filter((s) => s.enabled);
   const firstStage = enabledStages[0] || requisition.stages[0];
   const firstStageKey = firstStage ? firstStage.key : null;
@@ -506,11 +522,34 @@ const applyPublic = asyncHandler(async (req, res) => {
   application = await Application.create({
     candidateId: candidate._id,
     requisitionId: requisition._id,
-    currentStageKey: null,
+    currentStageKey: firstStageKey,
     source: 'public_link',
     stageProgress,
   });
 
+  // 3. Create Stage 1 Interview document
+  const Interview = require('../models/Interview');
+  let firstInterview = null;
+  if (firstStageKey) {
+    firstInterview = await Interview.create({
+      applicationId: application._id,
+      requisitionId: requisition._id,
+      stageKey: firstStageKey,
+      meetingMode: 'online',
+      provider: 'google_meet',
+      status: 'pending',
+      artifactFileUrl: resumeFileUrl,
+      artifactFilePublicId: resumeFilePublicId,
+      transcriptText: resumeText,
+    });
+
+    const progressItem = application.stageProgress.find((p) => p.stageKey === firstStageKey);
+    if (progressItem) {
+      progressItem.status = 'scheduled';
+    }
+  }
+
+  // 4. Initial Screening Evaluation (CV + Criteria + Questionnaire)
   let aiScore = null;
   let aiJustification = '';
   let passed = null;
@@ -572,47 +611,95 @@ ${resumeText || 'No plain text resume extracted.'}
       overridden: false,
     };
 
-    if (passed && firstStageKey) {
-      application.currentStageKey = firstStageKey;
-      const Interview = require('../models/Interview');
-      await Interview.create({
-        applicationId: application._id,
-        requisitionId: requisition._id,
-        stageKey: firstStageKey,
-        meetingMode: 'online',
-        provider: 'google_meet',
-        status: 'pending',
-        artifactFileUrl: resumeFileUrl,
-        artifactFilePublicId: resumeFilePublicId,
-        transcriptText: resumeText,
-      });
-
-      const progressItem = application.stageProgress.find((p) => p.stageKey === firstStageKey);
-      if (progressItem) {
-        progressItem.status = 'scheduled';
-      }
-    } else {
-      application.currentStageKey = null;
-      application.disposition = 'NO_HIRE';
-    }
-
     await application.save();
-    await rankApplications(requisition._id);
 
   } catch (err) {
     logger.error(`[ApplyPublic] Automated AI screening error: ${err.message}`);
+    await application.save();
+  }
+
+  // 5. Score Stage 1 Interview against Scorecard Rubric Attributes (if available)
+  if (firstInterview && scorecard && firstStage) {
+    const stageRubric = scorecard.stages.find((s) => s.stageKey === firstStageKey);
+    if (stageRubric && stageRubric.attributes && stageRubric.attributes.length > 0 && resumeText) {
+      try {
+        logger.info(`[ApplyPublic] Auto-scoring Stage 1 (${firstStageKey}) interview for candidate application ${application._id}...`);
+        const { interview: scoredInterview } = await scoreInterview({
+          interview: firstInterview,
+          stageType: firstStage.stageType,
+          attributes: stageRubric.attributes,
+          requisition,
+          application,
+        });
+        if (scoredInterview) {
+          firstInterview = scoredInterview;
+          const progressItem = application.stageProgress.find((p) => p.stageKey === firstStageKey);
+          if (progressItem) progressItem.status = 'scored';
+          await application.save();
+        }
+      } catch (scoreErr) {
+        logger.warn(`[ApplyPublic] Stage 1 auto-scoring warning: ${scoreErr.message}`);
+      }
+    }
+  }
+
+  // 6. Auto-approve Stage 1 scores & compute pipeline results (Pass/Fail & Stage Advancement)
+  if (firstInterview && (firstInterview.status === 'scored' || (firstInterview.scores && firstInterview.scores.length > 0))) {
+    try {
+      firstInterview.scores.forEach((s) => {
+        if (s.approvedScore === undefined || s.approvedScore === null) {
+          s.approvedScore = s.aiScore;
+        }
+      });
+      firstInterview.status = 'approved';
+      firstInterview.markModified('scores');
+
+      const stageAverage = computeStageAverage(firstInterview);
+      const stagePassed = isStagePassed(stageAverage, firstStage.passThreshold);
+      firstInterview.stageAverage = stageAverage;
+      await firstInterview.save();
+
+      const progress = application.stageProgress.find((p) => p.stageKey === firstStageKey);
+      if (progress) {
+        progress.stageAverage = stageAverage;
+        progress.passed = stagePassed;
+        progress.status = stagePassed ? 'passed' : 'failed';
+      }
+
+      const { getOrCreateNextInterview, recomputeAndPersist } = require('./scoringController');
+      let nextInterviewId = null;
+      if (stagePassed) {
+        nextInterviewId = await getOrCreateNextInterview(application, requisition, firstStageKey, null);
+        await recomputeAndPersist(application, requisition, null, 'Auto-approved Stage 1 AI scoring upon public application submission.');
+      } else {
+        await recomputeAndPersist(application, requisition, null, 'Auto-computed results after Stage 1 failure.');
+      }
+      logger.info(`[ApplyPublic] Auto-approved Stage 1 (${firstStageKey}): stageAverage=${stageAverage}, passed=${stagePassed}, nextInterviewId=${nextInterviewId}`);
+    } catch (approveErr) {
+      logger.error(`[ApplyPublic] Auto-approval error: ${approveErr.message}`);
+    }
+  }
+
+  try {
+    const allApps = await Application.find({ requisitionId: requisition._id });
+    const ranked = rankApplications(allApps);
+    for (const app of ranked) {
+      await Application.updateOne({ _id: app._id }, { rank: app.rank });
+    }
+  } catch (rankErr) {
+    logger.warn(`[ApplyPublic] Ranking error: ${rankErr.message}`);
   }
 
   logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}`);
 
   res.status(201).json({
     success: true,
-    message: passed
-      ? 'Application submitted successfully! Initial screening passed.'
-      : 'Application submitted successfully! Your application is under review.',
+    message: 'Application submitted successfully! Your application is under review.',
     aiScreeningEnabled: requisition.aiScreeningEnabled,
     score: aiScore,
     passed,
+    application,
+    interview: firstInterview,
   });
 });
 

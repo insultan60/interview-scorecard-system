@@ -570,7 +570,15 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
     reason: reason || 'Initial screening overridden by HR.',
   });
 
-  await rankApplications(requisition._id);
+  try {
+    const allApps = await Application.find({ requisitionId: requisition._id });
+    const ranked = rankApplications(allApps);
+    for (const app of ranked) {
+      await Application.updateOne({ _id: app._id }, { rank: app.rank });
+    }
+  } catch (rankErr) {
+    logger.warn(`[Scoring] Ranking error: ${rankErr.message}`);
+  }
 
   logger.info(`[Scoring] HR overridden initial screening for app ${application._id}: passed=${passed}, score=${score}, nextInterviewId=${nextInterviewId}`);
   res.json({ application, nextInterviewId });
