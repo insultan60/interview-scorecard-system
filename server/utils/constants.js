@@ -10,6 +10,9 @@ const STAGE_TYPES = [
 /** How a stage collects evidence to be scored/gated. */
 const INPUT_TYPES = ['transcript', 'artifact', 'pass_fail', 'status_only', 'manual_rubric'];
 
+/** Employment types for requisitions. */
+const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'internship', 'temporary'];
+
 /** User roles (single role field; full RBAC is Phase 2). */
 const USER_ROLES = ['admin', 'hiring_manager', 'recruiter', 'interviewer'];
 
@@ -207,6 +210,7 @@ const DEFAULT_SETTINGS = {
 module.exports = {
   STAGE_TYPES,
   INPUT_TYPES,
+  EMPLOYMENT_TYPES,
   USER_ROLES,
   STAGE_PROGRESS_STATUS,
   INTERVIEW_STATUS,

@@ -28,6 +28,11 @@ const questionnaireItemSchema = new mongoose.Schema({
 
 const requisitionSchema = new mongoose.Schema({
   title: { type: String, required: true, index: true },   // e.g., "Sales Executive / Closer"
+  employmentType: {
+    type: String,
+    enum: ['full_time', 'part_time', 'contract', 'internship', 'temporary'],
+    default: 'full_time',
+  },
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
   status: {
     type: String,

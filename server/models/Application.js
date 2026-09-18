@@ -7,6 +7,7 @@ const applicationSchema = new mongoose.Schema({
 
   currentStageKey: String,     // Which stage they're on now
   source: { type: String, enum: ['public_link', 'manual'], default: 'manual' },
+  questionnaireAnswers: mongoose.Schema.Types.Mixed,
   stageProgress: [{
     stageKey: String,
     status: { type: String, enum: STAGE_PROGRESS_STATUS, default: 'pending' },

@@ -57,7 +57,7 @@ function normalizeQuestionnaire(raw) {
  */
 const create = asyncHandler(async (req, res) => {
   const {
-    title, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    title, employmentType, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
@@ -81,6 +81,7 @@ const create = asyncHandler(async (req, res) => {
 
   const requisition = await Requisition.create({
     title,
+    employmentType: employmentType || 'full_time',
     jobDescription,
     pipelineTemplateId,
     pipelineTemplateName,
@@ -168,11 +169,12 @@ const update = asyncHandler(async (req, res) => {
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
 
   const {
-    title, jobDescription, status, hireThreshold, maybeThreshold, weights,
+    title, employmentType, jobDescription, status, hireThreshold, maybeThreshold, weights,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
   if (title !== undefined) requisition.title = title;
+  if (employmentType !== undefined) requisition.employmentType = employmentType;
   if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
@@ -427,7 +429,7 @@ const getPublic = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(req.params.id)
-    .select('title jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .select('title employmentType jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
     .lean();
 
   if (!requisition) {
@@ -545,12 +547,20 @@ const applyPublic = asyncHandler(async (req, res) => {
     passed: null,
   }));
 
+  let parsedQAnswers = {};
+  if (typeof questionnaireAnswers === 'string') {
+    try { parsedQAnswers = JSON.parse(questionnaireAnswers); } catch (e) { parsedQAnswers = {}; }
+  } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
+    parsedQAnswers = questionnaireAnswers;
+  }
+
   application = await Application.create({
     candidateId: candidate._id,
     requisitionId: requisition._id,
     currentStageKey: firstStageKey,
     source: 'public_link',
     stageProgress,
+    questionnaireAnswers: parsedQAnswers,
   });
 
   // 3. Create Stage 1 Interview document

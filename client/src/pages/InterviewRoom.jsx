@@ -503,13 +503,18 @@ export default function InterviewRoom() {
       {/* Requisition Criteria & Questionnaire Context (Shown ONLY for Resume Screen stage) */}
       {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
         (requisition?.initialScreeningCriteria || (requisition?.questionnaire && requisition.questionnaire.length > 0)) && (
-        <Card className="mt-4 border-blue-500/20 bg-blue-50/20 dark:bg-blue-950/10">
+        <Card className="mt-4 border-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/10">
           <CardHeader className="py-3">
-            <CardTitle className="text-sm font-semibold text-foreground">
-              Role Criteria & Application Questionnaire Context
+            <CardTitle className="text-sm font-semibold text-foreground flex items-center justify-between">
+              <span>Candidate Application & Questionnaire Responses</span>
+              {application?.source && (
+                <span className="text-xs font-normal text-muted-foreground capitalize">
+                  Source: {application.source.replace('_', ' ')}
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 pt-0 pb-4 text-xs">
+          <CardContent className="space-y-4 pt-0 pb-4 text-xs">
             {requisition.initialScreeningCriteria && (
               <div>
                 <span className="font-semibold text-foreground">Initial Screening Criteria:</span>
@@ -519,13 +524,56 @@ export default function InterviewRoom() {
               </div>
             )}
             {requisition.questionnaire && requisition.questionnaire.length > 0 && (
-              <div>
-                <span className="font-semibold text-foreground">Application Questionnaire Questions:</span>
-                <ul className="mt-1 space-y-1 list-disc list-inside text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
-                  {requisition.questionnaire.map((q, idx) => (
-                    <li key={idx}>{q}</li>
-                  ))}
-                </ul>
+              <div className="space-y-3">
+                <span className="font-semibold text-foreground">Questionnaire Answers vs. HR Benchmarks:</span>
+                <div className="space-y-2.5">
+                  {requisition.questionnaire.map((q, idx) => {
+                    const qText = typeof q === 'string' ? q : q.question;
+                    const ideal = typeof q === 'object' ? q.idealAnswer : '';
+                    const redFlag = typeof q === 'object' ? q.redFlags : '';
+                    const candidateAns = application?.questionnaireAnswers
+                      ? (application.questionnaireAnswers[qText] || application.questionnaireAnswers[idx] || '(No answer submitted)')
+                      : null;
+
+                    return (
+                      <div key={idx} className="rounded-lg border bg-card p-3 space-y-2">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                          {idx + 1}. {qText}
+                        </div>
+                        {candidateAns !== null && (
+                          <div className="rounded bg-slate-50 dark:bg-slate-900/60 p-2.5 border border-slate-200 dark:border-slate-800">
+                            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block mb-0.5">
+                              Candidate Written Response:
+                            </span>
+                            <p className="text-sm text-slate-900 dark:text-slate-100 font-medium whitespace-pre-wrap">
+                              {candidateAns}
+                            </p>
+                          </div>
+                        )}
+                        {(ideal || redFlag) && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                            {ideal && (
+                              <div className="rounded border border-emerald-200 bg-emerald-50/80 p-2 text-emerald-950">
+                                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                                  Ideal Answer (5 Stars)
+                                </span>
+                                <p className="text-xs mt-0.5">{ideal}</p>
+                              </div>
+                            )}
+                            {redFlag && (
+                              <div className="rounded border border-red-200 bg-red-50/80 p-2 text-red-950">
+                                <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider block">
+                                  Red Flags (1-2 Stars)
+                                </span>
+                                <p className="text-xs mt-0.5">{redFlag}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </CardContent>

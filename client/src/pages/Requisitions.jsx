@@ -32,9 +32,17 @@ const STATUS_BADGE = {
   closed: 'bg-gray-100 text-gray-600 hover:bg-gray-100',
 };
 const STATUS_LABEL = { open: 'Open', on_hold: 'On Hold', closed: 'Closed' };
+const EMPLOYMENT_TYPE_LABEL = {
+  full_time: 'Full-Time',
+  part_time: 'Part-Time',
+  contract: 'Contract',
+  internship: 'Internship',
+  temporary: 'Temporary',
+};
 
 const EMPTY_FORM = {
   title: '',
+  employmentType: 'full_time',
   jobDescription: '',
   initialScreeningCriteria: '',
   questionnaire: [{ question: '', idealAnswer: '', redFlags: '' }],
@@ -328,7 +336,7 @@ export default function Requisitions() {
                           <div>
                             <div className="text-sm font-medium text-foreground">{r.title}</div>
                             <div className="text-xs text-muted-foreground">
-                              {enabledStages} stage{enabledStages === 1 ? '' : 's'}
+                              {EMPLOYMENT_TYPE_LABEL[r.employmentType] || 'Full-Time'} · {enabledStages} stage{enabledStages === 1 ? '' : 's'}
                             </div>
                           </div>
                           <Button
@@ -421,14 +429,35 @@ export default function Requisitions() {
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
-              <Input
-                id="req-title" value={form.title} autoFocus
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="e.g. Sales Executive / Closer"
-                required
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
+                <Input
+                  id="req-title" value={form.title} autoFocus
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="e.g. Sales Executive / Closer"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="req-employment-type">Employment Type</Label>
+                <Select
+                  value={form.employmentType || 'full_time'}
+                  onValueChange={(val) => setForm({ ...form, employmentType: val })}
+                >
+                  <SelectTrigger id="req-employment-type" className="w-full">
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full_time">Full-Time</SelectItem>
+                    <SelectItem value="part_time">Part-Time</SelectItem>
+                    <SelectItem value="contract">Contract</SelectItem>
+                    <SelectItem value="internship">Internship</SelectItem>
+                    <SelectItem value="temporary">Temporary</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Job Description with Generate AI button on right */}

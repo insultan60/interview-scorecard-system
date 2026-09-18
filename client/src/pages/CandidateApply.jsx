@@ -173,7 +173,15 @@ export default function CandidateApply() {
                 {requisition.title}
               </CardTitle>
               <CardDescription className="text-sm text-slate-500 flex items-center gap-2 mt-1">
-                <Briefcase className="h-4 w-4" /> Full-Time · Red Star Technologies
+                <Briefcase className="h-4 w-4" /> {
+                  {
+                    full_time: 'Full-Time',
+                    part_time: 'Part-Time',
+                    contract: 'Contract',
+                    internship: 'Internship',
+                    temporary: 'Temporary',
+                  }[requisition.employmentType] || 'Full-Time'
+                } · Red Star Technologies
               </CardDescription>
             </CardHeader>
 
