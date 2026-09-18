@@ -568,7 +568,7 @@ export default function InterviewRoom() {
                           <div className="pt-1">
                             <div className="rounded border border-emerald-200 bg-emerald-50/80 p-2 text-emerald-950">
                               <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
-                                Ideal Answer Benchmark (5 Stars)
+                                Ideal Answer
                               </span>
                               <p className="text-xs mt-0.5">{ideal}</p>
                             </div>

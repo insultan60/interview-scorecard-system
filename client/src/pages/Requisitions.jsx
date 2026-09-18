@@ -646,14 +646,25 @@ export default function Requisitions() {
               />
             </div>
 
-            {/* Initial Screening Criteria (Always Shown) */}
-            <div className="space-y-2 border-t pt-3">
-              <div className="flex items-center justify-between">
-                <Label>Initial Screening Criteria <span className="text-red-500">*</span> ({Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria.filter((c) => c && (typeof c === 'string' ? c.trim() : (c.criteria || c.requirement))).length : 0} items)</Label>
+            {/* Initial Screening Criteria */}
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-sm font-semibold text-slate-900">Initial Screening Criteria</Label>
+                    <span className="text-red-500 font-semibold">*</span>
+                    <Badge variant="outline" className="text-[11px] font-normal text-slate-600 bg-slate-50">
+                      {Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria.length : 0} {Array.isArray(form.initialScreeningCriteria) && form.initialScreeningCriteria.length === 1 ? 'item' : 'items'}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Mandatory qualifications used by AI to evaluate candidate fit.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => togglePromptBox('initialScreeningCriteria')}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline pt-0.5"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                   {promptOpen.initialScreeningCriteria ? 'Close AI Prompt' : 'Generate with AI'}
@@ -661,13 +672,11 @@ export default function Requisitions() {
               </div>
 
               {promptOpen.initialScreeningCriteria && (
-                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
-                      <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-                      Specify AI Screening Requirements:
-                    </span>
-                  </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+                  <span className="text-xs font-semibold text-amber-900 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                    AI Screening Criteria Instructions:
+                  </span>
                   <Input
                     placeholder="e.g. Must have 3+ yrs React, Computer Science degree, sales background..."
                     value={fieldPrompts.initialScreeningCriteria || ''}
@@ -680,7 +689,7 @@ export default function Requisitions() {
                       }
                     }}
                   />
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 pt-0.5">
                     <Button
                       type="button"
                       variant="ghost"
@@ -708,37 +717,50 @@ export default function Requisitions() {
                 {(Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria : [{ criteria: '', requirement: '' }]).map((c, idx) => {
                   const cObj = typeof c === 'string' ? { criteria: c, requirement: '' } : c;
                   return (
-                    <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-500 w-5 text-right flex-shrink-0">{idx + 1}.</span>
-                        <Input
-                          placeholder={`Criteria ${idx + 1} (e.g. Years of Experience, Technical Degree...)`}
-                          value={cObj.criteria || ''}
-                          onChange={(e) => handleCriteriaChange(idx, 'criteria', e.target.value)}
-                          className="flex-1 bg-white font-medium text-slate-800"
-                        />
+                    <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3 shadow-sm relative">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600">
+                            {idx + 1}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">Criteria Item #{idx + 1}</span>
+                        </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           onClick={() => handleRemoveCriteria(idx)}
                           title="Remove criteria"
-                          className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                          className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-50"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
 
-                      <div className="pl-7">
-                        <Label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
-                          Requirement Details <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          placeholder="e.g. Minimum 3+ years in B2B SaaS required..."
-                          value={cObj.requirement || ''}
-                          onChange={(e) => handleCriteriaChange(idx, 'requirement', e.target.value)}
-                          className="bg-white text-xs mt-1"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-medium text-slate-700">
+                            Category / Title <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            placeholder="e.g. Years of Experience, Education..."
+                            value={cObj.criteria || ''}
+                            onChange={(e) => handleCriteriaChange(idx, 'criteria', e.target.value)}
+                            className="bg-white text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs font-medium text-slate-700">
+                            Requirement Details <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            placeholder="e.g. Minimum 3+ years in B2B SaaS required..."
+                            value={cObj.requirement || ''}
+                            onChange={(e) => handleCriteriaChange(idx, 'requirement', e.target.value)}
+                            className="bg-white text-xs"
+                          />
+                        </div>
                       </div>
                     </div>
                   );
@@ -750,21 +772,32 @@ export default function Requisitions() {
                 variant="outline"
                 size="sm"
                 onClick={handleAddCriteria}
-                className="mt-1 text-xs gap-1 border-dashed text-slate-600 hover:text-[#d21e2b]"
+                className="text-xs gap-1.5 border-dashed border-slate-300 text-slate-700 hover:text-[#d21e2b] hover:border-[#d21e2b] w-full sm:w-auto"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add Criteria
+                Add Screening Criteria
               </Button>
             </div>
 
-            {/* Application Questionnaire Array */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Application Questionnaire <span className="text-red-500">*</span> ({Array.isArray(form.questionnaire) ? form.questionnaire.filter(Boolean).length : 0} questions)</Label>
+            {/* Application Questionnaire */}
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-sm font-semibold text-slate-900">Application Questionnaire</Label>
+                    <span className="text-red-500 font-semibold">*</span>
+                    <Badge variant="outline" className="text-[11px] font-normal text-slate-600 bg-slate-50">
+                      {Array.isArray(form.questionnaire) ? form.questionnaire.length : 0} {Array.isArray(form.questionnaire) && form.questionnaire.length === 1 ? 'question' : 'questions'}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Questions asked on the public application form with ideal benchmarks for scoring.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => togglePromptBox('questionnaire')}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline pt-0.5"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                   {promptOpen.questionnaire ? 'Close AI Prompt' : 'Generate with AI'}
@@ -772,13 +805,11 @@ export default function Requisitions() {
               </div>
 
               {promptOpen.questionnaire && (
-                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
-                      <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-                      Specify AI Questionnaire Instructions:
-                    </span>
-                  </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+                  <span className="text-xs font-semibold text-amber-900 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                    AI Questionnaire Instructions:
+                  </span>
                   <Input
                     placeholder="e.g. Generate 5 technical React & System Design questions..."
                     value={fieldPrompts.questionnaire || ''}
@@ -791,7 +822,7 @@ export default function Requisitions() {
                       }
                     }}
                   />
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 pt-0.5">
                     <Button
                       type="button"
                       variant="ghost"
@@ -819,37 +850,50 @@ export default function Requisitions() {
                 {(Array.isArray(form.questionnaire) ? form.questionnaire : [{ question: '', idealAnswer: '' }]).map((q, idx) => {
                   const qObj = typeof q === 'string' ? { question: q, idealAnswer: '' } : q;
                   return (
-                    <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-500 w-5 text-right flex-shrink-0">{idx + 1}.</span>
-                        <Input
-                          placeholder={`Question ${idx + 1} text...`}
-                          value={qObj.question || ''}
-                          onChange={(e) => handleQuestionChange(idx, 'question', e.target.value)}
-                          className="flex-1 bg-white font-medium text-slate-800"
-                        />
+                    <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3 shadow-sm relative">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-600">
+                            {idx + 1}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">Question #{idx + 1}</span>
+                        </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           onClick={() => handleRemoveQuestion(idx)}
                           title="Remove question"
-                          className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                          className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-50"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
 
-                      <div className="pl-7">
-                        <Label className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">
-                          Ideal Answer Benchmark (5 Stars) <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          placeholder="e.g. 3+ yrs B2B SaaS experience..."
-                          value={qObj.idealAnswer || ''}
-                          onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
-                          className="bg-white text-xs mt-1 border-emerald-200 focus:border-emerald-500"
-                        />
+                      <div className="space-y-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-medium text-slate-700">
+                            Question Text <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            placeholder={`e.g. What experience do you have with modern web frameworks?`}
+                            value={qObj.question || ''}
+                            onChange={(e) => handleQuestionChange(idx, 'question', e.target.value)}
+                            className="bg-white text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs font-medium text-slate-700">
+                            Ideal Answer <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            placeholder="e.g. 3+ yrs experience building production apps with React/Next.js..."
+                            value={qObj.idealAnswer || ''}
+                            onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
+                            className="bg-white text-xs"
+                          />
+                        </div>
                       </div>
                     </div>
                   );
@@ -861,7 +905,7 @@ export default function Requisitions() {
                 variant="outline"
                 size="sm"
                 onClick={handleAddQuestion}
-                className="mt-1 text-xs gap-1 border-dashed text-slate-600 hover:text-[#d21e2b]"
+                className="text-xs gap-1.5 border-dashed border-slate-300 text-slate-700 hover:text-[#d21e2b] hover:border-[#d21e2b] w-full sm:w-auto"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add Question
