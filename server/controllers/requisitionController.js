@@ -22,19 +22,18 @@ async function getSettingValue(key, fallback) {
   return setting?.value ?? fallback;
 }
 
-/** Normalizes raw questionnaire inputs into objects { question, idealAnswer, redFlags }. */
+/** Normalizes raw questionnaire inputs into objects { question, idealAnswer }. */
 function normalizeQuestionnaire(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) {
     return raw.map((item) => {
       if (typeof item === 'string') {
-        return { question: item.trim(), idealAnswer: '', redFlags: '' };
+        return { question: item.trim(), idealAnswer: '' };
       }
       if (typeof item === 'object' && item !== null) {
         return {
           question: (item.question || '').trim(),
           idealAnswer: (item.idealAnswer || '').trim(),
-          redFlags: (item.redFlags || '').trim(),
         };
       }
       return null;
@@ -44,7 +43,6 @@ function normalizeQuestionnaire(raw) {
     return raw.split('\n').map((q) => q.trim()).filter(Boolean).map((q) => ({
       question: q,
       idealAnswer: '',
-      redFlags: '',
     }));
   }
   return [];
@@ -115,8 +113,8 @@ const create = asyncHandler(async (req, res) => {
   } else {
     for (let i = 0; i < normalizedQuestions.length; i++) {
       const q = normalizedQuestions[i];
-      if (!q.question || !q.idealAnswer || !q.redFlags) {
-        missingFields.push(`questionnaire item #${i + 1} (question, ideal answer & red flags)`);
+      if (!q.question || !q.idealAnswer) {
+        missingFields.push(`questionnaire item #${i + 1} (question & ideal answer benchmark)`);
       }
     }
   }
@@ -474,8 +472,8 @@ Respond ONLY in JSON format matching this exact shape:
 }`;
   } else if (fieldType === 'questionnaire') {
     expectJson = true;
-    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions and 5-star/1-2-star scoring benchmarks derived directly from the Job Description.';
-    userPrompt = `Based on the following Job Description for "${title}", generate 4 to 6 relevant application questionnaire questions for candidates, along with target ideal answers (5-star benchmarks) and red flags (1-2 star disqualifying criteria).
+    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions and 5-star scoring benchmarks derived directly from the Job Description.';
+    userPrompt = `Based on the following Job Description for "${title}", generate 4 to 6 relevant application questionnaire questions for candidates, along with target ideal answers (5-star benchmarks).
 
 Job Description:
 ${jobDescription || title}
@@ -485,8 +483,7 @@ Respond ONLY in JSON format matching this exact shape:
   "questions": [
     {
       "question": "Question text...",
-      "idealAnswer": "Ideal 5-star benchmark answer...",
-      "redFlags": "Red flags (1-2 star) criteria..."
+      "idealAnswer": "Ideal 5-star benchmark answer..."
     }
   ]
 }`;
@@ -713,9 +710,8 @@ const applyPublic = asyncHandler(async (req, res) => {
       const formattedItems = requisition.questionnaire.map((item, idx) => {
         const qText = typeof item === 'string' ? item : item.question;
         const ideal = typeof item === 'object' && item.idealAnswer ? item.idealAnswer : '';
-        const redFlag = typeof item === 'object' && item.redFlags ? item.redFlags : '';
         const candidateAns = qAnswersMap[qText] || qAnswersMap[idx] || '(No response provided)';
-        return `Question ${idx + 1}: "${qText}"\n  - Candidate Answer: ${candidateAns}\n  - Benchmark Ideal Answer (5 Stars): ${ideal || 'Not specified'}\n  - Benchmark Red Flags (1-2 Stars): ${redFlag || 'Not specified'}`;
+        return `Question ${idx + 1}: "${qText}"\n  - Candidate Answer: ${candidateAns}\n  - Benchmark Ideal Answer (5 Stars): ${ideal || 'Not specified'}`;
       }).join('\n\n');
 
       questionnaireContext = `APPLICATION QUESTIONNAIRE RESPONSES & BENCHMARKS:\n${formattedItems}\n\n`;

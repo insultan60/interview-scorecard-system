@@ -23,7 +23,6 @@ const requisitionStageSchema = new mongoose.Schema({
 const questionnaireItemSchema = new mongoose.Schema({
   question: { type: String, required: true },
   idealAnswer: { type: String, default: '' },
-  redFlags: { type: String, default: '' },
 }, { _id: false });
 
 const screeningCriteriaItemSchema = new mongoose.Schema({

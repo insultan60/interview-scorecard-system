@@ -48,8 +48,7 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
         ? requisition.questionnaire.map((q) => {
             if (typeof q === 'string') return `- Question: ${q}`;
             const idealStr = q.idealAnswer ? ` | Ideal (5-star): ${q.idealAnswer}` : '';
-            const redFlagStr = q.redFlags ? ` | Red Flags (1-2 star): ${q.redFlags}` : '';
-            return `- Question: ${q.question}${idealStr}${redFlagStr}`;
+            return `- Question: ${q.question}${idealStr}`;
           }).join('\n')
         : '';
       let criteriaText = '';

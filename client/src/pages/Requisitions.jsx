@@ -46,7 +46,7 @@ const EMPTY_FORM = {
   location: '',
   jobDescription: '',
   initialScreeningCriteria: [{ criteria: '', requirement: '' }],
-  questionnaire: [{ question: '', idealAnswer: '', redFlags: '' }],
+  questionnaire: [{ question: '', idealAnswer: '' }],
   applicationDeadline: '',
   aiScreeningEnabled: true,
   pipelineTemplateId: '',
@@ -113,7 +113,7 @@ export default function Requisitions() {
 
       if (fieldType === 'questionnaire') {
         const questionsList = res.data.questions || [];
-        setForm((f) => ({ ...f, questionnaire: questionsList.length ? questionsList : [{ question: '', idealAnswer: '', redFlags: '' }] }));
+        setForm((f) => ({ ...f, questionnaire: questionsList.length ? questionsList : [{ question: '', idealAnswer: '' }] }));
       } else if (fieldType === 'initialScreeningCriteria') {
         const criteriaList = res.data.criteria || [];
         setForm((f) => ({ ...f, initialScreeningCriteria: criteriaList.length ? criteriaList : [{ criteria: '', requirement: '' }] }));
@@ -166,7 +166,7 @@ export default function Requisitions() {
       const updated = current.map((q, i) => {
         if (i !== index) return q;
         const qObj = typeof q === 'string'
-          ? { question: q, idealAnswer: '', redFlags: '' }
+          ? { question: q, idealAnswer: '' }
           : { ...q };
         qObj[field] = value;
         return qObj;
@@ -178,7 +178,7 @@ export default function Requisitions() {
   function handleAddQuestion() {
     setForm((prev) => ({
       ...prev,
-      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), { question: '', idealAnswer: '', redFlags: '' }],
+      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), { question: '', idealAnswer: '' }],
     }));
   }
 
@@ -186,7 +186,7 @@ export default function Requisitions() {
     setForm((prev) => {
       const current = Array.isArray(prev.questionnaire) ? prev.questionnaire : [];
       const updated = current.filter((_, i) => i !== index);
-      return { ...prev, questionnaire: updated.length ? updated : [{ question: '', idealAnswer: '', redFlags: '' }] };
+      return { ...prev, questionnaire: updated.length ? updated : [{ question: '', idealAnswer: '' }] };
     });
   }
 
@@ -261,17 +261,13 @@ export default function Requisitions() {
       return;
     }
     for (let i = 0; i < questionnaireItems.length; i++) {
-      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '', redFlags: '' } : questionnaireItems[i];
+      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '' } : questionnaireItems[i];
       if (!item || !item.question || !item.question.trim()) {
         toast.error(`Question #${i + 1} text cannot be empty.`);
         return;
       }
       if (!item.idealAnswer || !item.idealAnswer.trim()) {
         toast.error(`Question #${i + 1} ideal answer benchmark cannot be empty.`);
-        return;
-      }
-      if (!item.redFlags || !item.redFlags.trim()) {
-        toast.error(`Question #${i + 1} red flags benchmark cannot be empty.`);
         return;
       }
     }
@@ -820,8 +816,8 @@ export default function Requisitions() {
               )}
 
               <div className="space-y-3">
-                {(Array.isArray(form.questionnaire) ? form.questionnaire : [{ question: '', idealAnswer: '', redFlags: '' }]).map((q, idx) => {
-                  const qObj = typeof q === 'string' ? { question: q, idealAnswer: '', redFlags: '' } : q;
+                {(Array.isArray(form.questionnaire) ? form.questionnaire : [{ question: '', idealAnswer: '' }]).map((q, idx) => {
+                  const qObj = typeof q === 'string' ? { question: q, idealAnswer: '' } : q;
                   return (
                     <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                       <div className="flex items-center gap-2">
@@ -844,29 +840,16 @@ export default function Requisitions() {
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-7">
-                        <div>
-                          <Label className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">
-                            Ideal Answer Benchmark (5 Stars) <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            placeholder="e.g. 3+ yrs B2B SaaS experience..."
-                            value={qObj.idealAnswer || ''}
-                            onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
-                            className="bg-white text-xs mt-1 border-emerald-200 focus:border-emerald-500"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-[11px] font-semibold text-red-700 uppercase tracking-wider">
-                            Red Flags Benchmark (1-2 Stars) <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            placeholder="e.g. Under 1 yr or B2C experience..."
-                            value={qObj.redFlags || ''}
-                            onChange={(e) => handleQuestionChange(idx, 'redFlags', e.target.value)}
-                            className="bg-white text-xs mt-1 border-red-200 focus:border-red-500"
-                          />
-                        </div>
+                      <div className="pl-7">
+                        <Label className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">
+                          Ideal Answer Benchmark (5 Stars) <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          placeholder="e.g. 3+ yrs B2B SaaS experience..."
+                          value={qObj.idealAnswer || ''}
+                          onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
+                          className="bg-white text-xs mt-1 border-emerald-200 focus:border-emerald-500"
+                        />
                       </div>
                     </div>
                   );

@@ -97,8 +97,7 @@ async function generateScorecard(requisition) {
     ? `\nApplication Questionnaire Items:\n${requisition.questionnaire.map((q) => {
         if (typeof q === 'string') return `- ${q}`;
         const idealStr = q.idealAnswer ? ` | Ideal Answer: ${q.idealAnswer}` : '';
-        const redFlagStr = q.redFlags ? ` | Red Flags: ${q.redFlags}` : '';
-        return `- Question: ${q.question}${idealStr}${redFlagStr}`;
+        return `- Question: ${q.question}${idealStr}`;
       }).join('\n')}\n`
     : '';
 

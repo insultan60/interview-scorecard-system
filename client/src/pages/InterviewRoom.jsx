@@ -545,7 +545,6 @@ export default function InterviewRoom() {
                   {requisition.questionnaire.map((q, idx) => {
                     const qText = typeof q === 'string' ? q : q.question;
                     const ideal = typeof q === 'object' ? q.idealAnswer : '';
-                    const redFlag = typeof q === 'object' ? q.redFlags : '';
                     const candidateAns = application?.questionnaireAnswers
                       ? (application.questionnaireAnswers[qText] || application.questionnaireAnswers[idx] || '(No answer submitted)')
                       : null;
@@ -565,24 +564,14 @@ export default function InterviewRoom() {
                             </p>
                           </div>
                         )}
-                        {(ideal || redFlag) && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                            {ideal && (
-                              <div className="rounded border border-emerald-200 bg-emerald-50/80 p-2 text-emerald-950">
-                                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
-                                  Ideal Answer (5 Stars)
-                                </span>
-                                <p className="text-xs mt-0.5">{ideal}</p>
-                              </div>
-                            )}
-                            {redFlag && (
-                              <div className="rounded border border-red-200 bg-red-50/80 p-2 text-red-950">
-                                <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider block">
-                                  Red Flags (1-2 Stars)
-                                </span>
-                                <p className="text-xs mt-0.5">{redFlag}</p>
-                              </div>
-                            )}
+                        {ideal && (
+                          <div className="pt-1">
+                            <div className="rounded border border-emerald-200 bg-emerald-50/80 p-2 text-emerald-950">
+                              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                                Ideal Answer Benchmark (5 Stars)
+                              </span>
+                              <p className="text-xs mt-0.5">{ideal}</p>
+                            </div>
                           </div>
                         )}
                       </div>
