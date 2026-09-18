@@ -57,7 +57,7 @@ function normalizeQuestionnaire(raw) {
  */
 const create = asyncHandler(async (req, res) => {
   const {
-    title, employmentType, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    title, employmentType, location, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
@@ -82,6 +82,7 @@ const create = asyncHandler(async (req, res) => {
   const requisition = await Requisition.create({
     title,
     employmentType: employmentType || 'full_time',
+    location: location || '',
     jobDescription,
     pipelineTemplateId,
     pipelineTemplateName,
@@ -169,12 +170,13 @@ const update = asyncHandler(async (req, res) => {
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
 
   const {
-    title, employmentType, jobDescription, status, hireThreshold, maybeThreshold, weights,
+    title, employmentType, location, jobDescription, status, hireThreshold, maybeThreshold, weights,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
   if (title !== undefined) requisition.title = title;
   if (employmentType !== undefined) requisition.employmentType = employmentType;
+  if (location !== undefined) requisition.location = location;
   if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
@@ -429,7 +431,7 @@ const getPublic = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(req.params.id)
-    .select('title employmentType jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .select('title employmentType location jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
     .lean();
 
   if (!requisition) {

@@ -33,6 +33,7 @@ const requisitionSchema = new mongoose.Schema({
     enum: ['full_time', 'part_time', 'contract', 'internship', 'temporary'],
     default: 'full_time',
   },
+  location: { type: String, default: 'Remote' },
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
   status: {
     type: String,

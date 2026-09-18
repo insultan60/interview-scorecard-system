@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/hooks/useApi';
 import {
-  Briefcase, Calendar, CheckCircle2, FileText, Upload, AlertCircle, Sparkles, ArrowRight,
+  Briefcase, Calendar, CheckCircle2, FileText, Upload, AlertCircle, Sparkles, ArrowRight, MapPin,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -172,16 +172,30 @@ export default function CandidateApply() {
               <CardTitle className="text-3xl font-bold text-slate-900 tracking-tight">
                 {requisition.title}
               </CardTitle>
-              <CardDescription className="text-sm text-slate-500 flex items-center gap-2 mt-1">
-                <Briefcase className="h-4 w-4" /> {
+              <CardDescription className="text-sm text-slate-500 flex flex-wrap items-center gap-2 mt-1">
+                <span className="flex items-center gap-1">
+                  <Briefcase className="h-4 w-4 text-slate-400" />
                   {
-                    full_time: 'Full-Time',
-                    part_time: 'Part-Time',
-                    contract: 'Contract',
-                    internship: 'Internship',
-                    temporary: 'Temporary',
-                  }[requisition.employmentType] || 'Full-Time'
-                } · Red Star Technologies
+                    {
+                      full_time: 'Full-Time',
+                      part_time: 'Part-Time',
+                      contract: 'Contract',
+                      internship: 'Internship',
+                      temporary: 'Temporary',
+                    }[requisition.employmentType] || 'Full-Time'
+                  }
+                </span>
+                {requisition.location && (
+                  <>
+                    <span>·</span>
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-4 w-4 text-slate-400" />
+                      {requisition.location}
+                    </span>
+                  </>
+                )}
+                <span>·</span>
+                <span>Red Star Technologies</span>
               </CardDescription>
             </CardHeader>
 
