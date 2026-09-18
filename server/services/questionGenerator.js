@@ -94,7 +94,12 @@ async function generateScorecard(requisition) {
 
   const hasQuestionnaire = Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0;
   const questionnaireBlock = hasQuestionnaire
-    ? `\nApplication Questionnaire Items:\n${requisition.questionnaire.map((q) => `- ${q}`).join('\n')}\n`
+    ? `\nApplication Questionnaire Items:\n${requisition.questionnaire.map((q) => {
+        if (typeof q === 'string') return `- ${q}`;
+        const idealStr = q.idealAnswer ? ` | Ideal Answer: ${q.idealAnswer}` : '';
+        const redFlagStr = q.redFlags ? ` | Red Flags: ${q.redFlags}` : '';
+        return `- Question: ${q.question}${idealStr}${redFlagStr}`;
+      }).join('\n')}\n`
     : '';
 
   const hasCriteria = Boolean(requisition.initialScreeningCriteria && requisition.initialScreeningCriteria.trim());

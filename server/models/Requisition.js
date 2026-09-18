@@ -20,6 +20,12 @@ const requisitionStageSchema = new mongoose.Schema({
   passThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
 }, { _id: false });
 
+const questionnaireItemSchema = new mongoose.Schema({
+  question: { type: String, required: true },
+  idealAnswer: { type: String, default: '' },
+  redFlags: { type: String, default: '' },
+}, { _id: false });
+
 const requisitionSchema = new mongoose.Schema({
   title: { type: String, required: true, index: true },   // e.g., "Sales Executive / Closer"
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
@@ -37,7 +43,7 @@ const requisitionSchema = new mongoose.Schema({
   hireThreshold: { type: Number, default: 3.5, min: 1, max: 5 },
   maybeThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
   initialScreeningCriteria: { type: String, default: '' },
-  questionnaire: [{ type: String }],
+  questionnaire: [questionnaireItemSchema],
   applicationDeadline: { type: Date, default: null },
   aiScreeningEnabled: { type: Boolean, default: true },
   closedAt: Date,                                          // Drives retention purge

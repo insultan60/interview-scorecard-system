@@ -45,9 +45,14 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
     contextHeader = isManual ? 'CANDIDATE RESUME TEXT:' : 'CANDIDATE RESUME & QUESTIONNAIRE TEXT:';
     if (requisition) {
       const qText = (!isManual && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0)
-        ? requisition.questionnaire.map((q) => `- ${q}`).join('\n')
+        ? requisition.questionnaire.map((q) => {
+            if (typeof q === 'string') return `- Question: ${q}`;
+            const idealStr = q.idealAnswer ? ` | Ideal (5-star): ${q.idealAnswer}` : '';
+            const redFlagStr = q.redFlags ? ` | Red Flags (1-2 star): ${q.redFlags}` : '';
+            return `- Question: ${q.question}${idealStr}${redFlagStr}`;
+          }).join('\n')
         : '';
-      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${requisition.initialScreeningCriteria ? `INITIAL SCREENING CRITERIA:\n${requisition.initialScreeningCriteria}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE:\n${qText}\n\n` : ''}---\n`;
+      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${requisition.initialScreeningCriteria ? `INITIAL SCREENING CRITERIA:\n${requisition.initialScreeningCriteria}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE BENCHMARKS:\n${qText}\n\n` : ''}---\n`;
     }
   }
 

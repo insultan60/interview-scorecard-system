@@ -281,19 +281,22 @@ export default function CandidateApply() {
                     <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                       Application Questionnaire
                     </h3>
-                    {requisition.questionnaire.map((q, idx) => (
-                      <div key={idx} className="space-y-1.5">
-                        <Label className="text-sm font-medium text-slate-800">
-                          {idx + 1}. {q}
-                        </Label>
-                        <Textarea
-                          placeholder="Your answer..."
-                          rows={3}
-                          value={answers[q] || ''}
-                          onChange={(e) => handleAnswerChange(q, e.target.value)}
-                        />
-                      </div>
-                    ))}
+                    {requisition.questionnaire.map((q, idx) => {
+                      const qText = typeof q === 'string' ? q : q.question;
+                      return (
+                        <div key={idx} className="space-y-1.5">
+                          <Label className="text-sm font-medium text-slate-800">
+                            {idx + 1}. {qText}
+                          </Label>
+                          <Textarea
+                            placeholder="Your answer..."
+                            rows={3}
+                            value={answers[qText] || ''}
+                            onChange={(e) => handleAnswerChange(qText, e.target.value)}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 

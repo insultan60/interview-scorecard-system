@@ -22,6 +22,34 @@ async function getSettingValue(key, fallback) {
   return setting?.value ?? fallback;
 }
 
+/** Normalizes raw questionnaire inputs into objects { question, idealAnswer, redFlags }. */
+function normalizeQuestionnaire(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((item) => {
+      if (typeof item === 'string') {
+        return { question: item.trim(), idealAnswer: '', redFlags: '' };
+      }
+      if (typeof item === 'object' && item !== null) {
+        return {
+          question: (item.question || '').trim(),
+          idealAnswer: (item.idealAnswer || '').trim(),
+          redFlags: (item.redFlags || '').trim(),
+        };
+      }
+      return null;
+    }).filter((item) => item && item.question);
+  }
+  if (typeof raw === 'string') {
+    return raw.split('\n').map((q) => q.trim()).filter(Boolean).map((q) => ({
+      question: q,
+      idealAnswer: '',
+      redFlags: '',
+    }));
+  }
+  return [];
+}
+
 /**
  * POST /api/requisitions
  * Creates a requisition, snapshotting the chosen pipeline template's stages
@@ -60,7 +88,7 @@ const create = asyncHandler(async (req, res) => {
     hireThreshold: hireThreshold ?? defaultHire,
     maybeThreshold: maybeThreshold ?? defaultMaybe,
     initialScreeningCriteria: initialScreeningCriteria || '',
-    questionnaire: Array.isArray(questionnaire) ? questionnaire : (questionnaire ? questionnaire.split('\n').filter(Boolean) : []),
+    questionnaire: normalizeQuestionnaire(questionnaire),
     applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
     aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
     createdBy: req.user._id,
@@ -150,9 +178,7 @@ const update = asyncHandler(async (req, res) => {
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
   if (initialScreeningCriteria !== undefined) requisition.initialScreeningCriteria = initialScreeningCriteria;
   if (questionnaire !== undefined) {
-    requisition.questionnaire = Array.isArray(questionnaire)
-      ? questionnaire
-      : (questionnaire ? questionnaire.split('\n').filter(Boolean) : []);
+    requisition.questionnaire = normalizeQuestionnaire(questionnaire);
   }
   if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
   if (aiScreeningEnabled !== undefined) requisition.aiScreeningEnabled = Boolean(aiScreeningEnabled);
@@ -367,8 +393,8 @@ const generateField = asyncHandler(async (req, res) => {
     userPrompt = `Write concise, clear initial screening criteria text for candidate CV review for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Specify required skills, experience level, education, and key competencies.`;
   } else if (fieldType === 'questionnaire') {
     expectJson = true;
-    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions for job applicants.';
-    userPrompt = `Generate 4 to 6 concise, relevant application questionnaire questions for candidates applying for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Respond ONLY in JSON format: { "questions": ["Question 1", "Question 2", ...] }`;
+    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions for job applicants along with target ideal answers (5-star benchmarks) and red flags (1-2 star disqualifying criteria).';
+    userPrompt = `Generate 4 to 6 concise, relevant application questionnaire questions for candidates applying for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Respond ONLY in JSON format: { "questions": [ { "question": "Question text...", "idealAnswer": "Ideal 5-star benchmark answer...", "redFlags": "Red flags (1-2 star) criteria..." } ] }`;
   } else {
     throw new ValidationError(['fieldType'], 'Invalid fieldType specified.');
   }
@@ -382,7 +408,7 @@ const generateField = asyncHandler(async (req, res) => {
 
   if (expectJson) {
     const parsed = JSON.parse(result.text);
-    return res.json({ questions: parsed.questions || [] });
+    return res.json({ questions: normalizeQuestionnaire(parsed.questions) });
   }
 
   res.json({ content: result.text.trim() });
@@ -562,11 +588,23 @@ const applyPublic = asyncHandler(async (req, res) => {
     const jobDescriptionText = requisition.jobDescription || 'Standard position description.';
 
     let questionnaireContext = '';
-    if (requisition.aiScreeningEnabled) {
-      const qAnswersText = typeof questionnaireAnswers === 'string'
-        ? questionnaireAnswers
-        : JSON.stringify(questionnaireAnswers || {});
-      questionnaireContext = `Questionnaire Responses:\n${qAnswersText}\n\n`;
+    if (requisition.aiScreeningEnabled && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0) {
+      let qAnswersMap = {};
+      if (typeof questionnaireAnswers === 'string') {
+        try { qAnswersMap = JSON.parse(questionnaireAnswers); } catch (e) { qAnswersMap = {}; }
+      } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
+        qAnswersMap = questionnaireAnswers;
+      }
+
+      const formattedItems = requisition.questionnaire.map((item, idx) => {
+        const qText = typeof item === 'string' ? item : item.question;
+        const ideal = typeof item === 'object' && item.idealAnswer ? item.idealAnswer : '';
+        const redFlag = typeof item === 'object' && item.redFlags ? item.redFlags : '';
+        const candidateAns = qAnswersMap[qText] || qAnswersMap[idx] || '(No response provided)';
+        return `Question ${idx + 1}: "${qText}"\n  - Candidate Answer: ${candidateAns}\n  - Benchmark Ideal Answer (5 Stars): ${ideal || 'Not specified'}\n  - Benchmark Red Flags (1-2 Stars): ${redFlag || 'Not specified'}`;
+      }).join('\n\n');
+
+      questionnaireContext = `APPLICATION QUESTIONNAIRE RESPONSES & BENCHMARKS:\n${formattedItems}\n\n`;
     }
 
     const systemPrompt = `You are an expert HR Screener evaluating a candidate's application against the Position Title, Job Description, and Initial Screening Criteria.
