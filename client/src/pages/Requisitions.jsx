@@ -73,17 +73,31 @@ export default function Requisitions() {
   const [page, setPage] = useState(1);
 
   function togglePromptBox(fieldType) {
-    if (!form.title.trim()) {
-      toast.error('Please enter a Job Title first so AI has context.');
-      return;
+    if (fieldType === 'jobDescription') {
+      if (!form.title.trim()) {
+        toast.error('Please enter a Job Title first so AI has context.');
+        return;
+      }
+    } else if (fieldType === 'initialScreeningCriteria' || fieldType === 'questionnaire') {
+      if (!form.jobDescription.trim()) {
+        toast.error('Please enter or generate a Job Description first so AI has context.');
+        return;
+      }
     }
     setPromptOpen((prev) => ({ ...prev, [fieldType]: !prev[fieldType] }));
   }
 
   async function handleRunFieldAiGeneration(fieldType) {
-    if (!form.title.trim()) {
-      toast.error('Please enter a Job Title first so AI has context.');
-      return;
+    if (fieldType === 'jobDescription') {
+      if (!form.title.trim()) {
+        toast.error('Please enter a Job Title first so AI has context.');
+        return;
+      }
+    } else if (fieldType === 'initialScreeningCriteria' || fieldType === 'questionnaire') {
+      if (!form.jobDescription.trim()) {
+        toast.error('Please enter or generate a Job Description first so AI has context.');
+        return;
+      }
     }
 
     const userInstruction = fieldPrompts[fieldType] || '';
