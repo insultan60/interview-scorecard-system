@@ -89,8 +89,40 @@ const create = asyncHandler(async (req, res) => {
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
-  if (!title || !jobDescription || !pipelineTemplateId) {
-    throw new ValidationError(['title', 'jobDescription', 'pipelineTemplateId'], 'title, jobDescription, and pipelineTemplateId are required.');
+  const missingFields = [];
+  if (!title || !title.trim()) missingFields.push('title');
+  if (!employmentType) missingFields.push('employmentType');
+  if (!location || !location.trim()) missingFields.push('location');
+  if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
+  if (!applicationDeadline) missingFields.push('applicationDeadline');
+  if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
+
+  const normalizedCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
+  if (normalizedCriteria.length === 0) {
+    missingFields.push('initialScreeningCriteria');
+  } else {
+    for (let i = 0; i < normalizedCriteria.length; i++) {
+      const c = normalizedCriteria[i];
+      if (!c.criteria || !c.requirement) {
+        missingFields.push(`initialScreeningCriteria item #${i + 1} (criteria & requirement details)`);
+      }
+    }
+  }
+
+  const normalizedQuestions = normalizeQuestionnaire(questionnaire);
+  if (normalizedQuestions.length === 0) {
+    missingFields.push('questionnaire');
+  } else {
+    for (let i = 0; i < normalizedQuestions.length; i++) {
+      const q = normalizedQuestions[i];
+      if (!q.question || !q.idealAnswer || !q.redFlags) {
+        missingFields.push(`questionnaire item #${i + 1} (question, ideal answer & red flags)`);
+      }
+    }
+  }
+
+  if (missingFields.length > 0) {
+    throw new ValidationError(missingFields, `Please fill out all required fields: ${missingFields.join(', ')}.`);
   }
 
   const template = await PipelineTemplate.findById(pipelineTemplateId);

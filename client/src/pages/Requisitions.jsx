@@ -218,10 +218,74 @@ export default function Requisitions() {
 
   async function handleCreate(e) {
     e.preventDefault();
-    if (!form.title || !form.jobDescription || !form.pipelineTemplateId) {
-      toast.error('Title, job description, and pipeline template are all required.');
+
+    if (!form.title.trim()) {
+      toast.error('Requisition Title is required.');
       return;
     }
+    if (!form.employmentType) {
+      toast.error('Employment Type is required.');
+      return;
+    }
+    if (!form.location.trim()) {
+      toast.error('Location is required.');
+      return;
+    }
+    if (!form.jobDescription.trim()) {
+      toast.error('Job Description is required.');
+      return;
+    }
+
+    // Validate Criteria items
+    const criteriaItems = Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria : [];
+    if (criteriaItems.length === 0) {
+      toast.error('At least one Initial Screening Criteria item is required.');
+      return;
+    }
+    for (let i = 0; i < criteriaItems.length; i++) {
+      const item = typeof criteriaItems[i] === 'string' ? { criteria: criteriaItems[i], requirement: '' } : criteriaItems[i];
+      if (!item || !item.criteria || !item.criteria.trim()) {
+        toast.error(`Criteria #${i + 1} name cannot be empty.`);
+        return;
+      }
+      if (!item.requirement || !item.requirement.trim()) {
+        toast.error(`Criteria #${i + 1} requirement details cannot be empty.`);
+        return;
+      }
+    }
+
+    // Validate Questionnaire items
+    const questionnaireItems = Array.isArray(form.questionnaire) ? form.questionnaire : [];
+    if (questionnaireItems.length === 0) {
+      toast.error('At least one Application Questionnaire item is required.');
+      return;
+    }
+    for (let i = 0; i < questionnaireItems.length; i++) {
+      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '', redFlags: '' } : questionnaireItems[i];
+      if (!item || !item.question || !item.question.trim()) {
+        toast.error(`Question #${i + 1} text cannot be empty.`);
+        return;
+      }
+      if (!item.idealAnswer || !item.idealAnswer.trim()) {
+        toast.error(`Question #${i + 1} ideal answer benchmark cannot be empty.`);
+        return;
+      }
+      if (!item.redFlags || !item.redFlags.trim()) {
+        toast.error(`Question #${i + 1} red flags benchmark cannot be empty.`);
+        return;
+      }
+    }
+
+    if (!form.applicationDeadline) {
+      toast.error('Application Deadline date is required.');
+      return;
+    }
+
+    if (!form.pipelineTemplateId) {
+      toast.error('Pipeline Template is required.');
+      return;
+    }
+
     setCreating(true);
     try {
       const createRes = await api.post('/requisitions', form);
@@ -236,10 +300,9 @@ export default function Requisitions() {
 
     } catch (error) {
       console.error('Failed to create requisition:', error);
-
       toast.error(
         error?.response?.data?.message ||
-        'Failed to create requisition. Please try again.'
+        'Failed to create requisition. Please check all fields.'
       );
     } finally {
       setCreating(false);
@@ -491,7 +554,7 @@ export default function Requisitions() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="req-employment-type">Employment Type</Label>
+                <Label htmlFor="req-employment-type">Employment Type <span className="text-red-500">*</span></Label>
                 <Select
                   value={form.employmentType || 'full_time'}
                   onValueChange={(val) => setForm({ ...form, employmentType: val })}
@@ -510,12 +573,13 @@ export default function Requisitions() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="req-location">Location</Label>
+                <Label htmlFor="req-location">Location <span className="text-red-500">*</span></Label>
                 <Input
                   id="req-location"
                   value={form.location || ''}
                   onChange={(e) => setForm({ ...form, location: e.target.value })}
                   placeholder="e.g. Remote, NY, Hybrid..."
+                  required
                 />
               </div>
             </div>
@@ -589,7 +653,7 @@ export default function Requisitions() {
             {/* Initial Screening Criteria (Always Shown) */}
             <div className="space-y-2 border-t pt-3">
               <div className="flex items-center justify-between">
-                <Label>Initial Screening Criteria ({Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria.filter((c) => c && (typeof c === 'string' ? c.trim() : (c.criteria || c.requirement))).length : 0} items)</Label>
+                <Label>Initial Screening Criteria <span className="text-red-500">*</span> ({Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria.filter((c) => c && (typeof c === 'string' ? c.trim() : (c.criteria || c.requirement))).length : 0} items)</Label>
                 <button
                   type="button"
                   onClick={() => togglePromptBox('initialScreeningCriteria')}
@@ -671,7 +735,7 @@ export default function Requisitions() {
 
                       <div className="pl-7">
                         <Label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
-                          Requirement Details
+                          Requirement Details <span className="text-red-500">*</span>
                         </Label>
                         <Input
                           placeholder="e.g. Minimum 3+ years in B2B SaaS required..."
@@ -700,7 +764,7 @@ export default function Requisitions() {
             {/* Application Questionnaire Array */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Application Questionnaire ({Array.isArray(form.questionnaire) ? form.questionnaire.filter(Boolean).length : 0} questions)</Label>
+                <Label>Application Questionnaire <span className="text-red-500">*</span> ({Array.isArray(form.questionnaire) ? form.questionnaire.filter(Boolean).length : 0} questions)</Label>
                 <button
                   type="button"
                   onClick={() => togglePromptBox('questionnaire')}
@@ -783,7 +847,7 @@ export default function Requisitions() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-7">
                         <div>
                           <Label className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">
-                            Ideal Answer Benchmark (5 Stars)
+                            Ideal Answer Benchmark (5 Stars) <span className="text-red-500">*</span>
                           </Label>
                           <Input
                             placeholder="e.g. 3+ yrs B2B SaaS experience..."
@@ -794,7 +858,7 @@ export default function Requisitions() {
                         </div>
                         <div>
                           <Label className="text-[11px] font-semibold text-red-700 uppercase tracking-wider">
-                            Red Flags Benchmark (1-2 Stars)
+                            Red Flags Benchmark (1-2 Stars) <span className="text-red-500">*</span>
                           </Label>
                           <Input
                             placeholder="e.g. Under 1 yr or B2C experience..."
@@ -824,7 +888,7 @@ export default function Requisitions() {
             {/* Application Deadline & AI Screening Toggle */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
               <div className="space-y-1.5">
-                <Label htmlFor="req-deadline">Application Deadline</Label>
+                <Label htmlFor="req-deadline">Application Deadline <span className="text-red-500">*</span></Label>
                 <Input
                   id="req-deadline"
                   type="date"
