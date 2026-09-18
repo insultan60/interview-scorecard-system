@@ -102,9 +102,19 @@ async function generateScorecard(requisition) {
       }).join('\n')}\n`
     : '';
 
-  const hasCriteria = Boolean(requisition.initialScreeningCriteria && requisition.initialScreeningCriteria.trim());
+  const hasCriteria = Array.isArray(requisition.initialScreeningCriteria)
+    ? requisition.initialScreeningCriteria.length > 0
+    : Boolean(requisition.initialScreeningCriteria && requisition.initialScreeningCriteria.trim());
+
   const criteriaBlock = hasCriteria
-    ? `\nInitial Screening Criteria:\n${requisition.initialScreeningCriteria}\n`
+    ? `\nInitial Screening Criteria:\n${
+        Array.isArray(requisition.initialScreeningCriteria)
+          ? requisition.initialScreeningCriteria.map((c) => {
+              if (typeof c === 'string') return `- ${c}`;
+              return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+            }).join('\n')
+          : requisition.initialScreeningCriteria
+      }\n`
     : '';
 
   const resultStages = [];

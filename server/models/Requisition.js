@@ -26,6 +26,11 @@ const questionnaireItemSchema = new mongoose.Schema({
   redFlags: { type: String, default: '' },
 }, { _id: false });
 
+const screeningCriteriaItemSchema = new mongoose.Schema({
+  criteria: { type: String, required: true },
+  requirement: { type: String, default: '' },
+}, { _id: false });
+
 const requisitionSchema = new mongoose.Schema({
   title: { type: String, required: true, index: true },   // e.g., "Sales Executive / Closer"
   employmentType: {
@@ -48,7 +53,7 @@ const requisitionSchema = new mongoose.Schema({
   scorecardId: { type: mongoose.Schema.Types.ObjectId, ref: 'Scorecard' },
   hireThreshold: { type: Number, default: 3.5, min: 1, max: 5 },
   maybeThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
-  initialScreeningCriteria: { type: String, default: '' },
+  initialScreeningCriteria: [screeningCriteriaItemSchema],
   questionnaire: [questionnaireItemSchema],
   applicationDeadline: { type: Date, default: null },
   aiScreeningEnabled: { type: Boolean, default: true },

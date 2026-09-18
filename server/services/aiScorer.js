@@ -52,7 +52,17 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
             return `- Question: ${q.question}${idealStr}${redFlagStr}`;
           }).join('\n')
         : '';
-      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${requisition.initialScreeningCriteria ? `INITIAL SCREENING CRITERIA:\n${requisition.initialScreeningCriteria}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE BENCHMARKS:\n${qText}\n\n` : ''}---\n`;
+      let criteriaText = '';
+      if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
+        criteriaText = requisition.initialScreeningCriteria.map((c) => {
+          if (typeof c === 'string') return `- ${c}`;
+          return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+        }).join('\n');
+      } else if (typeof requisition.initialScreeningCriteria === 'string' && requisition.initialScreeningCriteria.trim()) {
+        criteriaText = requisition.initialScreeningCriteria;
+      }
+
+      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${criteriaText ? `INITIAL SCREENING CRITERIA:\n${criteriaText}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE BENCHMARKS:\n${qText}\n\n` : ''}---\n`;
     }
   }
 

@@ -50,6 +50,34 @@ function normalizeQuestionnaire(raw) {
   return [];
 }
 
+/** Normalizes raw screening criteria inputs into objects { criteria, requirement }. */
+function normalizeInitialScreeningCriteria(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((item) => {
+      if (typeof item === 'string') {
+        return { criteria: item.trim(), requirement: '' };
+      }
+      if (typeof item === 'object' && item !== null) {
+        return {
+          criteria: (item.criteria || '').trim(),
+          requirement: (item.requirement || '').trim(),
+        };
+      }
+      return null;
+    }).filter((item) => item && (item.criteria || item.requirement));
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    return trimmed.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => ({
+      criteria: line,
+      requirement: '',
+    }));
+  }
+  return [];
+}
+
 /**
  * POST /api/requisitions
  * Creates a requisition, snapshotting the chosen pipeline template's stages
@@ -89,7 +117,7 @@ const create = asyncHandler(async (req, res) => {
     stages,
     hireThreshold: hireThreshold ?? defaultHire,
     maybeThreshold: maybeThreshold ?? defaultMaybe,
-    initialScreeningCriteria: initialScreeningCriteria || '',
+    initialScreeningCriteria: normalizeInitialScreeningCriteria(initialScreeningCriteria),
     questionnaire: normalizeQuestionnaire(questionnaire),
     applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
     aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
@@ -180,7 +208,9 @@ const update = asyncHandler(async (req, res) => {
   if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
-  if (initialScreeningCriteria !== undefined) requisition.initialScreeningCriteria = initialScreeningCriteria;
+  if (initialScreeningCriteria !== undefined) {
+    requisition.initialScreeningCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
+  }
   if (questionnaire !== undefined) {
     requisition.questionnaire = normalizeQuestionnaire(questionnaire);
   }
@@ -391,14 +421,43 @@ const generateField = asyncHandler(async (req, res) => {
 
   if (fieldType === 'jobDescription') {
     systemPrompt = 'You are an expert HR recruiter creating comprehensive, professional Job Descriptions.';
-    userPrompt = `Generate a detailed professional Job Description for the position: "${title}". ${userPromptText ? `Additional context: ${userPromptText}` : ''}`;
+    userPrompt = `Generate a detailed, professional Job Description for the position: "${title}". ${userPromptText ? `Additional instructions/context: ${userPromptText}` : ''}`;
   } else if (fieldType === 'initialScreeningCriteria') {
-    systemPrompt = 'You are an expert HR Screener defining clear, objective initial screening criteria for CV/Resume review.';
-    userPrompt = `Write concise, clear initial screening criteria text for candidate CV review for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Specify required skills, experience level, education, and key competencies.`;
+    expectJson = true;
+    systemPrompt = 'You are an expert HR Screener defining clear, objective initial screening criteria categories and detailed requirements extracted directly from the Job Description.';
+    userPrompt = `Based on the following Job Description for "${title}", generate 4 to 6 specific initial screening criteria categories (e.g., Experience, Portfolio/Reel, Software Proficiency, Education, Availability, Key Competencies) and their exact requirements.
+
+Job Description:
+${jobDescription || title}
+${userPromptText ? `Additional instructions: ${userPromptText}\n` : ''}
+Respond ONLY in JSON format matching this exact shape:
+{
+  "criteriaList": [
+    { "criteria": "Experience", "requirement": "1–2 years in video editing (agency, in-house, or freelance)" },
+    { "criteria": "Portfolio/Reel", "requirement": "Must submit a demo reel or portfolio link" },
+    { "criteria": "Software Proficiency", "requirement": "Adobe Premiere Pro (required), After Effects (preferred)" },
+    { "criteria": "Education", "requirement": "Bachelor's degree or equivalent practical experience" },
+    { "criteria": "Availability", "requirement": "Immediate joiner preferred / notice period acceptable" }
+  ]
+}`;
   } else if (fieldType === 'questionnaire') {
     expectJson = true;
-    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions for job applicants along with target ideal answers (5-star benchmarks) and red flags (1-2 star disqualifying criteria).';
-    userPrompt = `Generate 4 to 6 concise, relevant application questionnaire questions for candidates applying for the role "${title}". ${jobDescription ? `Job Description: ${jobDescription}\n` : ''}${userPromptText ? `Additional instructions: ${userPromptText}` : ''} Respond ONLY in JSON format: { "questions": [ { "question": "Question text...", "idealAnswer": "Ideal 5-star benchmark answer...", "redFlags": "Red flags (1-2 star) criteria..." } ] }`;
+    systemPrompt = 'You are an expert HR recruiter generating relevant application questionnaire questions and 5-star/1-2-star scoring benchmarks derived directly from the Job Description.';
+    userPrompt = `Based on the following Job Description for "${title}", generate 4 to 6 relevant application questionnaire questions for candidates, along with target ideal answers (5-star benchmarks) and red flags (1-2 star disqualifying criteria).
+
+Job Description:
+${jobDescription || title}
+${userPromptText ? `Additional instructions: ${userPromptText}\n` : ''}
+Respond ONLY in JSON format matching this exact shape:
+{
+  "questions": [
+    {
+      "question": "Question text...",
+      "idealAnswer": "Ideal 5-star benchmark answer...",
+      "redFlags": "Red flags (1-2 star) criteria..."
+    }
+  ]
+}`;
   } else {
     throw new ValidationError(['fieldType'], 'Invalid fieldType specified.');
   }
@@ -412,6 +471,9 @@ const generateField = asyncHandler(async (req, res) => {
 
   if (expectJson) {
     const parsed = JSON.parse(result.text);
+    if (fieldType === 'initialScreeningCriteria') {
+      return res.json({ criteria: normalizeInitialScreeningCriteria(parsed.criteriaList || parsed.criteria || parsed.items) });
+    }
     return res.json({ questions: normalizeQuestionnaire(parsed.questions) });
   }
 
@@ -596,7 +658,15 @@ const applyPublic = asyncHandler(async (req, res) => {
     const modelIds = await getModelIds();
     const cheapModel = modelIds.cheap;
 
-    const screeningCriteriaText = requisition.initialScreeningCriteria || 'Evaluate standard qualifications, skills, and background for the role.';
+    let screeningCriteriaText = 'Evaluate standard qualifications, skills, and background for the role.';
+    if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
+      screeningCriteriaText = requisition.initialScreeningCriteria.map((c, i) => {
+        if (typeof c === 'string') return `- Criteria ${i + 1}: ${c}`;
+        return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+      }).join('\n');
+    } else if (typeof requisition.initialScreeningCriteria === 'string' && requisition.initialScreeningCriteria.trim()) {
+      screeningCriteriaText = requisition.initialScreeningCriteria;
+    }
     const jobDescriptionText = requisition.jobDescription || 'Standard position description.';
 
     let questionnaireContext = '';

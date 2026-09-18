@@ -517,10 +517,25 @@ export default function InterviewRoom() {
           <CardContent className="space-y-4 pt-0 pb-4 text-xs">
             {requisition.initialScreeningCriteria && (
               <div>
-                <span className="font-semibold text-foreground">Initial Screening Criteria:</span>
-                <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
-                  {requisition.initialScreeningCriteria}
-                </p>
+                <span className="font-semibold text-foreground">Initial Screening Criteria & Requirements:</span>
+                {Array.isArray(requisition.initialScreeningCriteria) ? (
+                  <div className="mt-1 space-y-1.5 rounded border bg-card p-2.5">
+                    {requisition.initialScreeningCriteria.map((item, idx) => {
+                      const cName = typeof item === 'string' ? item : item.criteria;
+                      const reqDetail = typeof item === 'object' ? item.requirement : '';
+                      return (
+                        <div key={idx} className="text-muted-foreground leading-relaxed">
+                          <span className="font-medium text-foreground">• {cName}</span>
+                          {reqDetail ? `: ${reqDetail}` : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
+                    {requisition.initialScreeningCriteria}
+                  </p>
+                )}
               </div>
             )}
             {requisition.questionnaire && requisition.questionnaire.length > 0 && (

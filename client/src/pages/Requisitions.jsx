@@ -45,7 +45,7 @@ const EMPTY_FORM = {
   employmentType: 'full_time',
   location: '',
   jobDescription: '',
-  initialScreeningCriteria: '',
+  initialScreeningCriteria: [{ criteria: '', requirement: '' }],
   questionnaire: [{ question: '', idealAnswer: '', redFlags: '' }],
   applicationDeadline: '',
   aiScreeningEnabled: true,
@@ -100,6 +100,9 @@ export default function Requisitions() {
       if (fieldType === 'questionnaire') {
         const questionsList = res.data.questions || [];
         setForm((f) => ({ ...f, questionnaire: questionsList.length ? questionsList : [{ question: '', idealAnswer: '', redFlags: '' }] }));
+      } else if (fieldType === 'initialScreeningCriteria') {
+        const criteriaList = res.data.criteria || [];
+        setForm((f) => ({ ...f, initialScreeningCriteria: criteriaList.length ? criteriaList : [{ criteria: '', requirement: '' }] }));
       } else {
         setForm((f) => ({ ...f, [fieldType]: res.data.content || '' }));
       }
@@ -111,6 +114,36 @@ export default function Requisitions() {
     } finally {
       setGeneratingField((prev) => ({ ...prev, [fieldType]: false }));
     }
+  }
+
+  function handleCriteriaChange(index, field, value) {
+    setForm((prev) => {
+      const current = Array.isArray(prev.initialScreeningCriteria) ? prev.initialScreeningCriteria : [];
+      const updated = current.map((c, i) => {
+        if (i !== index) return c;
+        const cObj = typeof c === 'string'
+          ? { criteria: c, requirement: '' }
+          : { ...c };
+        cObj[field] = value;
+        return cObj;
+      });
+      return { ...prev, initialScreeningCriteria: updated };
+    });
+  }
+
+  function handleAddCriteria() {
+    setForm((prev) => ({
+      ...prev,
+      initialScreeningCriteria: [...(Array.isArray(prev.initialScreeningCriteria) ? prev.initialScreeningCriteria : []), { criteria: '', requirement: '' }],
+    }));
+  }
+
+  function handleRemoveCriteria(index) {
+    setForm((prev) => {
+      const current = Array.isArray(prev.initialScreeningCriteria) ? prev.initialScreeningCriteria : [];
+      const updated = current.filter((_, i) => i !== index);
+      return { ...prev, initialScreeningCriteria: updated.length ? updated : [{ criteria: '', requirement: '' }] };
+    });
   }
 
   function handleQuestionChange(index, field, value) {
@@ -539,72 +572,116 @@ export default function Requisitions() {
               />
             </div>
 
-            {/* Initial Screening Criteria with Generate AI button on right (only shown when Job Description is written) */}
-            {Boolean(form.jobDescription?.trim()) && (
-              <div className="space-y-1.5 border-t pt-3">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="req-screening">Initial Screening Criteria (CV Review Text)</Label>
-                  <button
-                    type="button"
-                    onClick={() => togglePromptBox('initialScreeningCriteria')}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
-                  >
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                    {promptOpen.initialScreeningCriteria ? 'Close AI Prompt' : 'Generate with AI'}
-                  </button>
-                </div>
-
-                {promptOpen.initialScreeningCriteria && (
-                  <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
-                        <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-                        Specify AI Screening Requirements:
-                      </span>
-                    </div>
-                    <Input
-                      placeholder="e.g. Must have 3+ yrs React, Computer Science degree, sales background..."
-                      value={fieldPrompts.initialScreeningCriteria || ''}
-                      onChange={(e) => setFieldPrompts({ ...fieldPrompts, initialScreeningCriteria: e.target.value })}
-                      className="bg-white text-xs"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleRunFieldAiGeneration('initialScreeningCriteria');
-                        }
-                      }}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => togglePromptBox('initialScreeningCriteria')}
-                        className="h-7 text-xs text-slate-600"
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={generatingField.initialScreeningCriteria}
-                        onClick={() => handleRunFieldAiGeneration('initialScreeningCriteria')}
-                        className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
-                      >
-                        <Sparkles className="h-3 w-3" />
-                        {generatingField.initialScreeningCriteria ? 'Generating...' : 'Generate & Insert'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                <Textarea
-                  id="req-screening" rows={3} value={form.initialScreeningCriteria}
-                  onChange={(e) => setForm({ ...form, initialScreeningCriteria: e.target.value })}
-                  placeholder="Specify criteria text for AI CV review (e.g. 3+ years React, computer science degree...)"
-                />
+            {/* Initial Screening Criteria (Always Shown) */}
+            <div className="space-y-2 border-t pt-3">
+              <div className="flex items-center justify-between">
+                <Label>Initial Screening Criteria ({Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria.filter((c) => c && (typeof c === 'string' ? c.trim() : (c.criteria || c.requirement))).length : 0} items)</Label>
+                <button
+                  type="button"
+                  onClick={() => togglePromptBox('initialScreeningCriteria')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  {promptOpen.initialScreeningCriteria ? 'Close AI Prompt' : 'Generate with AI'}
+                </button>
               </div>
-            )}
+
+              {promptOpen.initialScreeningCriteria && (
+                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-900 flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                      Specify AI Screening Requirements:
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="e.g. Must have 3+ yrs React, Computer Science degree, sales background..."
+                    value={fieldPrompts.initialScreeningCriteria || ''}
+                    onChange={(e) => setFieldPrompts({ ...fieldPrompts, initialScreeningCriteria: e.target.value })}
+                    className="bg-white text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleRunFieldAiGeneration('initialScreeningCriteria');
+                      }
+                    }}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => togglePromptBox('initialScreeningCriteria')}
+                      className="h-7 text-xs text-slate-600"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={generatingField.initialScreeningCriteria}
+                      onClick={() => handleRunFieldAiGeneration('initialScreeningCriteria')}
+                      className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {generatingField.initialScreeningCriteria ? 'Generating...' : 'Generate & Insert'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {(Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria : [{ criteria: '', requirement: '' }]).map((c, idx) => {
+                  const cObj = typeof c === 'string' ? { criteria: c, requirement: '' } : c;
+                  return (
+                    <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-500 w-5 text-right flex-shrink-0">{idx + 1}.</span>
+                        <Input
+                          placeholder={`Criteria ${idx + 1} (e.g. Years of Experience, Technical Degree...)`}
+                          value={cObj.criteria || ''}
+                          onChange={(e) => handleCriteriaChange(idx, 'criteria', e.target.value)}
+                          className="flex-1 bg-white font-medium text-slate-800"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveCriteria(idx)}
+                          title="Remove criteria"
+                          className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="pl-7">
+                        <Label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
+                          Requirement Details
+                        </Label>
+                        <Input
+                          placeholder="e.g. Minimum 3+ years in B2B SaaS required..."
+                          value={cObj.requirement || ''}
+                          onChange={(e) => handleCriteriaChange(idx, 'requirement', e.target.value)}
+                          className="bg-white text-xs mt-1"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddCriteria}
+                className="mt-1 text-xs gap-1 border-dashed text-slate-600 hover:text-[#d21e2b]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Criteria
+              </Button>
+            </div>
 
             {/* Application Questionnaire Array */}
             <div className="space-y-2">
