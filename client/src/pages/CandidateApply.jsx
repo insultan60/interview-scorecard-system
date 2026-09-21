@@ -57,6 +57,14 @@ export default function CandidateApply() {
     setAnswers((prev) => ({ ...prev, [question]: value }));
   }
 
+  function resetForm() {
+    setName('');
+    setEmail('');
+    setPhone('');
+    setAnswers({});
+    setResumeFile(null);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
@@ -85,6 +93,7 @@ export default function CandidateApply() {
 
       console.log('[CandidateApply] Application submission success:', res.data);
       setResult(res.data);
+      resetForm();
       setStep('success');
       toast.success('Application submitted successfully!');
     } catch (err) {
@@ -376,7 +385,7 @@ export default function CandidateApply() {
                 {result?.message || 'Thank you for applying. Your application has been received.'}
               </p>
               <div className="pt-4">
-                <Button variant="outline" onClick={() => setStep('jd')}>
+                <Button variant="outline" onClick={() => { resetForm(); setStep('jd'); }}>
                   Back to Job Details
                 </Button>
               </div>

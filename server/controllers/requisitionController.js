@@ -570,6 +570,18 @@ const applyPublic = asyncHandler(async (req, res) => {
     throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
   }
 
+  const cleanEmail = email.toLowerCase().trim();
+
+  // 1. Check if candidate already exists AND has an application for this requisition BEFORE uploading to Cloudinary
+  let candidate = await Candidate.findOne({ email: cleanEmail });
+  if (candidate) {
+    const existingApp = await Application.findOne({ candidateId: candidate._id, requisitionId: requisition._id });
+    if (existingApp) {
+      return res.status(409).json({ error: 'DUPLICATE', message: 'You have already submitted an application for this position.' });
+    }
+  }
+
+  // 2. Upload file to Cloudinary & extract text ONLY after verifying non-duplicate status
   let resumeFileUrl = '';
   let resumeFilePublicId = '';
   let resumeText = '';
@@ -590,11 +602,11 @@ const applyPublic = asyncHandler(async (req, res) => {
     }
   }
 
-  let candidate = await Candidate.findOne({ email: email.toLowerCase().trim() });
+  // 3. Create or update candidate record with the new CV upload
   if (!candidate) {
     candidate = await Candidate.create({
       name,
-      email: email.toLowerCase().trim(),
+      email: cleanEmail,
       phone: phone || '',
       resumeFileUrl,
       resumeFilePublicId,
@@ -606,12 +618,6 @@ const applyPublic = asyncHandler(async (req, res) => {
     }
     if (phone) candidate.phone = phone;
     await candidate.save();
-  }
-
-  // Check if application already exists for this requisition
-  let application = await Application.findOne({ candidateId: candidate._id, requisitionId: requisition._id });
-  if (application) {
-    return res.status(409).json({ error: 'DUPLICATE', message: 'You have already submitted an application for this position.' });
   }
 
   // 1. Ensure Scorecard exists for this requisition (auto-generate if missing)
@@ -647,7 +653,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     parsedQAnswers = questionnaireAnswers;
   }
 
-  application = await Application.create({
+  let application = await Application.create({
     candidateId: candidate._id,
     requisitionId: requisition._id,
     currentStageKey: firstStageKey,

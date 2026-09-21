@@ -44,13 +44,25 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
   if (stageType === 'resume_screen') {
     contextHeader = isManual ? 'CANDIDATE RESUME TEXT:' : 'CANDIDATE RESUME & QUESTIONNAIRE TEXT:';
     if (requisition) {
-      const qText = (!isManual && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0)
-        ? requisition.questionnaire.map((q) => {
-            if (typeof q === 'string') return `- Question: ${q}`;
-            const idealStr = q.idealAnswer ? ` | Ideal (5-star): ${q.idealAnswer}` : '';
-            return `- Question: ${q.question}${idealStr}`;
-          }).join('\n')
-        : '';
+      let qText = '';
+      if (!isManual && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0) {
+        let qAnswersMap = {};
+        const rawAnswers = application?.questionnaireAnswers;
+        if (typeof rawAnswers === 'string') {
+          try { qAnswersMap = JSON.parse(rawAnswers); } catch (e) { qAnswersMap = {}; }
+        } else if (typeof rawAnswers === 'object' && rawAnswers !== null) {
+          qAnswersMap = rawAnswers;
+        }
+
+        qText = requisition.questionnaire.map((q, idx) => {
+          const qQuestion = typeof q === 'string' ? q : q.question;
+          const ideal = typeof q === 'object' && q.idealAnswer ? q.idealAnswer : '';
+          const candidateAns = qAnswersMap[qQuestion] || qAnswersMap[idx] || qAnswersMap[String(idx)] || '(No response provided)';
+          const idealStr = ideal ? ` | Ideal (5-star): ${ideal}` : '';
+          return `- Question ${idx + 1}: "${qQuestion}"${idealStr}\n  Candidate Answer: ${candidateAns}`;
+        }).join('\n\n');
+      }
+
       let criteriaText = '';
       if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
         criteriaText = requisition.initialScreeningCriteria.map((c) => {
@@ -61,7 +73,7 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
         criteriaText = requisition.initialScreeningCriteria;
       }
 
-      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${criteriaText ? `INITIAL SCREENING CRITERIA:\n${criteriaText}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE BENCHMARKS:\n${qText}\n\n` : ''}---\n`;
+      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${criteriaText ? `INITIAL SCREENING CRITERIA:\n${criteriaText}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE BENCHMARKS & CANDIDATE RESPONSES:\n${qText}\n\n` : ''}---\n`;
     }
   }
 
