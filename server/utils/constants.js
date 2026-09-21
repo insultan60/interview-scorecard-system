@@ -10,6 +10,9 @@ const STAGE_TYPES = [
 /** How a stage collects evidence to be scored/gated. */
 const INPUT_TYPES = ['transcript', 'artifact', 'pass_fail', 'status_only', 'manual_rubric'];
 
+/** Employment types for requisitions. */
+const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'internship', 'temporary'];
+
 /** User roles (single role field; full RBAC is Phase 2). */
 const USER_ROLES = ['admin', 'hiring_manager', 'recruiter', 'interviewer'];
 
@@ -83,13 +86,23 @@ const DEFAULT_COST_RATE_TABLE = {
 /** The default pipeline template, exactly per the finalized spec / original Excel. */
 const DEFAULT_PIPELINE_STAGES = [
   {
+    key: 'resume_screen',
+    label: 'Résumé Screen',
+    stageType: 'resume_screen',
+    inputType: 'artifact',
+    enabled: true,
+    order: 1,
+    weight: 0.10,
+    passThreshold: 3.0,
+  },
+  {
     key: 'hr_screen',
     label: 'HR Screen',
     stageType: 'hr_screen',
     inputType: 'transcript',
     enabled: true,
-    order: 1,
-    weight: 0.10,
+    order: 2,
+    weight: 0.15,
     passThreshold: 3.0,
   },
   {
@@ -98,8 +111,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'simulation',
     inputType: 'manual_rubric',
     enabled: true,
-    order: 2,
-    weight: 0.35,
+    order: 3,
+    weight: 0.25,
     passThreshold: 3.0,
   },
   {
@@ -108,8 +121,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'technical',
     inputType: 'transcript',
     enabled: true,
-    order: 3,
-    weight: 0.35,
+    order: 4,
+    weight: 0.30,
     passThreshold: 3.0,
   },
   {
@@ -118,19 +131,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'final',
     inputType: 'transcript',
     enabled: true,
-    order: 4,
+    order: 5,
     weight: 0.20,
-    passThreshold: 3.0,
-  },
-  // Shipped disabled; HR enables per-requisition as needed.
-  {
-    key: 'resume_screen',
-    label: 'Résumé Screen',
-    stageType: 'resume_screen',
-    inputType: 'artifact',
-    enabled: false,
-    order: 0,
-    weight: 0,
     passThreshold: 3.0,
   },
   {
@@ -208,6 +210,7 @@ const DEFAULT_SETTINGS = {
 module.exports = {
   STAGE_TYPES,
   INPUT_TYPES,
+  EMPLOYMENT_TYPES,
   USER_ROLES,
   STAGE_PROGRESS_STATUS,
   INTERVIEW_STATUS,

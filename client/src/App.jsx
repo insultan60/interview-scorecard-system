@@ -10,6 +10,7 @@ import Candidates from './pages/Candidates';
 import InterviewRoom from './pages/InterviewRoom';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
+import CandidateApply from './pages/CandidateApply';
 
 function ProtectedPage({ children }) {
   return (
@@ -23,6 +24,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/apply/:id" element={<CandidateApply />} />
       <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
       <Route path="/requisitions" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
       <Route path="/requisitions/:id" element={<ProtectedPage><RequisitionDetail /></ProtectedPage>} />

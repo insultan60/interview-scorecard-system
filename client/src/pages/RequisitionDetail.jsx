@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2 } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -16,6 +16,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { formatDisposition } from '../utils/formatters';
 
 const DISPOSITION_BADGE = {
@@ -42,6 +46,29 @@ export default function RequisitionDetail() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [dispositionFilter, setDispositionFilter] = useState('all');
   const [pendingClose, setPendingClose] = useState(false);
+
+  const [overrideModalApp, setOverrideModalApp] = useState(null);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [savingOverride, setSavingOverride] = useState(false);
+
+  async function handleOverrideInitialScreening(passed) {
+    if (!overrideModalApp) return;
+    setSavingOverride(true);
+    try {
+      await api.patch(`/scoring/application/${overrideModalApp._id}/override-initial-screening`, {
+        passed,
+        reason: overrideReason || (passed ? 'HR Manual Approval' : 'HR Manual Rejection'),
+      });
+      toast.success(passed ? 'Initial screening passed! Candidate advanced to Stage 1.' : 'Candidate marked as rejected.');
+      setOverrideModalApp(null);
+      setOverrideReason('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not override initial screening.');
+    } finally {
+      setSavingOverride(false);
+    }
+  }
 
   function handleCandidateSearchChange(value) {
     setCandidateSearch(value);
@@ -210,16 +237,33 @@ export default function RequisitionDetail() {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Status</span>
-        <Select value={requisition.status} onValueChange={handleStatusChange} disabled={savingStatus}>
-          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="open">Open</SelectItem>
-            <SelectItem value="on_hold">On Hold</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Status</span>
+          <Select value={requisition.status} onValueChange={handleStatusChange} disabled={savingStatus}>
+            <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="on_hold">On Hold</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const url = `${window.location.origin}/apply/${requisition._id}`;
+            navigator.clipboard.writeText(url);
+            toast.success('Public candidate application link copied to clipboard!');
+          }}
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
+        >
+          <Link2 className="h-3.5 w-3.5 text-[#d21e2b]" />
+          Copy Candidate Apply Link
+        </Button>
       </div>
 
       {/* ---------- candidates ---------- */}

@@ -136,6 +136,7 @@ const apply = asyncHandler(async (req, res) => {
     candidateId: candidate._id,
     requisitionId,
     currentStageKey: firstStageKey,
+    source: 'manual',
     stageProgress: enabledStages.map((s) => ({ stageKey: s.key, status: 'pending' })),
   });
 

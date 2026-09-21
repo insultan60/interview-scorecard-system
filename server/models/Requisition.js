@@ -20,8 +20,24 @@ const requisitionStageSchema = new mongoose.Schema({
   passThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
 }, { _id: false });
 
+const questionnaireItemSchema = new mongoose.Schema({
+  question: { type: String, required: true },
+  idealAnswer: { type: String, default: '' },
+}, { _id: false });
+
+const screeningCriteriaItemSchema = new mongoose.Schema({
+  criteria: { type: String, required: true },
+  requirement: { type: String, default: '' },
+}, { _id: false });
+
 const requisitionSchema = new mongoose.Schema({
   title: { type: String, required: true, index: true },   // e.g., "Sales Executive / Closer"
+  employmentType: {
+    type: String,
+    enum: ['full_time', 'part_time', 'contract', 'internship', 'temporary'],
+    default: 'full_time',
+  },
+  location: { type: String, default: 'Remote' },
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
   status: {
     type: String,
@@ -36,6 +52,10 @@ const requisitionSchema = new mongoose.Schema({
   scorecardId: { type: mongoose.Schema.Types.ObjectId, ref: 'Scorecard' },
   hireThreshold: { type: Number, default: 3.5, min: 1, max: 5 },
   maybeThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
+  initialScreeningCriteria: [screeningCriteriaItemSchema],
+  questionnaire: [questionnaireItemSchema],
+  applicationDeadline: { type: Date, default: null },
+  aiScreeningEnabled: { type: Boolean, default: true },
   closedAt: Date,                                          // Drives retention purge
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
