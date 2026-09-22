@@ -28,8 +28,9 @@ import {
 } from '@/components/ui/alert-dialog';
 
 const PAGE_SIZE = 10;
+const REQUIRED_STAGE_KEYS = new Set(['resume_screen', 'hr_screen']);
 
-/** Starting point for a brand-new template — every known stage type, all disabled by default. */
+/** Starting point for a new template; Résumé Screen and HR Screen are mandatory. */
 const STAGE_TYPE_DEFAULTS = [
   { key: 'resume_screen', label: 'Résumé Screen', stageType: 'resume_screen', inputType: 'artifact' },
   { key: 'hr_screen', label: 'HR Screen', stageType: 'hr_screen', inputType: 'transcript' },
@@ -42,7 +43,13 @@ const STAGE_TYPE_DEFAULTS = [
   { key: 'reference', label: 'Reference Check', stageType: 'reference', inputType: 'pass_fail' },
   { key: 'background', label: 'Background Check', stageType: 'background', inputType: 'pass_fail' },
   // { key: 'offer', label: 'Offer', stageType: 'offer', inputType: 'status_only' },
-].map((s, i) => ({ ...s, enabled: false, order: i + 1, weight: 0, passThreshold: 3.0 }));
+].map((s, i) => ({
+  ...s,
+  enabled: REQUIRED_STAGE_KEYS.has(s.key),
+  order: i + 1,
+  weight: 0,
+  passThreshold: 3.0,
+}));
 
 const INPUT_TYPE_LABEL = {
   transcript: 'Transcript',
@@ -54,6 +61,19 @@ const INPUT_TYPE_LABEL = {
 
 function reindexOrder(stages) {
   return stages.map((s, i) => ({ ...s, order: i + 1 }));
+}
+
+/** Keeps the required screening stages fixed at the start of every pipeline. */
+function pinRequiredStages(stages) {
+  const requiredStages = ['resume_screen', 'hr_screen']
+    .map((key) => stages.find((stage) => stage.key === key))
+    .filter(Boolean)
+    .map((stage) => ({ ...stage, enabled: true }));
+  const optionalStages = stages
+    .filter((stage) => !REQUIRED_STAGE_KEYS.has(stage.key))
+    .sort((a, b) => a.order - b.order);
+
+  return reindexOrder([...requiredStages, ...optionalStages]);
 }
 
 /**
@@ -75,7 +95,7 @@ function equalizeScoredWeights(stages) {
 
 /** One template's editable card: toggle/reorder stages, edit weights & gates, save/default/delete. */
 function TemplateCard({ template, onChanged, onDeleted }) {
-  const [stages, setStages] = useState(() => [...template.stages].sort((a, b) => a.order - b.order));
+  const [stages, setStages] = useState(() => pinRequiredStages(template.stages));
   const [autoWeights, setAutoWeights] = useState(template.autoWeights !== false);
   const [saving, setSaving] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -83,6 +103,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
   const [deleting, setDeleting] = useState(false);
 
   function toggleEnabled(key) {
+    if (REQUIRED_STAGE_KEYS.has(key)) return;
     setStages((prev) => {
       const next = prev.map((s) => (s.key === key ? { ...s, enabled: !s.enabled } : s));
       // In manual mode the admin owns the numbers — toggling a stage must not
@@ -115,7 +136,8 @@ function TemplateCard({ template, onChanged, onDeleted }) {
     setStages((prev) => {
       const next = [...prev];
       const swapWith = index + direction;
-      if (swapWith < 0 || swapWith >= next.length) return prev;
+      // Resume Screen and HR Screen are permanently the first two stages.
+      if (index < 2 || swapWith < 2 || swapWith >= next.length) return prev;
       [next[index], next[swapWith]] = [next[swapWith], next[index]];
       return reindexOrder(next);
     });
@@ -130,7 +152,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
       // `stages` state is seeded once and the card never remounts (stable key),
       // so without syncing it back the inputs would keep showing stale numbers
       // until a full page reload.
-      setStages([...res.data.template.stages].sort((a, b) => a.order - b.order));
+      setStages(pinRequiredStages(res.data.template.stages));
       setAutoWeights(res.data.template.autoWeights !== false);
       const scored = res.data.template.stages.filter(
         (s) => s.enabled && s.inputType !== 'pass_fail' && s.inputType !== 'status_only'
@@ -242,13 +264,13 @@ function TemplateCard({ template, onChanged, onDeleted }) {
                     <TableCell className="py-2">
                       <div className="flex flex-col">
                         <button
-                          type="button" onClick={() => moveStage(index, -1)} disabled={index === 0}
+                          type="button" onClick={() => moveStage(index, -1)} disabled={index <= 2}
                           className="text-muted-foreground hover:text-foreground disabled:opacity-20"
                         >
                           <ChevronUp className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          type="button" onClick={() => moveStage(index, 1)} disabled={index === stages.length - 1}
+                          type="button" onClick={() => moveStage(index, 1)} disabled={index < 2 || index === stages.length - 1}
                           className="text-muted-foreground hover:text-foreground disabled:opacity-20"
                         >
                           <ChevronDown className="h-3.5 w-3.5" />
@@ -256,11 +278,19 @@ function TemplateCard({ template, onChanged, onDeleted }) {
                       </div>
                     </TableCell>
                     <TableCell className="py-2">
-                      <Checkbox
-                        checked={s.enabled}
-                        onCheckedChange={() => toggleEnabled(s.key)}
-                        aria-label={`Enable ${s.label}`}
-                      />
+                      <span
+                        className="inline-flex"
+                        title={REQUIRED_STAGE_KEYS.has(s.key)
+                          ? 'Résumé Screen and HR Screen are required and cannot be disabled.'
+                          : undefined}
+                      >
+                        <Checkbox
+                          checked={s.enabled}
+                          onCheckedChange={() => toggleEnabled(s.key)}
+                          disabled={REQUIRED_STAGE_KEYS.has(s.key)}
+                          aria-label={`Enable ${s.label}`}
+                        />
+                      </span>
                     </TableCell>
                     <TableCell className={`py-2 text-sm ${s.enabled ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
                       {s.label}
@@ -403,7 +433,7 @@ export default function Pipelines() {
     setCreating(true);
     try {
       await api.post('/pipelines', { name: newName, description: newDescription, stages: STAGE_TYPE_DEFAULTS });
-      toast.success('Template created — open it to enable stages.');
+      toast.success('Template created with Résumé Screen and HR Screen enabled.');
       setNewName('');
       setNewDescription('');
       setCreateOpen(false);

@@ -103,6 +103,15 @@ export default function CandidateApply() {
       toast.error('Please upload your CV / Resume file (PDF).');
       return;
     }
+    const isPdf = resumeFile.type === 'application/pdf' || resumeFile.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      toast.error('Please upload your CV / Resume as a PDF file.');
+      return;
+    }
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      toast.error('Your CV / Resume must be 5 MB or smaller.');
+      return;
+    }
 
     setSubmitting(true);
     console.log('[CandidateApply] Submitting application for requisition:', id, { name, email, phone });
@@ -365,16 +374,15 @@ export default function CandidateApply() {
                   <div className="rounded-lg border-2 border-dashed border-slate-300 p-6 text-center hover:border-[#d21e2b]/50 transition-colors bg-slate-50/50">
                     <Upload className="mx-auto h-8 w-8 text-slate-400 mb-2" />
                     <Label htmlFor="resume-file" className="cursor-pointer text-sm font-medium text-[#d21e2b] hover:underline">
-                      Upload CV / Resume (PDF)
+                      Upload CV / Resume (PDF, max 5 MB)
                     </Label>
-                    <p className="text-xs text-slate-500 mt-1">PDF or Word Document up to 10MB</p>
+                    <p className="text-xs text-slate-500 mt-1">PDF only, up to 5 MB</p>
                     <input
                       id="resume-file"
                       type="file"
-                      accept=".pdf,.docx,.doc"
+                      accept="application/pdf,.pdf"
                       onChange={(e) => setResumeFile(e.target.files[0] || null)}
                       className="hidden"
-                      required
                     />
                     {resumeFile && (
                       <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-slate-800 border shadow-sm">

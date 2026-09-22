@@ -79,6 +79,18 @@ function normalizeInitialScreeningCriteria(raw) {
   return [];
 }
 
+/** A date-only application deadline remains open through the whole UTC day. */
+function hasApplicationDeadlinePassed(deadline) {
+  if (!deadline) return false;
+  const date = new Date(deadline);
+  const nextDayStartUtc = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + 1
+  );
+  return Date.now() >= nextDayStartUtc;
+}
+
 /**
  * POST /api/requisitions
  * Creates a requisition, snapshotting the chosen pipeline template's stages
@@ -568,15 +580,7 @@ const getPublic = asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
   }
 
-  const isExpired = requisition.applicationDeadline
-    ? new Date() >= new Date(
-      Date.UTC(
-        requisition.applicationDeadline.getUTCFullYear(),
-        requisition.applicationDeadline.getUTCMonth(),
-        requisition.applicationDeadline.getUTCDate() + 1
-      )
-    )
-    : false;
+  const isExpired = hasApplicationDeadlinePassed(requisition.applicationDeadline);
 
   logger.info(`[Requisition] Public GET success: Found open requisition "${requisition.title}" (${requisition._id})`);
 
@@ -602,7 +606,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'This position is closed or no longer accepting applications.' });
   }
 
-  if (requisition.applicationDeadline && new Date() > new Date(requisition.applicationDeadline)) {
+  if (hasApplicationDeadlinePassed(requisition.applicationDeadline)) {
     return res.status(400).json({ error: 'EXPIRED', message: 'The application deadline for this position has passed.' });
   }
 
@@ -626,6 +630,16 @@ const applyPublic = asyncHandler(async (req, res) => {
   });
   if (unansweredQuestions.length > 0) {
     throw new ValidationError(['questionnaireAnswers'], 'Please answer every screening question before submitting your application.');
+  }
+  if (!req.file) {
+    throw new ValidationError(['resume'], 'A PDF resume is required to apply.');
+  }
+  const isPdfResume = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
+  if (!isPdfResume) {
+    throw new ValidationError(['resume'], 'Resume must be a PDF file.');
+  }
+  if (req.file.size > 5 * 1024 * 1024) {
+    throw new ValidationError(['resume'], 'Resume must be 5 MB or smaller.');
   }
 
   const cleanEmail = email.toLowerCase().trim();
