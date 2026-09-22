@@ -17,6 +17,8 @@ const { computeStageAverage, isStagePassed, rankApplications } = require('../ser
 const { uploadBuffer } = require('../config/cloudinary');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key });
@@ -608,6 +610,9 @@ const applyPublic = asyncHandler(async (req, res) => {
   if (!name || !email) {
     throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
   }
+  if (!PHONE_NUMBER_PATTERN.test(String(phone || '').trim())) {
+    throw new ValidationError(['phone'], 'Phone number must contain exactly 11 digits.');
+  }
 
   const cleanEmail = email.toLowerCase().trim();
 
@@ -646,7 +651,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     candidate = await Candidate.create({
       name,
       email: cleanEmail,
-      phone: phone || '',
+      phone: phone.trim(),
       resumeFileUrl,
       resumeFilePublicId,
     });
@@ -655,7 +660,7 @@ const applyPublic = asyncHandler(async (req, res) => {
       candidate.resumeFileUrl = resumeFileUrl;
       candidate.resumeFilePublicId = resumeFilePublicId;
     }
-    if (phone) candidate.phone = phone;
+    candidate.phone = phone.trim();
     await candidate.save();
   }
 

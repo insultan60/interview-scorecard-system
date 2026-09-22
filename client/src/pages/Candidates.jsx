@@ -44,6 +44,7 @@ function initials(name) {
 }
 
 const EMPTY_FORM = { name: '', email: '', phone: '', notes: '' };
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
 export default function Candidates() {
   const navigate = useNavigate();
@@ -87,6 +88,10 @@ export default function Candidates() {
     e.preventDefault();
     if (!form.name.trim()) {
       toast.error('Name is required.');
+      return;
+    }
+    if (form.phone && !PHONE_NUMBER_PATTERN.test(form.phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
       return;
     }
     setCreating(true);
@@ -463,8 +468,12 @@ export default function Candidates() {
                 <Label htmlFor="cand-phone">Phone</Label>
                 <Input
                   id="cand-phone" value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="0300-1234567"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{11}"
+                  maxLength={11}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                  placeholder="03001234567"
                 />
               </div>
               <div className="space-y-1.5">

@@ -85,6 +85,11 @@ export default function CandidateApply() {
       return;
     }
 
+    if (!/^\d{11}$/.test(phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+
     if (!resumeFile) {
       toast.error('Please upload your CV / Resume file (PDF).');
       return;
@@ -300,14 +305,18 @@ export default function CandidateApply() {
 
                   <div className="space-y-1.5">
                     <Label htmlFor="candidate-phone" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-                      Phone Number
+                      Phone Number <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="candidate-phone"
                       type="tel"
-                      placeholder="+1 (555) 000-0000"
+                      inputMode="numeric"
+                      pattern="[0-9]{11}"
+                      maxLength={11}
+                      placeholder="03001234567"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                      required
                     />
                   </div>
                 </div>

@@ -7,6 +7,16 @@ const { ValidationError } = require('../utils/errors');
 const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+
+function validatePhone(phone, required = false) {
+  const value = String(phone || '').trim();
+  if ((required && !value) || (value && !PHONE_NUMBER_PATTERN.test(value))) {
+    throw new ValidationError(['phone'], 'Phone number must contain exactly 11 digits.');
+  }
+  return value;
+}
+
 /**
  * GET /api/candidates — list all candidates, each with the requisitions it is
  * already attached to.
@@ -53,6 +63,7 @@ const list = asyncHandler(async (req, res) => {
 const create = asyncHandler(async (req, res) => {
   const { name, email, phone, notes } = req.body;
   if (!name) throw new ValidationError(['name'], 'name is required.');
+  const validatedPhone = validatePhone(phone);
 
   let resumeFileUrl;
   let resumeFilePublicId;
@@ -65,7 +76,7 @@ const create = asyncHandler(async (req, res) => {
   const candidate = await Candidate.create({
     name,
     email,
-    phone,
+    phone: validatedPhone,
     notes,
     resumeFileUrl,
     resumeFilePublicId,
@@ -90,7 +101,7 @@ const update = asyncHandler(async (req, res) => {
   const { name, email, phone, notes } = req.body;
   if (name !== undefined) candidate.name = name;
   if (email !== undefined) candidate.email = email;
-  if (phone !== undefined) candidate.phone = phone;
+  if (phone !== undefined) candidate.phone = validatePhone(phone);
   if (notes !== undefined) candidate.notes = notes;
 
   if (req.file) {
