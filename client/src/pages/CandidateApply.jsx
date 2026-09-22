@@ -184,11 +184,6 @@ export default function CandidateApply() {
                 <Badge className="bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10">
                   Open Position
                 </Badge>
-                {requisition.aiScreeningEnabled && (
-                  <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-800 border-amber-200">
-                    <Sparkles className="h-3 w-3 text-amber-600" /> Fast-Track AI Screening
-                  </Badge>
-                )}
               </div>
               <CardTitle className="text-3xl font-bold text-slate-900 tracking-tight">
                 {requisition.title}
