@@ -20,8 +20,7 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login(email, password);
-      const redirectTo = location.state?.from?.pathname || '/';
-      navigate(redirectTo, { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed.');
     } finally {
