@@ -90,6 +90,15 @@ export default function CandidateApply() {
       return;
     }
 
+    const unansweredQuestionIndex = (requisition?.questionnaire || []).findIndex((question) => {
+      const questionText = typeof question === 'string' ? question : question.question;
+      return !answers[questionText]?.trim();
+    });
+    if (unansweredQuestionIndex !== -1) {
+      toast.error(`Please answer screening question ${unansweredQuestionIndex + 1}.`);
+      return;
+    }
+
     if (!resumeFile) {
       toast.error('Please upload your CV / Resume file (PDF).');
       return;
@@ -331,14 +340,16 @@ export default function CandidateApply() {
                       const qText = typeof q === 'string' ? q : q.question;
                       return (
                         <div key={idx} className="space-y-1.5">
-                          <Label className="text-sm font-medium text-slate-800">
-                            {idx + 1}. {qText}
+                          <Label htmlFor={`question-${idx}`} className="text-sm font-medium text-slate-800">
+                            {idx + 1}. {qText} <span className="text-red-500">*</span>
                           </Label>
                           <Textarea
+                            id={`question-${idx}`}
                             placeholder="Your answer..."
                             rows={3}
                             value={answers[qText] || ''}
                             onChange={(e) => handleAnswerChange(qText, e.target.value)}
+                            required
                           />
                         </div>
                       );

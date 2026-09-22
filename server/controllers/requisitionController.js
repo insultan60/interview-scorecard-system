@@ -614,6 +614,20 @@ const applyPublic = asyncHandler(async (req, res) => {
     throw new ValidationError(['phone'], 'Phone number must contain exactly 11 digits.');
   }
 
+  let parsedQAnswers = {};
+  if (typeof questionnaireAnswers === 'string') {
+    try { parsedQAnswers = JSON.parse(questionnaireAnswers); } catch (e) { parsedQAnswers = {}; }
+  } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
+    parsedQAnswers = questionnaireAnswers;
+  }
+  const unansweredQuestions = (requisition.questionnaire || []).filter((question) => {
+    const questionText = typeof question === 'string' ? question : question.question;
+    return !String(parsedQAnswers[questionText] || '').trim();
+  });
+  if (unansweredQuestions.length > 0) {
+    throw new ValidationError(['questionnaireAnswers'], 'Please answer every screening question before submitting your application.');
+  }
+
   const cleanEmail = email.toLowerCase().trim();
 
   // 1. Check if candidate already exists AND has an application for this requisition BEFORE uploading to Cloudinary
@@ -689,13 +703,6 @@ const applyPublic = asyncHandler(async (req, res) => {
     stageAverage: null,
     passed: null,
   }));
-
-  let parsedQAnswers = {};
-  if (typeof questionnaireAnswers === 'string') {
-    try { parsedQAnswers = JSON.parse(questionnaireAnswers); } catch (e) { parsedQAnswers = {}; }
-  } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
-    parsedQAnswers = questionnaireAnswers;
-  }
 
   let application = await Application.create({
     candidateId: candidate._id,
