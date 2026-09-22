@@ -10,6 +10,7 @@ const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
+const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { generateScorecard } = require('../services/questionGenerator');
 const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
@@ -232,6 +233,19 @@ const update = asyncHandler(async (req, res) => {
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
+  const hasNonStatusChanges = [
+    title, employmentType, location, jobDescription, hireThreshold, maybeThreshold,
+    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+  ].some((value) => value !== undefined);
+  if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
+    const error = new ValidationError(['status'], 'This requisition is closed and read-only. Reopen it before making changes.');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (status !== undefined && !['open', 'on_hold', 'closed'].includes(status)) {
+    throw new ValidationError(['status'], 'status must be open, on_hold, or closed.');
+  }
+
   if (title !== undefined) requisition.title = title;
   if (employmentType !== undefined) requisition.employmentType = employmentType;
   if (location !== undefined) requisition.location = location;
@@ -247,9 +261,13 @@ const update = asyncHandler(async (req, res) => {
   if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
   if (aiScreeningEnabled !== undefined) requisition.aiScreeningEnabled = Boolean(aiScreeningEnabled);
 
+  let statusChange = null;
   if (status !== undefined && status !== requisition.status) {
+    const oldStatus = requisition.status;
     requisition.status = status;
     if (status === 'closed') requisition.closedAt = new Date();
+    if (status !== 'closed') requisition.closedAt = undefined;
+    statusChange = { oldStatus, newStatus: status };
   }
 
   if (weights && typeof weights === 'object') {
@@ -275,6 +293,14 @@ const update = asyncHandler(async (req, res) => {
   }
 
   await requisition.save();
+  if (statusChange) {
+    await AuditLog.create({
+      action: 'requisition_status_change', userId: req.user._id, requisitionId: requisition._id,
+      targetType: 'requisition', targetId: requisition._id.toString(),
+      oldValue: statusChange.oldStatus, newValue: statusChange.newStatus,
+      reason: `Requisition status changed from ${statusChange.oldStatus} to ${statusChange.newStatus}.`,
+    });
+  }
   logger.info(`[Requisition] Updated ${requisition._id} by user=${req.user._id}`);
   res.json({ requisition });
 });
@@ -286,8 +312,10 @@ const update = asyncHandler(async (req, res) => {
  * historical records the system is designed to never silently lose.
  */
 const remove = asyncHandler(async (req, res) => {
-  const requisition = await Requisition.findByIdAndDelete(req.params.id);
+  const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'delete this requisition');
+  await requisition.deleteOne();
   logger.info(`[Requisition] Deleted ${requisition._id} by user=${req.user._id}`);
   res.json({ message: 'Requisition deleted.' });
 });
@@ -303,6 +331,7 @@ const remove = asyncHandler(async (req, res) => {
 const generateScorecardHandler = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'generate a scorecard');
 
   const generated = await generateScorecard(requisition);
   generated.stages.forEach((stage) => {
@@ -337,6 +366,7 @@ const generateScorecardHandler = asyncHandler(async (req, res) => {
 const cloneScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'edit the scorecard');
 
   const { sourceRequisitionId } = req.body;
   if (!sourceRequisitionId) throw new ValidationError(['sourceRequisitionId'], 'sourceRequisitionId is required.');
@@ -377,6 +407,7 @@ const cloneScorecard = asyncHandler(async (req, res) => {
 const updateScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'edit the scorecard');
   if (!requisition.scorecardId) {
     throw new ValidationError(['scorecardId'], 'This requisition has no scorecard yet — generate one first.');
   }

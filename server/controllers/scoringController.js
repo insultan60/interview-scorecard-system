@@ -6,6 +6,7 @@ const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
+const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
@@ -110,6 +111,11 @@ async function persistRanks(application) {
 }
 
 async function getOrCreateNextInterview(application, requisition, currentStageKey, userId) {
+  // A completed interview may be approved while a requisition is on hold, but
+  // that must not quietly start the next stage. Closed requisitions never
+  // reach this helper because their mutations are rejected at the endpoint.
+  if (requisition.status !== 'open') return null;
+
   const ordered = getEnabledStagesSorted(requisition);
   const currentIndex = ordered.findIndex((s) => s.key === currentStageKey);
   const next = ordered[currentIndex + 1];
@@ -150,6 +156,7 @@ const approve = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
 
   const requisitionForType = await Requisition.findById(interview.requisitionId);
+  assertRequisitionNotClosed(requisitionForType, 'approve interview scores');
   const stageConfigForType = requisitionForType.stages.find((s) => s.key === interview.stageKey);
 
   if (stageConfigForType.inputType === 'status_only') {
@@ -262,6 +269,8 @@ const approve = asyncHandler(async (req, res) => {
 const override = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  const requisition = await Requisition.findById(interview.requisitionId);
+  assertRequisitionNotClosed(requisition, 'override interview scores');
 
   const { overrides } = req.body;
   console.log('[DEBUG - BACKEND OVERRIDE RECEIVED]', { interviewId: req.params.id, overrides, existingScoresCount: interview.scores?.length || 0 });
@@ -325,6 +334,7 @@ const recompute = asyncHandler(async (req, res) => {
   if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
 
   const requisition = await Requisition.findById(application.requisitionId);
+  assertRequisitionNotClosed(requisition, 'recompute scores');
   const result = await recomputeAndPersist(
     application, requisition, req.user._id, 'Recomputed after score approval/override.'
   );
@@ -343,6 +353,8 @@ const recompute = asyncHandler(async (req, res) => {
 const decision = asyncHandler(async (req, res) => {
   const application = await Application.findById(req.params.id).populate('candidateId', 'name');
   if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  const requisition = await Requisition.findById(application.requisitionId);
+  assertRequisitionNotClosed(requisition, 'record a final decision');
 
   const { decision: finalDecision, reason } = req.body;
   if (!FINAL_DECISIONS.includes(finalDecision)) {
@@ -362,7 +374,6 @@ const decision = asyncHandler(async (req, res) => {
   });
 
   try {
-    const requisition = await Requisition.findById(application.requisitionId);
     await slackNotifier.notifyFinalDecision({
       requisitionTitle: requisition.title,
       candidateName: application.candidateId?.name || 'Candidate',
@@ -395,6 +406,7 @@ const passFail = asyncHandler(async (req, res) => {
       message: 'Requisition not found.',
     });
   }
+  assertRequisitionNotClosed(requisition, 'record a pass or fail result');
 
   const stageConfig = requisition.stages.find(
     (s) => s.key === interview.stageKey
@@ -511,6 +523,7 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
   if (!requisition) {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
   }
+  assertRequisitionOpen(requisition, 'advance a candidate from initial screening');
 
   const { passed, score, reason } = req.body;
   if (typeof passed !== 'boolean') {

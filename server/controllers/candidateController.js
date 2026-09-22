@@ -4,6 +4,7 @@ const Requisition = require('../models/Requisition');
 const logger = require('../utils/logger');
 const { asyncHandler } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
+const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 
 /**
@@ -119,6 +120,7 @@ const apply = asyncHandler(async (req, res) => {
 
   const requisition = await Requisition.findById(requisitionId);
   if (!requisition) throw new ValidationError(['requisitionId'], 'No requisition found with that id.');
+  assertRequisitionOpen(requisition, 'attach a candidate');
 
   const existing = await Application.findOne({ candidateId: candidate._id, requisitionId });
   if (existing) {
