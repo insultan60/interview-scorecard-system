@@ -41,6 +41,7 @@ export default function CandidateApply() {
   const [phone, setPhone] = useState('');
   const [answers, setAnswers] = useState({});
   const [resumeFile, setResumeFile] = useState(null);
+  const [formPart, setFormPart] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -76,6 +77,33 @@ export default function CandidateApply() {
     setPhone('');
     setAnswers({});
     setResumeFile(null);
+    setFormPart(1);
+  }
+
+  function handlePersonalContinue(e) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) {
+      toast.error('Name and Email are required.');
+      return;
+    }
+    if (!/^\d{11}$/.test(phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+    if (!resumeFile) {
+      toast.error('Please upload your CV / Resume file (PDF).');
+      return;
+    }
+    const isPdf = resumeFile.type === 'application/pdf' || resumeFile.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      toast.error('Please upload your CV / Resume as a PDF file.');
+      return;
+    }
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      toast.error('Your CV / Resume must be 5 MB or smaller.');
+      return;
+    }
+    setFormPart(2);
   }
 
   async function handleSubmit(e) {
@@ -255,7 +283,7 @@ export default function CandidateApply() {
               ) : (
                 <div className="pt-4 flex justify-end">
                   <Button
-                    onClick={() => setStep('form')}
+                    onClick={() => { setFormPart(1); setStep('form'); }}
                     className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6 py-2.5 text-base font-medium shadow-sm gap-2"
                   >
                     Apply for this Position <ArrowRight className="h-4 w-4" />
@@ -275,19 +303,19 @@ export default function CandidateApply() {
                     Application Form
                   </CardTitle>
                   <CardDescription className="text-sm">
-                    Position: <span className="font-medium text-slate-800">{requisition.title}</span>
+                    Step {formPart} of 2 · Position: <span className="font-medium text-slate-800">{requisition.title}</span>
                   </CardDescription>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setStep('jd')} className="text-slate-500">
+                <Button variant="ghost" size="sm" onClick={() => { setFormPart(1); setStep('jd'); }} className="text-slate-500">
                   Back to JD
                 </Button>
               </div>
             </CardHeader>
 
             <CardContent className="pt-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={formPart === 1 ? handlePersonalContinue : handleSubmit} className="space-y-6">
                 {/* Contact Information */}
-                <div className="space-y-4">
+                {formPart === 1 && <div className="space-y-4">
                   <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                     Personal Information
                   </h3>
@@ -337,10 +365,10 @@ export default function CandidateApply() {
                       required
                     />
                   </div>
-                </div>
+                </div>}
 
                 {/* Questionnaire Questions */}
-                {requisition.questionnaire && requisition.questionnaire.length > 0 && (
+                {formPart === 2 && requisition.questionnaire && requisition.questionnaire.length > 0 && (
                   <div className="space-y-4 pt-2">
                     <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                       Application Questionnaire
@@ -366,8 +394,7 @@ export default function CandidateApply() {
                   </div>
                 )}
 
-                {/* Resume Upload */}
-                <div className="space-y-2 pt-2">
+                {formPart === 1 && <div className="space-y-2 pt-2">
                   <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                     Resume / CV Attachment <span className="text-red-500">*</span>
                   </h3>
@@ -391,18 +418,20 @@ export default function CandidateApply() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div>}
 
                 <div className="pt-4 flex justify-end gap-3">
-                  <Button type="button" variant="outline" onClick={() => setStep('jd')}>
-                    Cancel
-                  </Button>
+                  {formPart === 1 ? (
+                    <Button type="button" variant="outline" onClick={() => { setFormPart(1); setStep('jd'); }}>Cancel</Button>
+                  ) : (
+                    <Button type="button" variant="outline" onClick={() => setFormPart(1)}>Back</Button>
+                  )}
                   <Button
                     type="submit"
                     disabled={submitting}
                     className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6"
                   >
-                    {submitting ? 'Submitting Application...' : 'Submit Application'}
+                    {formPart === 1 ? 'Continue' : (submitting ? 'Submitting Application...' : 'Submit Application')}
                   </Button>
                 </div>
               </form>

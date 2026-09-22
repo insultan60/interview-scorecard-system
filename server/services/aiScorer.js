@@ -40,29 +40,11 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
 
   console.log("Is it manual?", isManual);
 
-  // Apply requisition criteria & questionnaire context ONLY to resume_screen stage
+  // Public applications are evaluated as two distinct stages: the resume stage
+  // uses CV + role criteria, while HR uses only the questionnaire responses.
   if (stageType === 'resume_screen') {
-    contextHeader = isManual ? 'CANDIDATE RESUME TEXT:' : 'CANDIDATE RESUME & QUESTIONNAIRE TEXT:';
+    contextHeader = 'CANDIDATE RESUME TEXT:';
     if (requisition) {
-      let qText = '';
-      if (!isManual && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0) {
-        let qAnswersMap = {};
-        const rawAnswers = application?.questionnaireAnswers;
-        if (typeof rawAnswers === 'string') {
-          try { qAnswersMap = JSON.parse(rawAnswers); } catch (e) { qAnswersMap = {}; }
-        } else if (typeof rawAnswers === 'object' && rawAnswers !== null) {
-          qAnswersMap = rawAnswers;
-        }
-
-        qText = requisition.questionnaire.map((q, idx) => {
-          const qQuestion = typeof q === 'string' ? q : q.question;
-          const ideal = typeof q === 'object' && q.idealAnswer ? q.idealAnswer : '';
-          const candidateAns = qAnswersMap[qQuestion] || qAnswersMap[idx] || qAnswersMap[String(idx)] || '(No response provided)';
-          const idealStr = ideal ? ` | Ideal (5-star): ${ideal}` : '';
-          return `- Question ${idx + 1}: "${qQuestion}"${idealStr}\n  Candidate Answer: ${candidateAns}`;
-        }).join('\n\n');
-      }
-
       let criteriaText = '';
       if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
         criteriaText = requisition.initialScreeningCriteria.map((c) => {
@@ -73,8 +55,11 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
         criteriaText = requisition.initialScreeningCriteria;
       }
 
-      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${criteriaText ? `INITIAL SCREENING CRITERIA:\n${criteriaText}\n\n` : ''}${qText ? `APPLICATION QUESTIONNAIRE BENCHMARKS & CANDIDATE RESPONSES:\n${qText}\n\n` : ''}---\n`;
+      requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${criteriaText ? `INITIAL SCREENING CRITERIA:\n${criteriaText}\n\n` : ''}---\n`;
     }
+  } else if (stageType === 'hr_screen' && !isManual && requisition) {
+    contextHeader = 'APPLICATION QUESTIONNAIRE RESPONSES:';
+    requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\nEvaluate each answer only against its corresponding scorecard question and ideal-answer benchmark. Do not use the candidate CV for this stage.\n\n---\n`;
   }
 
   return `${requisitionContext}${contextHeader}\n${transcriptText}\n\n---\nRUBRIC (score every attribute below):\n\n${rubric}`;
@@ -116,7 +101,7 @@ async function scoreInterview({ interview, stageType, attributes, requisition, a
   const transcriptText = (interview.transcriptText || '').trim();
   const wordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
 
-  if (wordCount < MIN_TRANSCRIPT_WORDS) {
+  if (wordCount < MIN_TRANSCRIPT_WORDS && stageType !== 'hr_screen') {
     interview.transcriptStatus = 'failed';
     await interview.save();
     const message = `Transcript is empty or too short to score (${wordCount} words, need at least ${MIN_TRANSCRIPT_WORDS}). Please re-upload a complete transcript.`;
