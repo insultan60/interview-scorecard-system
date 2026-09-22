@@ -139,11 +139,11 @@ export default function Candidates() {
     }
   }
 
-  function copyEmail(candidate) {
-    if (!candidate.email) return;
-    navigator.clipboard.writeText(candidate.email)
-      .then(() => toast.success('Email copied.'))
-      .catch(() => toast.error('Could not copy the email.'));
+  function copyContact(value, label) {
+    if (!value) return;
+    navigator.clipboard.writeText(value)
+      .then(() => toast.success(`${label} copied.`))
+      .catch(() => toast.error(`Could not copy the ${label.toLowerCase()}.`));
   }
 
   const query = search.trim().toLowerCase();
@@ -263,13 +263,33 @@ export default function Candidates() {
                         </Avatar>
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-foreground">{c.name}</div>
-                          <div className="truncate text-xs text-muted-foreground">{c.email || '—'}</div>
+                          {c.email ? (
+                            <button
+                              type="button"
+                              onClick={() => copyContact(c.email, 'Email')}
+                              className="block max-w-full truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
+                              title="Copy email"
+                            >
+                              {c.email}
+                            </button>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">—</div>
+                          )}
                         </div>
                       </div>
                     </TableCell>
 
                     <TableCell className="hidden whitespace-nowrap text-sm text-muted-foreground md:table-cell">
-                      {c.phone || '—'}
+                      {c.phone ? (
+                        <button
+                          type="button"
+                          onClick={() => copyContact(c.phone, 'Phone number')}
+                          className="hover:text-foreground hover:underline"
+                          title="Copy phone number"
+                        >
+                          {c.phone}
+                        </button>
+                      ) : '—'}
                     </TableCell>
 
                     <TableCell>
@@ -321,9 +341,13 @@ export default function Candidates() {
                               <FileText />
                               {c.resumeFileUrl ? 'View résumé' : 'No résumé'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem disabled={!c.email} onClick={() => copyEmail(c)}>
+                            <DropdownMenuItem disabled={!c.email} onClick={() => copyContact(c.email, 'Email')}>
                               <Copy />
                               Copy email
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={!c.phone} onClick={() => copyContact(c.phone, 'Phone number')}>
+                              <Copy />
+                              Copy phone
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
