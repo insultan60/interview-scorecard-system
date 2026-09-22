@@ -10,6 +10,8 @@ const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_BULK_IMPORT_ROWS = 500;
 
 function validatePhone(phone, required = false) {
   const value = String(phone || '').trim();
@@ -86,6 +88,63 @@ const create = asyncHandler(async (req, res) => {
 
   logger.info(`[Candidate] Created "${name}" (${candidate._id})${req.file ? ' with résumé' : ''}.`);
   res.status(201).json({ candidate });
+});
+
+/**
+ * POST /api/candidates/bulk
+ * Creates candidates parsed from a CSV preview. Each row is validated again
+ * server-side so browser validation cannot create malformed or duplicate data.
+ */
+const bulkCreate = asyncHandler(async (req, res) => {
+  const rows = req.body?.candidates;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new ValidationError(['candidates'], 'At least one candidate row is required.');
+  }
+  if (rows.length > MAX_BULK_IMPORT_ROWS) {
+    throw new ValidationError(['candidates'], `A maximum of ${MAX_BULK_IMPORT_ROWS} candidates can be imported at once.`);
+  }
+
+  const existingCandidates = await Candidate.find({ email: { $exists: true, $ne: '' } }).select('email').lean();
+  const existingEmails = new Set(existingCandidates
+    .map((candidate) => String(candidate.email || '').trim().toLowerCase())
+    .filter(Boolean));
+  const fileEmails = new Set();
+  const candidatesToCreate = [];
+  const skipped = [];
+
+  rows.forEach((row, index) => {
+    const rowNumber = Number(row?.rowNumber) || index + 2;
+    const name = String(row?.name || '').trim();
+    const email = String(row?.email || '').trim();
+    const phone = String(row?.phone || '').trim();
+    const notes = String(row?.notes || '').trim();
+    const errors = [];
+
+    if (!name) errors.push('Name is required.');
+    if (email && !EMAIL_PATTERN.test(email)) errors.push('Email address is invalid.');
+    if (phone && !PHONE_NUMBER_PATTERN.test(phone)) errors.push('Phone number must contain exactly 11 digits.');
+
+    const emailKey = email.toLowerCase();
+    if (emailKey && existingEmails.has(emailKey)) errors.push('A candidate with this email already exists.');
+    if (emailKey && fileEmails.has(emailKey)) errors.push('This email appears more than once in the import file.');
+
+    if (errors.length > 0) {
+      skipped.push({ rowNumber, errors });
+      return;
+    }
+
+    if (emailKey) fileEmails.add(emailKey);
+    candidatesToCreate.push({ name, email, phone, notes });
+  });
+
+  const created = candidatesToCreate.length > 0 ? await Candidate.insertMany(candidatesToCreate) : [];
+  logger.info(`[Candidate] Bulk import: created=${created.length}, skipped=${skipped.length}.`);
+  res.status(201).json({
+    createdCount: created.length,
+    skippedCount: skipped.length,
+    skipped,
+    candidates: created,
+  });
 });
 
 /** GET /api/candidates/:id */
@@ -193,4 +252,4 @@ const remove = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, getOne, update, apply, remove };
+module.exports = { list, create, bulkCreate, getOne, update, apply, remove };

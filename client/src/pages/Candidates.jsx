@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2,
+  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -49,6 +49,40 @@ function initials(name) {
 
 const EMPTY_FORM = { name: '', email: '', phone: '', notes: '' };
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"') {
+      if (inQuotes && text[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(value);
+      value = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && text[index + 1] === '\n') index += 1;
+      row.push(value);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+  row.push(value);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  return rows;
+}
 
 export default function Candidates() {
   const navigate = useNavigate();
@@ -62,6 +96,9 @@ export default function Candidates() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [resumeFile, setResumeFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkRows, setBulkRows] = useState([]);
+  const [importing, setImporting] = useState(false);
 
   const [attachFor, setAttachFor] = useState(null); // the candidate being attached
   const [attachTarget, setAttachTarget] = useState('');
@@ -153,6 +190,83 @@ export default function Candidates() {
     }
   }
 
+  function downloadBulkTemplate() {
+    const blob = new Blob(['name,email,phone,notes\nJane Cooper,jane@example.com,03001234567,Referral\n'], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'candidate-import-template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleBulkFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a CSV file.');
+      return;
+    }
+    try {
+      const parsed = parseCsv(await file.text());
+      if (parsed.length < 2) {
+        toast.error('The CSV must include a header row and at least one candidate.');
+        return;
+      }
+      const headers = parsed[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
+      const requiredHeaders = ['name', 'email', 'phone', 'notes'];
+      const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+      if (missingHeaders.length > 0) {
+        toast.error(`Missing CSV column${missingHeaders.length > 1 ? 's' : ''}: ${missingHeaders.join(', ')}.`);
+        return;
+      }
+
+      const existingEmails = new Set(candidates.map((candidate) => candidate.email?.trim().toLowerCase()).filter(Boolean));
+      const fileEmails = new Set();
+      const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
+      const rows = parsed.slice(1).map((cells, index) => {
+        const candidate = {
+          rowNumber: index + 2,
+          name: (cells[headerIndex.name] || '').trim(),
+          email: (cells[headerIndex.email] || '').trim(),
+          phone: (cells[headerIndex.phone] || '').trim(),
+          notes: (cells[headerIndex.notes] || '').trim(),
+        };
+        const errors = [];
+        if (!candidate.name) errors.push('Name is required');
+        if (candidate.email && !EMAIL_PATTERN.test(candidate.email)) errors.push('Invalid email');
+        if (candidate.phone && !PHONE_NUMBER_PATTERN.test(candidate.phone)) errors.push('Phone must be exactly 11 digits');
+        const emailKey = candidate.email.toLowerCase();
+        if (emailKey && existingEmails.has(emailKey)) errors.push('Email already exists');
+        if (emailKey && fileEmails.has(emailKey)) errors.push('Duplicate email in file');
+        if (emailKey) fileEmails.add(emailKey);
+        return { ...candidate, errors };
+      });
+      setBulkRows(rows);
+    } catch (error) {
+      console.error('[Candidates] CSV parsing failed:', error);
+      toast.error('Could not read this CSV file.');
+    }
+  }
+
+  async function handleBulkImport() {
+    const validRows = bulkRows.filter((row) => row.errors.length === 0);
+    if (validRows.length === 0) {
+      toast.error('Fix the CSV errors before importing.');
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await api.post('/candidates/bulk', { candidates: validRows });
+      const { createdCount, skippedCount } = res.data;
+      toast.success(`${createdCount} candidate${createdCount === 1 ? '' : 's'} imported.${skippedCount ? ` ${skippedCount} skipped.` : ''}`);
+      setBulkRows([]);
+      setBulkImportOpen(false);
+      loadCandidates();
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function handleDelete() {
     if (!deleteFor) return;
     setDeleting(true);
@@ -225,10 +339,16 @@ export default function Candidates() {
             </p>
           </div>
         </div>
-        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
-          <Plus />
-          New Candidate
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
+            <Upload />
+            Import CSV
+          </Button>
+          <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            New Candidate
+          </Button>
+        </div>
       </div>
 
       {/* ---------- search ---------- */}
@@ -479,6 +599,85 @@ export default function Candidates() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ---------- bulk import dialog ---------- */}
+      <Dialog open={bulkImportOpen} onOpenChange={(open) => {
+        setBulkImportOpen(open);
+        if (!open) setBulkRows([]);
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import candidates from CSV</DialogTitle>
+            <DialogDescription>
+              Use the columns <code>name</code>, <code>email</code>, <code>phone</code>, and <code>notes</code>. Name is required; email and phone are optional, but must be valid when included.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => handleBulkFile(event.target.files?.[0])}
+              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+            />
+            <Button type="button" variant="link" className="px-0" onClick={downloadBulkTemplate}>
+              Download template
+            </Button>
+          </div>
+
+          {bulkRows.length > 0 && (() => {
+            const validCount = bulkRows.filter((row) => row.errors.length === 0).length;
+            const invalidCount = bulkRows.length - validCount;
+            return (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {validCount} ready to import{invalidCount ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention` : ''}
+                </p>
+                <div className="max-h-72 overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background">
+                      <TableRow>
+                        <TableHead>Row</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Notes</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bulkRows.map((row) => (
+                        <TableRow key={row.rowNumber} className={row.errors.length > 0 ? 'bg-red-50/60' : ''}>
+                          <TableCell>{row.rowNumber}</TableCell>
+                          <TableCell>{row.name || '—'}</TableCell>
+                          <TableCell>{row.email || '—'}</TableCell>
+                          <TableCell>{row.phone || '—'}</TableCell>
+                          <TableCell className="max-w-[10rem] truncate" title={row.notes}>{row.notes || '—'}</TableCell>
+                          <TableCell className={row.errors.length > 0 ? 'text-red-600' : 'text-green-700'}>
+                            {row.errors.length > 0 ? row.errors.join(', ') : 'Ready'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            );
+          })()}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBulkImportOpen(false)} disabled={importing}>Cancel</Button>
+            <Button
+              type="button"
+              onClick={handleBulkImport}
+              disabled={importing || bulkRows.filter((row) => row.errors.length === 0).length === 0}
+              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            >
+              {importing ? 'Importing…' : `Import ${bulkRows.filter((row) => row.errors.length === 0).length || ''} candidate${bulkRows.filter((row) => row.errors.length === 0).length === 1 ? '' : 's'}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ---------- create dialog ---------- */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
