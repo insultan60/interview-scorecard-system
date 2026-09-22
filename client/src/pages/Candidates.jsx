@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown,
+  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,6 +17,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -63,6 +67,8 @@ export default function Candidates() {
   const [attachTarget, setAttachTarget] = useState('');
   const [attaching, setAttaching] = useState(false);
   const [reqPickerOpen, setReqPickerOpen] = useState(false);
+  const [deleteFor, setDeleteFor] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [search, setSearch] = useState('');
   const [requisitionFilter, setRequisitionFilter] = useState('all');
@@ -144,6 +150,19 @@ export default function Candidates() {
       }
     } finally {
       setAttaching(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteFor) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/candidates/${deleteFor._id}`);
+      toast.success(`${deleteFor.name} and all related records were deleted.`);
+      setDeleteFor(null);
+      loadCandidates();
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -402,6 +421,10 @@ export default function Candidates() {
                               <Copy />
                               Copy phone
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDeleteFor(c)} className="text-red-600 focus:text-red-600">
+                              <Trash2 />
+                              Delete candidate
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -435,6 +458,27 @@ export default function Candidates() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!deleteFor} onOpenChange={(open) => !open && setDeleteFor(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteFor?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the candidate, all of their applications, interviews, scores, audit entries, and uploaded files. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => { event.preventDefault(); handleDelete(); }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {deleting ? 'Deleting…' : 'Delete candidate'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ---------- create dialog ---------- */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

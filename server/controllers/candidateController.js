@@ -1,5 +1,7 @@
 const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
+const Interview = require('../models/Interview');
+const AuditLog = require('../models/AuditLog');
 const Requisition = require('../models/Requisition');
 const logger = require('../utils/logger');
 const { asyncHandler } = require('../utils/helpers');
@@ -157,4 +159,38 @@ const apply = asyncHandler(async (req, res) => {
   res.status(201).json({ application });
 });
 
-module.exports = { list, create, getOne, update, apply };
+/**
+ * DELETE /api/candidates/:id
+ * Permanently removes the candidate and every record/evidence file owned by
+ * their applications. Cloudinary files are deleted first so a storage failure
+ * cannot leave an apparently-deleted candidate with personal files behind.
+ */
+const remove = asyncHandler(async (req, res) => {
+  const candidate = await Candidate.findById(req.params.id);
+  if (!candidate) return res.status(404).json({ error: 'NOT_FOUND', message: 'Candidate not found.' });
+
+  const applications = await Application.find({ candidateId: candidate._id }).select('_id').lean();
+  const applicationIds = applications.map((application) => application._id);
+  const interviews = await Interview.find({ applicationId: { $in: applicationIds } })
+    .select('artifactFilePublicId')
+    .lean();
+
+  const fileIds = [...new Set([
+    candidate.resumeFilePublicId,
+    ...interviews.map((interview) => interview.artifactFilePublicId),
+  ].filter(Boolean))];
+  await Promise.all(fileIds.map((publicId) => destroyFile(publicId)));
+
+  await AuditLog.deleteMany({ applicationId: { $in: applicationIds } });
+  const interviewResult = await Interview.deleteMany({ applicationId: { $in: applicationIds } });
+  const applicationResult = await Application.deleteMany({ _id: { $in: applicationIds } });
+  await candidate.deleteOne();
+
+  logger.info(`[Candidate] Permanently deleted ${candidate._id}: applications=${applicationResult.deletedCount}, interviews=${interviewResult.deletedCount}, cloudinaryFiles=${fileIds.length}.`);
+  res.json({
+    message: 'Candidate and all related records were deleted.',
+    deleted: { applications: applicationResult.deletedCount, interviews: interviewResult.deletedCount, cloudinaryFiles: fileIds.length },
+  });
+});
+
+module.exports = { list, create, getOne, update, apply, remove };
