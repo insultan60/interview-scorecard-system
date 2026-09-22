@@ -532,9 +532,6 @@ export default function Requisitions() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New requisition</DialogTitle>
-            <DialogDescription>
-              Claude reads the job description to draft stage questions and scoring criteria — the more detail, the better the scorecard.
-            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4 pt-2">
