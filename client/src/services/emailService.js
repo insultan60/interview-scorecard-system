@@ -131,3 +131,48 @@ export async function sendOfferEmailClient({ candidateEmail, candidateName, requ
     return { sent: false, reason: err?.text || err?.message || 'Failed to send offer email via browser EmailJS.' };
   }
 }
+
+/** Sends an application-received confirmation directly through EmailJS. */
+export async function sendApplicationConfirmationEmailClient({ candidateEmail, candidateName, requisitionTitle }) {
+  if (!isBrowserEmailJSConfigured()) {
+    return { sent: false, reason: 'Client EmailJS environment variables are not configured.' };
+  }
+  if (!candidateEmail) {
+    return { sent: false, reason: 'No candidate email address found.' };
+  }
+
+  const subject = `Application received — ${requisitionTitle}`;
+  const message = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    `Thank you for applying for the ${requisitionTitle} position at Red Star Technologies.`,
+    '',
+    'We have received your application and our hiring team will review it.',
+    '',
+    'Best regards,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  try {
+    await emailjs.send(
+      SERVICE_ID,
+      TEMPLATE_ID,
+      {
+        to_email: candidateEmail,
+        email_to: candidateEmail,
+        recipient: candidateEmail,
+        to_name: candidateName || 'Candidate',
+        candidate_name: candidateName || 'Candidate',
+        requisition_title: requisitionTitle,
+        subject,
+        message,
+        body: message,
+      },
+      PUBLIC_KEY
+    );
+    return { sent: true };
+  } catch (err) {
+    console.warn('[EmailJS Browser] Failed to send application confirmation:', err);
+    return { sent: false, reason: err?.text || err?.message || 'Failed to send application confirmation email.' };
+  }
+}

@@ -16,6 +16,7 @@ const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
 const { uploadBuffer } = require('../config/cloudinary');
 const { callClaude, getModelIds } = require('../services/claudeClient');
+const emailNotifier = require('../services/emailNotifier');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
@@ -939,7 +940,21 @@ const applyPublic = asyncHandler(async (req, res) => {
     logger.warn(`[ApplyPublic] Ranking error: ${rankErr.message}`);
   }
 
-  logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}`);
+  // Confirmation email is best-effort: a mail configuration/delivery failure
+  // must never undo an application that was already successfully submitted.
+  let confirmationEmail = { sent: false, reason: 'Not attempted.' };
+  try {
+    confirmationEmail = await emailNotifier.sendApplicationConfirmationEmail({
+      candidateEmail: candidate.email,
+      candidateName: candidate.name,
+      requisitionTitle: requisition.title,
+    });
+  } catch (emailErr) {
+    confirmationEmail = { sent: false, reason: 'Could not send confirmation email.' };
+    logger.warn(`[ApplyPublic] Confirmation email failed for application ${application._id}: ${emailErr.message}`);
+  }
+
+  logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}, confirmationEmailSent=${confirmationEmail.sent}`);
 
   res.status(201).json({
     success: true,
@@ -947,6 +962,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     aiScreeningEnabled: requisition.aiScreeningEnabled,
     score: aiScore,
     passed,
+    confirmationEmailSent: confirmationEmail.sent,
     application,
     interview: firstInterview,
   });

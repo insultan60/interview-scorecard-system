@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/hooks/useApi';
+import { sendApplicationConfirmationEmailClient } from '../services/emailService';
 import {
   Briefcase, Calendar, CheckCircle2, FileText, Upload, AlertCircle, Sparkles, ArrowRight, MapPin,
 } from 'lucide-react';
@@ -154,6 +155,19 @@ export default function CandidateApply() {
       const res = await api.post(`/requisitions/${id}/apply`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
+      // Use browser EmailJS when backend email delivery is unavailable. The
+      // application has already been saved, so a mail failure never blocks it.
+      if (!res.data.confirmationEmailSent) {
+        const emailResult = await sendApplicationConfirmationEmailClient({
+          candidateEmail: email.trim(),
+          candidateName: name.trim(),
+          requisitionTitle: requisition.title,
+        });
+        if (!emailResult.sent) {
+          console.warn('[CandidateApply] Application confirmation email was not sent:', emailResult.reason);
+        }
+      }
 
       console.log('[CandidateApply] Application submission success:', res.data);
       setResult(res.data);
