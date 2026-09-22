@@ -535,7 +535,15 @@ const getPublic = asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
   }
 
-  const isExpired = requisition.applicationDeadline ? new Date() > new Date(requisition.applicationDeadline) : false;
+  const isExpired = requisition.applicationDeadline
+    ? new Date() >= new Date(
+      Date.UTC(
+        requisition.applicationDeadline.getUTCFullYear(),
+        requisition.applicationDeadline.getUTCMonth(),
+        requisition.applicationDeadline.getUTCDate() + 1
+      )
+    )
+    : false;
 
   logger.info(`[Requisition] Public GET success: Found open requisition "${requisition.title}" (${requisition._id})`);
 

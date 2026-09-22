@@ -13,6 +13,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
+const formatDeadline = (date) => {
+  const d = new Date(date);
+
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(d);
+}
+
+
 export default function CandidateApply() {
   const { id } = useParams();
 
@@ -157,7 +169,7 @@ export default function CandidateApply() {
           {requisition.applicationDeadline && (
             <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3">
               <Calendar className="h-3.5 w-3.5" />
-              {isExpired ? 'Deadline Passed' : `Deadline: ${new Date(requisition.applicationDeadline).toLocaleDateString()}`}
+              {isExpired ? 'Deadline Passed' : `Deadline: ${formatDeadline(requisition.applicationDeadline)}`}
             </Badge>
           )}
         </div>
@@ -221,7 +233,7 @@ export default function CandidateApply() {
               {isExpired ? (
                 <div className="rounded-lg bg-red-50 p-4 border border-red-200 text-red-800 text-sm flex items-center gap-2">
                   <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                  Applications for this role closed on {new Date(requisition.applicationDeadline).toLocaleDateString()}.
+                  Applications for this role closed on {formatDeadline(requisition.applicationDeadline)}.
                 </div>
               ) : (
                 <div className="pt-4 flex justify-end">
