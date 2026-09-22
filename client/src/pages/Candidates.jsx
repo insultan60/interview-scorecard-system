@@ -21,6 +21,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
@@ -63,6 +64,8 @@ export default function Candidates() {
   const [reqPickerOpen, setReqPickerOpen] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [requisitionFilter, setRequisitionFilter] = useState('all');
+  const [dateSort, setDateSort] = useState('newest');
   const [page, setPage] = useState(1);
 
   async function loadCandidates() {
@@ -147,11 +150,32 @@ export default function Candidates() {
   }
 
   const query = search.trim().toLowerCase();
-  const filtered = useMemo(() => (
-    query
-      ? candidates.filter((c) => `${c.name || ''} ${c.email || ''} ${c.phone || ''}`.toLowerCase().includes(query))
-      : candidates
-  ), [candidates, query]);
+  const attachedRequisitions = useMemo(() => {
+    const unique = new Map();
+    candidates.forEach((candidate) => {
+      (candidate.applications || []).forEach((application) => {
+        if (application.requisitionId && application.title) {
+          unique.set(application.requisitionId, application.title);
+        }
+      });
+    });
+    return [...unique.entries()]
+      .map(([id, title]) => ({ id, title }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [candidates]);
+
+  const filtered = useMemo(() => candidates
+    .filter((candidate) => {
+      const matchesSearch = !query
+        || `${candidate.name || ''} ${candidate.email || ''} ${candidate.phone || ''}`.toLowerCase().includes(query);
+      const matchesRequisition = requisitionFilter === 'all'
+        || (candidate.applications || []).some((application) => application.requisitionId === requisitionFilter);
+      return matchesSearch && matchesRequisition;
+    })
+    .sort((a, b) => {
+      const difference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return dateSort === 'oldest' ? difference : -difference;
+    }), [candidates, query, requisitionFilter, dateSort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -185,7 +209,8 @@ export default function Candidates() {
 
       {/* ---------- search ---------- */}
       {(candidates.length > 0 || loading) && (
-        <div className="relative mt-5 w-full sm:max-w-sm">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -202,6 +227,29 @@ export default function Candidates() {
               <X className="h-4 w-4" />
             </button>
           )}
+          </div>
+
+          <Select value={requisitionFilter} onValueChange={(value) => { setRequisitionFilter(value); setPage(1); }}>
+            <SelectTrigger className="w-full sm:w-56">
+              <SelectValue placeholder="All requisitions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All requisitions</SelectItem>
+              {attachedRequisitions.map((requisition) => (
+                <SelectItem key={requisition.id} value={requisition.id}>{requisition.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={dateSort} onValueChange={(value) => { setDateSort(value); setPage(1); }}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue placeholder="Sort by date" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 

@@ -453,8 +453,8 @@ export default function RequisitionDetail() {
           <AlertDialogHeader>
             <AlertDialogTitle>Close this requisition?</AlertDialogTitle>
             <AlertDialogDescription>
-              This starts the data-retention countdown. Once the window passes, interview transcripts
-              and AI justifications are purged — numeric scores, dispositions and the audit log are kept.
+              New candidates will no longer be able to apply for this position using the public application link.
+              Existing candidates and their scores will remain available.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import redstarIcon from '../assets/redstar-icon.png';
 
 const formatDeadline = (date) => {
   const d = new Date(date);
@@ -161,10 +162,8 @@ export default function CandidateApply() {
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
         <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-[#d21e2b] text-white flex items-center justify-center font-bold text-lg">
-              R
-            </div>
-            <span className="font-semibold text-lg tracking-tight">Red Star Careers</span>
+            <img src={redstarIcon} alt="Red Star Technologies" className="h-9 w-9 object-contain" />
+            <span className="font-semibold text-lg tracking-tight">Red Star Technologies</span>
           </div>
           {requisition.applicationDeadline && (
             <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3">
