@@ -10,6 +10,7 @@ const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
 const slackNotifier = require('../services/slackNotifier');
@@ -321,6 +322,7 @@ const uploadArtifact = asyncHandler(async (req, res) => {
   await assertInterviewMutable(interview, 'upload an artifact');
   if (!req.file) throw new ValidationError(['artifact'], 'An artifact file is required (field name "artifact").');
 
+  const oldArtifactPublicId = interview.artifactFilePublicId;
   const uploaded = await uploadBuffer(req.file.buffer, { folder: 'interview-artifacts', filename: `${Date.now()}-${req.file.originalname}` });
   interview.artifactFileUrl = uploaded.secureUrl;
   interview.artifactFilePublicId = uploaded.publicId;
@@ -336,6 +338,10 @@ const uploadArtifact = asyncHandler(async (req, res) => {
   }
 
   await interview.save();
+  if (oldArtifactPublicId) {
+    destroyFileIfUnreferenced(oldArtifactPublicId)
+      .catch((err) => logger.warn(`[Interview] Could not clean up replaced artifact ${oldArtifactPublicId}: ${err.message}`));
+  }
   logger.info(`[Interview] Artifact uploaded for ${interview._id}: ${interview.artifactFileUrl} (${interview.transcriptText.length} chars extracted)`);
   res.json({ interview });
 });

@@ -268,18 +268,13 @@ export default function CandidateApply() {
             <AlertCircle className="h-14 w-14 text-red-500 mx-auto mb-2" />
             <CardTitle className="text-2xl font-bold text-slate-900">Position Unavailable</CardTitle>
             <CardDescription className="text-slate-600 text-sm mt-1">
-              {error || 'This position is no longer accepting applications or does not exist.'}
+              This position is no longer accepting applications. It may have been filled, closed, or the application link is no longer valid.
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-2 text-left bg-slate-100/70 mx-6 mb-6 p-4 rounded-lg text-xs font-mono text-slate-700 space-y-1.5 border border-slate-200">
-            <div className="font-semibold text-slate-800 border-b border-slate-200 pb-1 text-[11px] uppercase tracking-wider">
-              Diagnostic Logs & Info:
-            </div>
-            <div><span className="font-bold text-slate-900">URL ID:</span> {id || '(none)'}</div>
-            <div><span className="font-bold text-slate-900">Error Detail:</span> {error || 'No requisition object returned'}</div>
-            <div className="pt-2 font-sans text-slate-600 border-t border-slate-200 text-[11px]">
-              Tip: Copy the public link directly from an active requisition in your dashboard (e.g. <strong>Requisitions &gt; Copy Link</strong>).
-            </div>
+          <CardContent className="pt-2 pb-6">
+            <p className="text-sm text-slate-500">
+              Please check the link or contact the hiring team for help.
+            </p>
           </CardContent>
         </Card>
       </div>

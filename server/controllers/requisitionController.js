@@ -18,6 +18,7 @@ const { uploadBuffer } = require('../config/cloudinary');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 const emailNotifier = require('../services/emailNotifier');
 const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
+const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
@@ -698,6 +699,9 @@ const applyPublic = asyncHandler(async (req, res) => {
   // 2. Upload file to Cloudinary & extract text ONLY after verifying non-duplicate status
   let resumeFileUrl = '';
   let resumeFilePublicId = '';
+  let candidateResumeFileUrl = '';
+  let candidateResumeFilePublicId = '';
+  let oldProfileResumeId = null;
   let resumeText = '';
 
   if (req.file) {
@@ -707,6 +711,15 @@ const applyPublic = asyncHandler(async (req, res) => {
     });
     resumeFileUrl = uploaded.secureUrl;
     resumeFilePublicId = uploaded.publicId;
+
+    // The candidate profile keeps a current CV, while this application keeps
+    // its own immutable resume-screen artifact for historical review.
+    const profileUpload = await uploadBuffer(req.file.buffer, {
+      folder: 'candidate-resumes',
+      filename: `${Date.now()}-profile-${req.file.originalname}`,
+    });
+    candidateResumeFileUrl = profileUpload.secureUrl;
+    candidateResumeFilePublicId = profileUpload.publicId;
 
     try {
       const { extractArtifactText } = require('../utils/textExtractor');
@@ -722,16 +735,21 @@ const applyPublic = asyncHandler(async (req, res) => {
       name,
       email: cleanEmail,
       phone: phone.trim(),
-      resumeFileUrl,
-      resumeFilePublicId,
+      resumeFileUrl: candidateResumeFileUrl,
+      resumeFilePublicId: candidateResumeFilePublicId,
     });
   } else {
-    if (resumeFileUrl) {
-      candidate.resumeFileUrl = resumeFileUrl;
-      candidate.resumeFilePublicId = resumeFilePublicId;
+    if (candidateResumeFileUrl) {
+      oldProfileResumeId = candidate.resumeFilePublicId;
+      candidate.resumeFileUrl = candidateResumeFileUrl;
+      candidate.resumeFilePublicId = candidateResumeFilePublicId;
     }
     candidate.phone = phone.trim();
     await candidate.save();
+    if (oldProfileResumeId) {
+      destroyFileIfUnreferenced(oldProfileResumeId)
+        .catch((err) => logger.warn(`[ApplyPublic] Could not clean up old candidate résumé ${oldProfileResumeId}: ${err.message}`));
+    }
   }
 
   // 1. Ensure Scorecard exists for this requisition (auto-generate if missing)

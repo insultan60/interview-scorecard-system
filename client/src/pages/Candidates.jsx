@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload,
+  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -96,6 +96,10 @@ export default function Candidates() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [resumeFile, setResumeFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [editFor, setEditFor] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editResumeFile, setEditResumeFile] = useState(null);
+  const [editing, setEditing] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [bulkRows, setBulkRows] = useState([]);
   const [importing, setImporting] = useState(false);
@@ -154,6 +158,48 @@ export default function Candidates() {
       loadCandidates();
     } finally {
       setCreating(false);
+    }
+  }
+
+  function openEdit(candidate) {
+    setEditFor(candidate);
+    setEditForm({
+      name: candidate.name || '', email: candidate.email || '', phone: candidate.phone || '', notes: candidate.notes || '',
+    });
+    setEditResumeFile(null);
+  }
+
+  async function handleEdit(e) {
+    e.preventDefault();
+    if (!editFor) return;
+    if (!editForm.name.trim()) {
+      toast.error('Name is required.');
+      return;
+    }
+    if (editForm.email && !EMAIL_PATTERN.test(editForm.email)) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+    if (editForm.phone && !PHONE_NUMBER_PATTERN.test(editForm.phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+
+    setEditing(true);
+    try {
+      const body = new FormData();
+      body.append('name', editForm.name.trim());
+      body.append('email', editForm.email.trim());
+      body.append('phone', editForm.phone.trim());
+      body.append('notes', editForm.notes);
+      if (editResumeFile) body.append('resume', editResumeFile);
+      await api.patch(`/candidates/${editFor._id}`, body, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(`${editForm.name.trim()}'s profile was updated.`);
+      setEditFor(null);
+      setEditResumeFile(null);
+      loadCandidates();
+    } finally {
+      setEditing(false);
     }
   }
 
@@ -541,6 +587,10 @@ export default function Candidates() {
                               <Copy />
                               Copy phone
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(c)}>
+                              <Pencil />
+                              Edit candidate
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setDeleteFor(c)} className="text-red-600 focus:text-red-600">
                               <Trash2 />
                               Delete candidate
@@ -599,6 +649,48 @@ export default function Candidates() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!editFor} onOpenChange={(open) => !open && setEditFor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit candidate</DialogTitle>
+            <DialogDescription>
+              Update the candidate profile. Replacing the profile résumé does not change résumé evidence already attached to interviews.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-cand-name">Name</Label>
+                <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-cand-email">Email</Label>
+                <Input id="edit-cand-email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-cand-phone">Phone</Label>
+                <Input id="edit-cand-phone" value={editForm.phone} type="tel" inputMode="numeric" pattern="[0-9]{11}" maxLength={11} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })} placeholder="03001234567" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-cand-resume">Replace résumé <span className="text-muted-foreground">(optional)</span></Label>
+                <Input id="edit-cand-resume" type="file" accept="application/pdf,.pdf" onChange={(e) => setEditResumeFile(e.target.files?.[0] || null)} className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-cand-notes">Notes</Label>
+              <Textarea id="edit-cand-notes" rows={3} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditFor(null)} disabled={editing}>Cancel</Button>
+              <Button type="submit" disabled={editing} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+                {editing ? 'Saving…' : 'Save changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ---------- bulk import dialog ---------- */}
       <Dialog open={bulkImportOpen} onOpenChange={(open) => {

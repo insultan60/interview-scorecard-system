@@ -8,6 +8,7 @@ const { asyncHandler } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
 const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -160,20 +161,49 @@ const update = asyncHandler(async (req, res) => {
   if (!candidate) return res.status(404).json({ error: 'NOT_FOUND', message: 'Candidate not found.' });
 
   const { name, email, phone, notes } = req.body;
-  if (name !== undefined) candidate.name = name;
-  if (email !== undefined) candidate.email = email;
+  const oldValue = {
+    name: candidate.name, email: candidate.email || '', phone: candidate.phone || '', notes: candidate.notes || '',
+  };
+  if (name !== undefined) {
+    if (!String(name).trim()) throw new ValidationError(['name'], 'Name is required.');
+    candidate.name = String(name).trim();
+  }
+  if (email !== undefined) {
+    const cleanEmail = String(email).trim().toLowerCase();
+    if (cleanEmail && !EMAIL_PATTERN.test(cleanEmail)) throw new ValidationError(['email'], 'Please enter a valid email address.');
+    if (cleanEmail) {
+      const duplicate = await Candidate.findOne({ email: cleanEmail, _id: { $ne: candidate._id } });
+      if (duplicate) throw new ValidationError(['email'], 'Another candidate already uses this email address.');
+    }
+    candidate.email = cleanEmail;
+  }
   if (phone !== undefined) candidate.phone = validatePhone(phone);
   if (notes !== undefined) candidate.notes = notes;
 
+  let resumeReplaced = false;
+  let replacedResumePublicId = null;
   if (req.file) {
     const oldPublicId = candidate.resumeFilePublicId;
     const uploaded = await uploadBuffer(req.file.buffer, { folder: 'resumes', filename: `${Date.now()}-${req.file.originalname}` });
     candidate.resumeFileUrl = uploaded.secureUrl;
     candidate.resumeFilePublicId = uploaded.publicId;
-    if (oldPublicId) destroyFile(oldPublicId).catch((err) => logger.warn(`[Candidate] Could not delete old résumé ${oldPublicId}: ${err.message}`));
+    resumeReplaced = true;
+    replacedResumePublicId = oldPublicId;
   }
 
   await candidate.save();
+  if (replacedResumePublicId) {
+    destroyFileIfUnreferenced(replacedResumePublicId)
+      .catch((err) => logger.warn(`[Candidate] Could not clean up old résumé ${replacedResumePublicId}: ${err.message}`));
+  }
+  await AuditLog.create({
+    action: 'candidate_update', userId: req.user._id,
+    targetType: 'candidate', targetId: candidate._id.toString(),
+    oldValue, newValue: {
+      name: candidate.name, email: candidate.email || '', phone: candidate.phone || '', notes: candidate.notes || '', resumeReplaced,
+    },
+    reason: 'Candidate profile updated.',
+  });
   res.json({ candidate });
 });
 

@@ -49,7 +49,7 @@ const AUDIT_ACTIONS = [
   'score_override', 'score_approve', 'question_edit', 'stage_toggle',
   'weight_change', 'disposition_change', 'final_decision',
   'provider_change', 'key_change', 'transcript_upload', 'consent_capture',
-  'retention_purge', 'requisition_status_change',
+  'retention_purge', 'requisition_status_change', 'candidate_update',
 ];
 
 /**
