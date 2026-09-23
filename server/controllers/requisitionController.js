@@ -10,11 +10,16 @@ const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
+const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { generateScorecard } = require('../services/questionGenerator');
 const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
 const { uploadBuffer } = require('../config/cloudinary');
 const { callClaude, getModelIds } = require('../services/claudeClient');
+const emailNotifier = require('../services/emailNotifier');
+const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
+
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
@@ -74,6 +79,50 @@ function normalizeInitialScreeningCriteria(raw) {
     }));
   }
   return [];
+}
+
+/** A date-only application deadline remains open through the whole UTC day. */
+function hasApplicationDeadlinePassed(deadline) {
+  if (!deadline) return false;
+  const date = new Date(deadline);
+  const nextDayStartUtc = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + 1
+  );
+  return Date.now() >= nextDayStartUtc;
+}
+
+/** Uses each application question and its ideal answer as the HR-screen rubric. */
+function syncHrQuestionnaireRubric(scorecard, requisition) {
+  const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === 'hr_screen');
+  if (!hrStage) return false;
+
+  const attributes = (requisition.questionnaire || []).map((item, index) => {
+    const question = typeof item === 'string' ? item : item.question;
+    const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+    return {
+      attributeId: `hr_screen_question_${index + 1}`,
+      name: `Question ${index + 1}`,
+      question,
+      anchor5: idealAnswer || 'Fully addresses the question with a relevant, specific answer.',
+      redFlags: 'Does not answer the question, or provides an unclear or irrelevant response.',
+    };
+  });
+
+  if (JSON.stringify(hrStage.attributes) === JSON.stringify(attributes)) return false;
+  hrStage.attributes = attributes;
+  return true;
+}
+
+function assignMissingAttributeIds(stages) {
+  stages.forEach((stage) => {
+    stage.attributes.forEach((attr, index) => {
+      if (!attr.attributeId) {
+        attr.attributeId = `${stage.stageKey}_${index + 1}_${crypto.randomBytes(3).toString('hex')}`;
+      }
+    });
+  });
 }
 
 /**
@@ -232,6 +281,19 @@ const update = asyncHandler(async (req, res) => {
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
+  const hasNonStatusChanges = [
+    title, employmentType, location, jobDescription, hireThreshold, maybeThreshold,
+    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+  ].some((value) => value !== undefined);
+  if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
+    const error = new ValidationError(['status'], 'This requisition is closed and read-only. Reopen it before making changes.');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (status !== undefined && !['open', 'on_hold', 'closed'].includes(status)) {
+    throw new ValidationError(['status'], 'status must be open, on_hold, or closed.');
+  }
+
   if (title !== undefined) requisition.title = title;
   if (employmentType !== undefined) requisition.employmentType = employmentType;
   if (location !== undefined) requisition.location = location;
@@ -247,9 +309,13 @@ const update = asyncHandler(async (req, res) => {
   if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
   if (aiScreeningEnabled !== undefined) requisition.aiScreeningEnabled = Boolean(aiScreeningEnabled);
 
+  let statusChange = null;
   if (status !== undefined && status !== requisition.status) {
+    const oldStatus = requisition.status;
     requisition.status = status;
     if (status === 'closed') requisition.closedAt = new Date();
+    if (status !== 'closed') requisition.closedAt = undefined;
+    statusChange = { oldStatus, newStatus: status };
   }
 
   if (weights && typeof weights === 'object') {
@@ -275,6 +341,14 @@ const update = asyncHandler(async (req, res) => {
   }
 
   await requisition.save();
+  if (statusChange) {
+    await AuditLog.create({
+      action: 'requisition_status_change', userId: req.user._id, requisitionId: requisition._id,
+      targetType: 'requisition', targetId: requisition._id.toString(),
+      oldValue: statusChange.oldStatus, newValue: statusChange.newStatus,
+      reason: `Requisition status changed from ${statusChange.oldStatus} to ${statusChange.newStatus}.`,
+    });
+  }
   logger.info(`[Requisition] Updated ${requisition._id} by user=${req.user._id}`);
   res.json({ requisition });
 });
@@ -286,8 +360,10 @@ const update = asyncHandler(async (req, res) => {
  * historical records the system is designed to never silently lose.
  */
 const remove = asyncHandler(async (req, res) => {
-  const requisition = await Requisition.findByIdAndDelete(req.params.id);
+  const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'delete this requisition');
+  await requisition.deleteOne();
   logger.info(`[Requisition] Deleted ${requisition._id} by user=${req.user._id}`);
   res.json({ message: 'Requisition deleted.' });
 });
@@ -303,13 +379,10 @@ const remove = asyncHandler(async (req, res) => {
 const generateScorecardHandler = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'generate a scorecard');
 
   const generated = await generateScorecard(requisition);
-  generated.stages.forEach((stage) => {
-    stage.attributes.forEach((attr, index) => {
-      attr.attributeId = `${stage.stageKey}_${index + 1}_${crypto.randomBytes(3).toString('hex')}`;
-    });
-  });
+  assignMissingAttributeIds(generated.stages);
 
   let scorecard;
   if (requisition.scorecardId) {
@@ -337,6 +410,7 @@ const generateScorecardHandler = asyncHandler(async (req, res) => {
 const cloneScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'edit the scorecard');
 
   const { sourceRequisitionId } = req.body;
   if (!sourceRequisitionId) throw new ValidationError(['sourceRequisitionId'], 'sourceRequisitionId is required.');
@@ -377,6 +451,7 @@ const cloneScorecard = asyncHandler(async (req, res) => {
 const updateScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  assertRequisitionOpen(requisition, 'edit the scorecard');
   if (!requisition.scorecardId) {
     throw new ValidationError(['scorecardId'], 'This requisition has no scorecard yet — generate one first.');
   }
@@ -535,15 +610,7 @@ const getPublic = asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition is closed or does not exist.' });
   }
 
-  const isExpired = requisition.applicationDeadline
-    ? new Date() >= new Date(
-      Date.UTC(
-        requisition.applicationDeadline.getUTCFullYear(),
-        requisition.applicationDeadline.getUTCMonth(),
-        requisition.applicationDeadline.getUTCDate() + 1
-      )
-    )
-    : false;
+  const isExpired = hasApplicationDeadlinePassed(requisition.applicationDeadline);
 
   logger.info(`[Requisition] Public GET success: Found open requisition "${requisition.title}" (${requisition._id})`);
 
@@ -552,6 +619,10 @@ const getPublic = asyncHandler(async (req, res) => {
       ...requisition,
       isExpired,
     },
+    captcha: (() => {
+      const { enabled, siteKey } = getCaptchaConfig();
+      return { enabled, siteKey: enabled ? siteKey : undefined };
+    })(),
   });
 });
 
@@ -569,13 +640,48 @@ const applyPublic = asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'NOT_FOUND', message: 'This position is closed or no longer accepting applications.' });
   }
 
-  if (requisition.applicationDeadline && new Date() > new Date(requisition.applicationDeadline)) {
+  if (hasApplicationDeadlinePassed(requisition.applicationDeadline)) {
     return res.status(400).json({ error: 'EXPIRED', message: 'The application deadline for this position has passed.' });
+  }
+
+  const captchaResult = await verifyCaptcha(req.body?.captchaToken, req.ip);
+  if (!captchaResult.valid) {
+    return res.status(400).json({
+      error: 'CAPTCHA_FAILED',
+      message: 'Please complete the security check and submit your application again.',
+    });
   }
 
   const { name, email, phone, questionnaireAnswers } = req.body;
   if (!name || !email) {
     throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
+  }
+  if (!PHONE_NUMBER_PATTERN.test(String(phone || '').trim())) {
+    throw new ValidationError(['phone'], 'Phone number must contain exactly 11 digits.');
+  }
+
+  let parsedQAnswers = {};
+  if (typeof questionnaireAnswers === 'string') {
+    try { parsedQAnswers = JSON.parse(questionnaireAnswers); } catch (e) { parsedQAnswers = {}; }
+  } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
+    parsedQAnswers = questionnaireAnswers;
+  }
+  const unansweredQuestions = (requisition.questionnaire || []).filter((question) => {
+    const questionText = typeof question === 'string' ? question : question.question;
+    return !String(parsedQAnswers[questionText] || '').trim();
+  });
+  if (unansweredQuestions.length > 0) {
+    throw new ValidationError(['questionnaireAnswers'], 'Please answer every screening question before submitting your application.');
+  }
+  if (!req.file) {
+    throw new ValidationError(['resume'], 'A PDF resume is required to apply.');
+  }
+  const isPdfResume = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
+  if (!isPdfResume) {
+    throw new ValidationError(['resume'], 'Resume must be a PDF file.');
+  }
+  if (req.file.size > 5 * 1024 * 1024) {
+    throw new ValidationError(['resume'], 'Resume must be 5 MB or smaller.');
   }
 
   const cleanEmail = email.toLowerCase().trim();
@@ -615,7 +721,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     candidate = await Candidate.create({
       name,
       email: cleanEmail,
-      phone: phone || '',
+      phone: phone.trim(),
       resumeFileUrl,
       resumeFilePublicId,
     });
@@ -624,7 +730,7 @@ const applyPublic = asyncHandler(async (req, res) => {
       candidate.resumeFileUrl = resumeFileUrl;
       candidate.resumeFilePublicId = resumeFilePublicId;
     }
-    if (phone) candidate.phone = phone;
+    candidate.phone = phone.trim();
     await candidate.save();
   }
 
@@ -633,6 +739,7 @@ const applyPublic = asyncHandler(async (req, res) => {
   if (!scorecard) {
     try {
       const generated = await generateScorecard(requisition);
+      assignMissingAttributeIds(generated.stages);
       scorecard = await Scorecard.create({ requisitionId: requisition._id, generatedByAI: true, stages: generated.stages });
       requisition.scorecardId = scorecard._id;
       await requisition.save();
@@ -641,11 +748,20 @@ const applyPublic = asyncHandler(async (req, res) => {
       logger.warn(`[ApplyPublic] Could not auto-generate scorecard for requisition ${requisition._id}: ${scErr.message}`);
     }
   }
+  if (scorecard && syncHrQuestionnaireRubric(scorecard, requisition)) {
+    scorecard.markModified('stages');
+    await scorecard.save();
+  }
 
   // 2. Create Application document
   const enabledStages = (requisition.stages || []).filter((s) => s.enabled);
-  const firstStage = enabledStages[0] || requisition.stages[0];
+  // Public applications always begin with the required résumé screen, even
+  // for a requisition created from an older pipeline template.
+  const firstStage = enabledStages.find((stage) => stage.key === 'resume_screen')
+    || enabledStages[0]
+    || requisition.stages[0];
   const firstStageKey = firstStage ? firstStage.key : null;
+  const hrStage = enabledStages.find((stage) => stage.key === 'hr_screen');
 
   const stageProgress = (requisition.stages || []).map((s) => ({
     stageKey: s.key,
@@ -653,13 +769,6 @@ const applyPublic = asyncHandler(async (req, res) => {
     stageAverage: null,
     passed: null,
   }));
-
-  let parsedQAnswers = {};
-  if (typeof questionnaireAnswers === 'string') {
-    try { parsedQAnswers = JSON.parse(questionnaireAnswers); } catch (e) { parsedQAnswers = {}; }
-  } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
-    parsedQAnswers = questionnaireAnswers;
-  }
 
   let application = await Application.create({
     candidateId: candidate._id,
@@ -673,6 +782,7 @@ const applyPublic = asyncHandler(async (req, res) => {
   // 3. Create Stage 1 Interview document
   const Interview = require('../models/Interview');
   let firstInterview = null;
+  let hrInterview = null;
   if (firstStageKey) {
     firstInterview = await Interview.create({
       applicationId: application._id,
@@ -692,95 +802,31 @@ const applyPublic = asyncHandler(async (req, res) => {
     }
   }
 
-  // 4. Initial Screening Evaluation (CV + Criteria + Questionnaire)
-  let aiScore = null;
-  let aiJustification = '';
-  let passed = null;
-
-  try {
-    const modelIds = await getModelIds();
-    const cheapModel = modelIds.cheap;
-
-    let screeningCriteriaText = 'Evaluate standard qualifications, skills, and background for the role.';
-    if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
-      screeningCriteriaText = requisition.initialScreeningCriteria.map((c, i) => {
-        if (typeof c === 'string') return `- Criteria ${i + 1}: ${c}`;
-        return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
-      }).join('\n');
-    } else if (typeof requisition.initialScreeningCriteria === 'string' && requisition.initialScreeningCriteria.trim()) {
-      screeningCriteriaText = requisition.initialScreeningCriteria;
-    }
-    const jobDescriptionText = requisition.jobDescription || 'Standard position description.';
-
-    let questionnaireContext = '';
-    if (requisition.aiScreeningEnabled && Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0) {
-      let qAnswersMap = {};
-      if (typeof questionnaireAnswers === 'string') {
-        try { qAnswersMap = JSON.parse(questionnaireAnswers); } catch (e) { qAnswersMap = {}; }
-      } else if (typeof questionnaireAnswers === 'object' && questionnaireAnswers !== null) {
-        qAnswersMap = questionnaireAnswers;
-      }
-
-      const formattedItems = requisition.questionnaire.map((item, idx) => {
-        const qText = typeof item === 'string' ? item : item.question;
-        const ideal = typeof item === 'object' && item.idealAnswer ? item.idealAnswer : '';
-        const candidateAns = qAnswersMap[qText] || qAnswersMap[idx] || '(No response provided)';
-        return `Question ${idx + 1}: "${qText}"\n  - Candidate Answer: ${candidateAns}\n  - Benchmark Ideal Answer (5 Stars): ${ideal || 'Not specified'}`;
-      }).join('\n\n');
-
-      questionnaireContext = `APPLICATION QUESTIONNAIRE RESPONSES & BENCHMARKS:\n${formattedItems}\n\n`;
-    }
-
-    const systemPrompt = `You are an expert HR Screener evaluating a candidate's application against the Position Title, Job Description, and Initial Screening Criteria.
-Evaluate how well the candidate meets the criteria on a scale of 1.0 to 5.0 (1=unqualified/no fit, 3=qualified/meets threshold, 5=exceptional fit).
-Respond ONLY with a JSON object in format:
-{
-  "score": number (1.0 to 5.0),
-  "justification": "Detailed explanation citing candidate qualifications vs initial screening criteria"
-}`;
-
-    const userPrompt = `Position: "${requisition.title}"
-
-Job Description:
-${jobDescriptionText}
-
-Initial Screening Criteria:
-${screeningCriteriaText}
-
-Candidate Name: ${name}
-${questionnaireContext}Candidate CV/Resume Text:
-${resumeText || 'No plain text resume extracted.'}
-`;
-
-    const aiResult = await callClaude({
-      model: cheapModel,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
-      expectJson: true,
+  // The HR questionnaire screen is created for every public application,
+  // even when the résumé screen later fails its gate. It is a separate
+  // automated evaluation and never includes the candidate's CV.
+  if (hrStage && hrStage.key !== firstStageKey) {
+    const questionnaireTranscript = (requisition.questionnaire || []).map((question, index) => {
+      const questionText = typeof question === 'string' ? question : question.question;
+      return `Question ${index + 1}: ${questionText}\nCandidate Answer: ${parsedQAnswers[questionText] || ''}`;
+    }).join('\n\n');
+    hrInterview = await Interview.create({
+      applicationId: application._id,
+      requisitionId: requisition._id,
+      stageKey: hrStage.key,
+      meetingMode: 'online',
+      provider: 'google_meet',
+      status: 'pending',
+      transcriptText: questionnaireTranscript,
     });
-
-    const parsed = JSON.parse(aiResult.text);
-    aiScore = Number(parsed.score) || 3.0;
-    aiJustification = parsed.justification || 'Initial AI screening completed.';
-
-    const passThreshold = firstStage?.passThreshold ?? 3.0;
-    passed = aiScore >= passThreshold;
-
-    application.initialScreening = {
-      aiScore,
-      aiJustification,
-      passed,
-      overridden: false,
-    };
-
-    await application.save();
-
-  } catch (err) {
-    logger.error(`[ApplyPublic] Automated AI screening error: ${err.message}`);
+    const hrProgress = application.stageProgress.find((progress) => progress.stageKey === hrStage.key);
+    if (hrProgress) hrProgress.status = 'scheduled';
     await application.save();
   }
 
-  // 5. Score Stage 1 Interview against Scorecard Rubric Attributes (if available)
+  // 4. Score the résumé stage using only the CV, JD, and screening criteria.
+  let aiScore = null;
+  let passed = null;
   if (firstInterview && scorecard && firstStage) {
     const stageRubric = scorecard.stages.find((s) => s.stageKey === firstStageKey);
     if (stageRubric && stageRubric.attributes && stageRubric.attributes.length > 0 && resumeText) {
@@ -805,7 +851,7 @@ ${resumeText || 'No plain text resume extracted.'}
     }
   }
 
-  // 6. Auto-approve Stage 1 scores & compute pipeline results (Pass/Fail & Stage Advancement)
+  // 5. Auto-approve résumé scores and compute the first-stage result.
   if (firstInterview && (firstInterview.status === 'scored' || (firstInterview.scores && firstInterview.scores.length > 0))) {
     try {
       firstInterview.scores.forEach((s) => {
@@ -820,6 +866,15 @@ ${resumeText || 'No plain text resume extracted.'}
       const stagePassed = isStagePassed(stageAverage, firstStage.passThreshold);
       firstInterview.stageAverage = stageAverage;
       await firstInterview.save();
+
+      aiScore = stageAverage;
+      passed = stagePassed;
+      application.initialScreening = {
+        aiScore: stageAverage,
+        aiJustification: firstInterview.scores.map((score) => score.aiJustification).filter(Boolean).join(' '),
+        passed: stagePassed,
+        overridden: false,
+      };
 
       const progress = application.stageProgress.find((p) => p.stageKey === firstStageKey);
       if (progress) {
@@ -842,6 +897,52 @@ ${resumeText || 'No plain text resume extracted.'}
     }
   }
 
+  // 6. Auto-score and approve the HR screen from questionnaire answers only.
+  if (hrInterview && scorecard && hrStage) {
+    const hrRubric = scorecard.stages.find((stage) => stage.stageKey === hrStage.key);
+    if (hrRubric?.attributes?.length > 0) {
+      try {
+        const { interview: scoredInterview } = await scoreInterview({
+          interview: hrInterview,
+          stageType: hrStage.stageType,
+          attributes: hrRubric.attributes,
+          requisition,
+          application,
+        });
+        hrInterview = scoredInterview;
+        if (hrInterview.status === 'scored') {
+          hrInterview.scores.forEach((score) => {
+            if (score.approvedScore === undefined || score.approvedScore === null) {
+              score.approvedScore = score.aiScore;
+            }
+          });
+          hrInterview.status = 'approved';
+          hrInterview.markModified('scores');
+          const stageAverage = computeStageAverage(hrInterview);
+          const stagePassed = isStagePassed(stageAverage, hrStage.passThreshold);
+          hrInterview.stageAverage = stageAverage;
+          await hrInterview.save();
+
+          const progress = application.stageProgress.find((item) => item.stageKey === hrStage.key);
+          if (progress) {
+            progress.stageAverage = stageAverage;
+            progress.passed = stagePassed;
+            progress.status = stagePassed ? 'passed' : 'failed';
+          }
+          const { getOrCreateNextInterview, recomputeAndPersist } = require('./scoringController');
+          // Continue to later pipeline stages only when both required public
+          // application screens pass. HR is still scored when résumé fails.
+          if (stagePassed && passed) {
+            await getOrCreateNextInterview(application, requisition, hrStage.key, null);
+          }
+          await recomputeAndPersist(application, requisition, null, 'Auto-approved HR questionnaire scoring upon public application submission.');
+        }
+      } catch (scoreErr) {
+        logger.warn(`[ApplyPublic] HR questionnaire scoring warning: ${scoreErr.message}`);
+      }
+    }
+  }
+
   try {
     const allApps = await Application.find({ requisitionId: requisition._id });
     const ranked = rankApplications(allApps);
@@ -852,7 +953,21 @@ ${resumeText || 'No plain text resume extracted.'}
     logger.warn(`[ApplyPublic] Ranking error: ${rankErr.message}`);
   }
 
-  logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}`);
+  // Confirmation email is best-effort: a mail configuration/delivery failure
+  // must never undo an application that was already successfully submitted.
+  let confirmationEmail = { sent: false, reason: 'Not attempted.' };
+  try {
+    confirmationEmail = await emailNotifier.sendApplicationConfirmationEmail({
+      candidateEmail: candidate.email,
+      candidateName: candidate.name,
+      requisitionTitle: requisition.title,
+    });
+  } catch (emailErr) {
+    confirmationEmail = { sent: false, reason: 'Could not send confirmation email.' };
+    logger.warn(`[ApplyPublic] Confirmation email failed for application ${application._id}: ${emailErr.message}`);
+  }
+
+  logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}, confirmationEmailSent=${confirmationEmail.sent}`);
 
   res.status(201).json({
     success: true,
@@ -860,6 +975,7 @@ ${resumeText || 'No plain text resume extracted.'}
     aiScreeningEnabled: requisition.aiScreeningEnabled,
     score: aiScore,
     passed,
+    confirmationEmailSent: confirmationEmail.sent,
     application,
     interview: firstInterview,
   });

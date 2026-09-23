@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown,
+  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,9 +18,14 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
@@ -43,6 +48,41 @@ function initials(name) {
 }
 
 const EMPTY_FORM = { name: '', email: '', phone: '', notes: '' };
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"') {
+      if (inQuotes && text[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(value);
+      value = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && text[index + 1] === '\n') index += 1;
+      row.push(value);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+  row.push(value);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  return rows;
+}
 
 export default function Candidates() {
   const navigate = useNavigate();
@@ -56,13 +96,20 @@ export default function Candidates() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [resumeFile, setResumeFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkRows, setBulkRows] = useState([]);
+  const [importing, setImporting] = useState(false);
 
   const [attachFor, setAttachFor] = useState(null); // the candidate being attached
   const [attachTarget, setAttachTarget] = useState('');
   const [attaching, setAttaching] = useState(false);
   const [reqPickerOpen, setReqPickerOpen] = useState(false);
+  const [deleteFor, setDeleteFor] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [requisitionFilter, setRequisitionFilter] = useState('all');
+  const [dateSort, setDateSort] = useState('newest');
   const [page, setPage] = useState(1);
 
   async function loadCandidates() {
@@ -84,6 +131,10 @@ export default function Candidates() {
     e.preventDefault();
     if (!form.name.trim()) {
       toast.error('Name is required.');
+      return;
+    }
+    if (form.phone && !PHONE_NUMBER_PATTERN.test(form.phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
       return;
     }
     setCreating(true);
@@ -139,19 +190,130 @@ export default function Candidates() {
     }
   }
 
-  function copyEmail(candidate) {
-    if (!candidate.email) return;
-    navigator.clipboard.writeText(candidate.email)
-      .then(() => toast.success('Email copied.'))
-      .catch(() => toast.error('Could not copy the email.'));
+  function downloadBulkTemplate() {
+    const blob = new Blob(['name,email,phone,notes\nJane Cooper,jane@example.com,03001234567,Referral\n'], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'candidate-import-template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleBulkFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a CSV file.');
+      return;
+    }
+    try {
+      const parsed = parseCsv(await file.text());
+      if (parsed.length < 2) {
+        toast.error('The CSV must include a header row and at least one candidate.');
+        return;
+      }
+      const headers = parsed[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
+      const requiredHeaders = ['name', 'email', 'phone', 'notes'];
+      const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+      if (missingHeaders.length > 0) {
+        toast.error(`Missing CSV column${missingHeaders.length > 1 ? 's' : ''}: ${missingHeaders.join(', ')}.`);
+        return;
+      }
+
+      const existingEmails = new Set(candidates.map((candidate) => candidate.email?.trim().toLowerCase()).filter(Boolean));
+      const fileEmails = new Set();
+      const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
+      const rows = parsed.slice(1).map((cells, index) => {
+        const candidate = {
+          rowNumber: index + 2,
+          name: (cells[headerIndex.name] || '').trim(),
+          email: (cells[headerIndex.email] || '').trim(),
+          phone: (cells[headerIndex.phone] || '').trim(),
+          notes: (cells[headerIndex.notes] || '').trim(),
+        };
+        const errors = [];
+        if (!candidate.name) errors.push('Name is required');
+        if (candidate.email && !EMAIL_PATTERN.test(candidate.email)) errors.push('Invalid email');
+        if (candidate.phone && !PHONE_NUMBER_PATTERN.test(candidate.phone)) errors.push('Phone must be exactly 11 digits');
+        const emailKey = candidate.email.toLowerCase();
+        if (emailKey && existingEmails.has(emailKey)) errors.push('Email already exists');
+        if (emailKey && fileEmails.has(emailKey)) errors.push('Duplicate email in file');
+        if (emailKey) fileEmails.add(emailKey);
+        return { ...candidate, errors };
+      });
+      setBulkRows(rows);
+    } catch (error) {
+      console.error('[Candidates] CSV parsing failed:', error);
+      toast.error('Could not read this CSV file.');
+    }
+  }
+
+  async function handleBulkImport() {
+    const validRows = bulkRows.filter((row) => row.errors.length === 0);
+    if (validRows.length === 0) {
+      toast.error('Fix the CSV errors before importing.');
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await api.post('/candidates/bulk', { candidates: validRows });
+      const { createdCount, skippedCount } = res.data;
+      toast.success(`${createdCount} candidate${createdCount === 1 ? '' : 's'} imported.${skippedCount ? ` ${skippedCount} skipped.` : ''}`);
+      setBulkRows([]);
+      setBulkImportOpen(false);
+      loadCandidates();
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteFor) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/candidates/${deleteFor._id}`);
+      toast.success(`${deleteFor.name} and all related records were deleted.`);
+      setDeleteFor(null);
+      loadCandidates();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function copyContact(value, label) {
+    if (!value) return;
+    navigator.clipboard.writeText(value)
+      .then(() => toast.success(`${label} copied.`))
+      .catch(() => toast.error(`Could not copy the ${label.toLowerCase()}.`));
   }
 
   const query = search.trim().toLowerCase();
-  const filtered = useMemo(() => (
-    query
-      ? candidates.filter((c) => `${c.name || ''} ${c.email || ''} ${c.phone || ''}`.toLowerCase().includes(query))
-      : candidates
-  ), [candidates, query]);
+  const attachedRequisitions = useMemo(() => {
+    const unique = new Map();
+    candidates.forEach((candidate) => {
+      (candidate.applications || []).forEach((application) => {
+        if (application.requisitionId && application.title) {
+          unique.set(application.requisitionId, application.title);
+        }
+      });
+    });
+    return [...unique.entries()]
+      .map(([id, title]) => ({ id, title }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [candidates]);
+
+  const filtered = useMemo(() => candidates
+    .filter((candidate) => {
+      const matchesSearch = !query
+        || `${candidate.name || ''} ${candidate.email || ''} ${candidate.phone || ''}`.toLowerCase().includes(query);
+      const matchesRequisition = requisitionFilter === 'all'
+        || (candidate.applications || []).some((application) => application.requisitionId === requisitionFilter);
+      return matchesSearch && matchesRequisition;
+    })
+    .sort((a, b) => {
+      const difference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return dateSort === 'oldest' ? difference : -difference;
+    }), [candidates, query, requisitionFilter, dateSort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -177,15 +339,22 @@ export default function Candidates() {
             </p>
           </div>
         </div>
-        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
-          <Plus />
-          New Candidate
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
+            <Upload />
+            Import CSV
+          </Button>
+          <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            New Candidate
+          </Button>
+        </div>
       </div>
 
       {/* ---------- search ---------- */}
       {(candidates.length > 0 || loading) && (
-        <div className="relative mt-5 w-full sm:max-w-sm">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -202,6 +371,29 @@ export default function Candidates() {
               <X className="h-4 w-4" />
             </button>
           )}
+          </div>
+
+          <Select value={requisitionFilter} onValueChange={(value) => { setRequisitionFilter(value); setPage(1); }}>
+            <SelectTrigger className="w-full sm:w-56">
+              <SelectValue placeholder="All requisitions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All requisitions</SelectItem>
+              {attachedRequisitions.map((requisition) => (
+                <SelectItem key={requisition.id} value={requisition.id}>{requisition.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={dateSort} onValueChange={(value) => { setDateSort(value); setPage(1); }}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue placeholder="Sort by date" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -263,13 +455,33 @@ export default function Candidates() {
                         </Avatar>
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-foreground">{c.name}</div>
-                          <div className="truncate text-xs text-muted-foreground">{c.email || '—'}</div>
+                          {c.email ? (
+                            <button
+                              type="button"
+                              onClick={() => copyContact(c.email, 'Email')}
+                              className="block max-w-full truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
+                              title="Copy email"
+                            >
+                              {c.email}
+                            </button>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">—</div>
+                          )}
                         </div>
                       </div>
                     </TableCell>
 
                     <TableCell className="hidden whitespace-nowrap text-sm text-muted-foreground md:table-cell">
-                      {c.phone || '—'}
+                      {c.phone ? (
+                        <button
+                          type="button"
+                          onClick={() => copyContact(c.phone, 'Phone number')}
+                          className="hover:text-foreground hover:underline"
+                          title="Copy phone number"
+                        >
+                          {c.phone}
+                        </button>
+                      ) : '—'}
                     </TableCell>
 
                     <TableCell>
@@ -321,9 +533,17 @@ export default function Candidates() {
                               <FileText />
                               {c.resumeFileUrl ? 'View résumé' : 'No résumé'}
                             </DropdownMenuItem>
-                            <DropdownMenuItem disabled={!c.email} onClick={() => copyEmail(c)}>
+                            <DropdownMenuItem disabled={!c.email} onClick={() => copyContact(c.email, 'Email')}>
                               <Copy />
                               Copy email
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={!c.phone} onClick={() => copyContact(c.phone, 'Phone number')}>
+                              <Copy />
+                              Copy phone
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDeleteFor(c)} className="text-red-600 focus:text-red-600">
+                              <Trash2 />
+                              Delete candidate
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -359,6 +579,106 @@ export default function Candidates() {
         </div>
       )}
 
+      <AlertDialog open={!!deleteFor} onOpenChange={(open) => !open && setDeleteFor(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteFor?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the candidate, all of their applications, interviews, scores, audit entries, and uploaded files. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => { event.preventDefault(); handleDelete(); }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {deleting ? 'Deleting…' : 'Delete candidate'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ---------- bulk import dialog ---------- */}
+      <Dialog open={bulkImportOpen} onOpenChange={(open) => {
+        setBulkImportOpen(open);
+        if (!open) setBulkRows([]);
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import candidates from CSV</DialogTitle>
+            <DialogDescription>
+              Use the columns <code>name</code>, <code>email</code>, <code>phone</code>, and <code>notes</code>. Name is required; email and phone are optional, but must be valid when included.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => handleBulkFile(event.target.files?.[0])}
+              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+            />
+            <Button type="button" variant="link" className="px-0" onClick={downloadBulkTemplate}>
+              Download template
+            </Button>
+          </div>
+
+          {bulkRows.length > 0 && (() => {
+            const validCount = bulkRows.filter((row) => row.errors.length === 0).length;
+            const invalidCount = bulkRows.length - validCount;
+            return (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {validCount} ready to import{invalidCount ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention` : ''}
+                </p>
+                <div className="max-h-72 overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background">
+                      <TableRow>
+                        <TableHead>Row</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Notes</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bulkRows.map((row) => (
+                        <TableRow key={row.rowNumber} className={row.errors.length > 0 ? 'bg-red-50/60' : ''}>
+                          <TableCell>{row.rowNumber}</TableCell>
+                          <TableCell>{row.name || '—'}</TableCell>
+                          <TableCell>{row.email || '—'}</TableCell>
+                          <TableCell>{row.phone || '—'}</TableCell>
+                          <TableCell className="max-w-[10rem] truncate" title={row.notes}>{row.notes || '—'}</TableCell>
+                          <TableCell className={row.errors.length > 0 ? 'text-red-600' : 'text-green-700'}>
+                            {row.errors.length > 0 ? row.errors.join(', ') : 'Ready'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            );
+          })()}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBulkImportOpen(false)} disabled={importing}>Cancel</Button>
+            <Button
+              type="button"
+              onClick={handleBulkImport}
+              disabled={importing || bulkRows.filter((row) => row.errors.length === 0).length === 0}
+              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            >
+              {importing ? 'Importing…' : `Import ${bulkRows.filter((row) => row.errors.length === 0).length || ''} candidate${bulkRows.filter((row) => row.errors.length === 0).length === 1 ? '' : 's'}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ---------- create dialog ---------- */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
@@ -391,8 +711,12 @@ export default function Candidates() {
                 <Label htmlFor="cand-phone">Phone</Label>
                 <Input
                   id="cand-phone" value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="0300-1234567"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{11}"
+                  maxLength={11}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                  placeholder="03001234567"
                 />
               </div>
               <div className="space-y-1.5">

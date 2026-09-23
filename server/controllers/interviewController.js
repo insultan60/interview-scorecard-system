@@ -8,6 +8,7 @@ require('../models/Candidate'); // registers the Candidate model for populate('c
 const logger = require('../utils/logger');
 const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
+const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
@@ -75,6 +76,13 @@ async function assertPriorStagesApproved(requisition, applicationId, stageKey) {
   }
 }
 
+async function assertInterviewMutable(interview, action) {
+  const requisition = await Requisition.findById(interview.requisitionId);
+  if (!requisition) throw new ValidationError(['requisitionId'], 'Requisition not found.');
+  assertRequisitionNotClosed(requisition, action);
+  return requisition;
+}
+
 /**
  * GET /api/interviews?applicationId=X or ?requisitionId=X
  * Lightweight lookup so the UI can link back to a candidate's earlier
@@ -117,6 +125,8 @@ const create = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(application.requisitionId);
+  if (!requisition) throw new ValidationError(['requisitionId'], 'Requisition not found.');
+  assertRequisitionOpen(requisition, 'start a new interview stage');
   const stageConfig = requisition.stages.find((s) => s.key === stageKey && s.enabled);
   if (!stageConfig) throw new ValidationError(['stageKey'], 'That stage is not enabled on this requisition.');
 
@@ -154,6 +164,7 @@ const create = asyncHandler(async (req, res) => {
 const createMeeting = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'create or change a meeting');
 
   if (req.body?.meetingUri) {
     interview.meetingUri = req.body.meetingUri;
@@ -183,6 +194,7 @@ const createMeeting = asyncHandler(async (req, res) => {
 const sendMeetingEmail = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'send a meeting email');
   if (!interview.meetingUri) {
     throw new ValidationError(['meetingUri'], 'This interview has no meeting link yet.');
   }
@@ -201,6 +213,7 @@ const sendMeetingEmail = asyncHandler(async (req, res) => {
 const cancelMeeting = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'cancel a meeting');
 
   interview.meetingUri = undefined;
   interview.conferenceId = undefined;
@@ -221,6 +234,7 @@ const cancelMeeting = asyncHandler(async (req, res) => {
 const recordConsent = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'record consent');
 
   interview.consentObtained = true;
   await interview.save();
@@ -243,6 +257,7 @@ const recordConsent = asyncHandler(async (req, res) => {
 const fetchTranscript = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'fetch a transcript');
 
   const result = await transcriptProvider.fetchTranscript(interview);
 
@@ -272,6 +287,7 @@ const fetchTranscript = asyncHandler(async (req, res) => {
 const uploadTranscript = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'upload a transcript');
   if (!req.file) throw new ValidationError(['transcript'], 'A transcript file is required (field name "transcript").');
 
   const text = req.file.buffer.toString('utf8');
@@ -302,6 +318,7 @@ const uploadTranscript = asyncHandler(async (req, res) => {
 const uploadArtifact = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  await assertInterviewMutable(interview, 'upload an artifact');
   if (!req.file) throw new ValidationError(['artifact'], 'An artifact file is required (field name "artifact").');
 
   const uploaded = await uploadBuffer(req.file.buffer, { folder: 'interview-artifacts', filename: `${Date.now()}-${req.file.originalname}` });
@@ -334,6 +351,7 @@ const score = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
 
   const requisition = await Requisition.findById(interview.requisitionId);
+  assertRequisitionNotClosed(requisition, 'score an interview');
   const stageConfig = requisition.stages.find((s) => s.key === interview.stageKey);
 
   // Consent is about recording a live conversation (per the Interview
@@ -448,6 +466,7 @@ const sendOffer = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(interview.requisitionId);
+  assertRequisitionNotClosed(requisition, 'send an offer');
 
   // If a previous offer letter exists in Cloudinary, delete it first
   if (interview.artifactFilePublicId) {

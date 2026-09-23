@@ -121,6 +121,12 @@ export default function RequisitionDetail() {
   }
 
   async function handleGoToInterview(app) {
+    if (data?.requisition?.status !== 'open') {
+      toast.error(data?.requisition?.status === 'on_hold'
+        ? 'This requisition is on hold. Reopen it before starting a new interview stage.'
+        : 'This requisition is closed and cannot start new interview stages.');
+      return;
+    }
     const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
     const allStagesPassed = enabledList.length > 0 && enabledList.every((s) => {
       const p = (app.stageProgress || []).find((pr) => pr.stageKey === s.key);
@@ -202,6 +208,7 @@ export default function RequisitionDetail() {
   if (!data) return <div className="text-muted-foreground">Requisition not found.</div>;
 
   const { requisition, scorecard, applications } = data;
+  const canStartNewWork = requisition.status === 'open';
   const stageLabels = Object.fromEntries(requisition.stages.map((s) => [s.key, s.label]));
   const candidateQuery = candidateSearch.trim().toLowerCase();
   const filteredApplications = applications.filter((app) => {
@@ -259,12 +266,21 @@ export default function RequisitionDetail() {
             navigator.clipboard.writeText(url);
             toast.success('Public candidate application link copied to clipboard!');
           }}
+          disabled={!canStartNewWork}
           className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
         >
           <Link2 className="h-3.5 w-3.5 text-[#d21e2b]" />
           Copy Candidate Apply Link
         </Button>
       </div>
+
+      {!canStartNewWork && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {requisition.status === 'on_hold'
+            ? 'This requisition is on hold. New candidate attachments and interview stages are paused; existing interviews can still be completed.'
+            : 'This requisition is closed and read-only. Reopen it to make changes or start new interview stages.'}
+        </div>
+      )}
 
       {/* ---------- candidates ---------- */}
       <Card className="mt-6">
@@ -345,7 +361,7 @@ export default function RequisitionDetail() {
                   return p && (p.passed === true || p.status === 'passed' || p.status === 'approved');
                 });
                 const hasFailed = app.disposition === 'NO_HIRE' || (app.stageProgress || []).some((p) => p.status === 'failed');
-                const isGoDisabled = goingToInterview === app._id || !app.currentStageKey || hasFailed || allStagesPassed;
+                const isGoDisabled = !canStartNewWork || goingToInterview === app._id || !app.currentStageKey || hasFailed || allStagesPassed;
 
                 return (
                   <li key={app._id} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:gap-4">
@@ -453,8 +469,8 @@ export default function RequisitionDetail() {
           <AlertDialogHeader>
             <AlertDialogTitle>Close this requisition?</AlertDialogTitle>
             <AlertDialogDescription>
-              This starts the data-retention countdown. Once the window passes, interview transcripts
-              and AI justifications are purged — numeric scores, dispositions and the audit log are kept.
+              New candidates will no longer be able to apply for this position using the public application link.
+              Existing candidates and their scores will remain available.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

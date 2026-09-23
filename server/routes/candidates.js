@@ -9,8 +9,10 @@ router.use(requireAuth);
 
 router.get('/', candidateController.list);
 router.post('/', upload.single('resume'), candidateController.create);
+router.post('/bulk', candidateController.bulkCreate);
 router.get('/:id', candidateController.getOne);
 router.patch('/:id', upload.single('resume'), candidateController.update);
 router.post('/:id/apply', candidateController.apply);
+router.delete('/:id', candidateController.remove);
 
 module.exports = router;

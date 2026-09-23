@@ -1,10 +1,25 @@
 const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
+const Interview = require('../models/Interview');
+const AuditLog = require('../models/AuditLog');
 const Requisition = require('../models/Requisition');
 const logger = require('../utils/logger');
 const { asyncHandler } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
+const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_BULK_IMPORT_ROWS = 500;
+
+function validatePhone(phone, required = false) {
+  const value = String(phone || '').trim();
+  if ((required && !value) || (value && !PHONE_NUMBER_PATTERN.test(value))) {
+    throw new ValidationError(['phone'], 'Phone number must contain exactly 11 digits.');
+  }
+  return value;
+}
 
 /**
  * GET /api/candidates — list all candidates, each with the requisitions it is
@@ -52,6 +67,7 @@ const list = asyncHandler(async (req, res) => {
 const create = asyncHandler(async (req, res) => {
   const { name, email, phone, notes } = req.body;
   if (!name) throw new ValidationError(['name'], 'name is required.');
+  const validatedPhone = validatePhone(phone);
 
   let resumeFileUrl;
   let resumeFilePublicId;
@@ -64,7 +80,7 @@ const create = asyncHandler(async (req, res) => {
   const candidate = await Candidate.create({
     name,
     email,
-    phone,
+    phone: validatedPhone,
     notes,
     resumeFileUrl,
     resumeFilePublicId,
@@ -72,6 +88,63 @@ const create = asyncHandler(async (req, res) => {
 
   logger.info(`[Candidate] Created "${name}" (${candidate._id})${req.file ? ' with résumé' : ''}.`);
   res.status(201).json({ candidate });
+});
+
+/**
+ * POST /api/candidates/bulk
+ * Creates candidates parsed from a CSV preview. Each row is validated again
+ * server-side so browser validation cannot create malformed or duplicate data.
+ */
+const bulkCreate = asyncHandler(async (req, res) => {
+  const rows = req.body?.candidates;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new ValidationError(['candidates'], 'At least one candidate row is required.');
+  }
+  if (rows.length > MAX_BULK_IMPORT_ROWS) {
+    throw new ValidationError(['candidates'], `A maximum of ${MAX_BULK_IMPORT_ROWS} candidates can be imported at once.`);
+  }
+
+  const existingCandidates = await Candidate.find({ email: { $exists: true, $ne: '' } }).select('email').lean();
+  const existingEmails = new Set(existingCandidates
+    .map((candidate) => String(candidate.email || '').trim().toLowerCase())
+    .filter(Boolean));
+  const fileEmails = new Set();
+  const candidatesToCreate = [];
+  const skipped = [];
+
+  rows.forEach((row, index) => {
+    const rowNumber = Number(row?.rowNumber) || index + 2;
+    const name = String(row?.name || '').trim();
+    const email = String(row?.email || '').trim();
+    const phone = String(row?.phone || '').trim();
+    const notes = String(row?.notes || '').trim();
+    const errors = [];
+
+    if (!name) errors.push('Name is required.');
+    if (email && !EMAIL_PATTERN.test(email)) errors.push('Email address is invalid.');
+    if (phone && !PHONE_NUMBER_PATTERN.test(phone)) errors.push('Phone number must contain exactly 11 digits.');
+
+    const emailKey = email.toLowerCase();
+    if (emailKey && existingEmails.has(emailKey)) errors.push('A candidate with this email already exists.');
+    if (emailKey && fileEmails.has(emailKey)) errors.push('This email appears more than once in the import file.');
+
+    if (errors.length > 0) {
+      skipped.push({ rowNumber, errors });
+      return;
+    }
+
+    if (emailKey) fileEmails.add(emailKey);
+    candidatesToCreate.push({ name, email, phone, notes });
+  });
+
+  const created = candidatesToCreate.length > 0 ? await Candidate.insertMany(candidatesToCreate) : [];
+  logger.info(`[Candidate] Bulk import: created=${created.length}, skipped=${skipped.length}.`);
+  res.status(201).json({
+    createdCount: created.length,
+    skippedCount: skipped.length,
+    skipped,
+    candidates: created,
+  });
 });
 
 /** GET /api/candidates/:id */
@@ -89,7 +162,7 @@ const update = asyncHandler(async (req, res) => {
   const { name, email, phone, notes } = req.body;
   if (name !== undefined) candidate.name = name;
   if (email !== undefined) candidate.email = email;
-  if (phone !== undefined) candidate.phone = phone;
+  if (phone !== undefined) candidate.phone = validatePhone(phone);
   if (notes !== undefined) candidate.notes = notes;
 
   if (req.file) {
@@ -119,6 +192,7 @@ const apply = asyncHandler(async (req, res) => {
 
   const requisition = await Requisition.findById(requisitionId);
   if (!requisition) throw new ValidationError(['requisitionId'], 'No requisition found with that id.');
+  assertRequisitionOpen(requisition, 'attach a candidate');
 
   const existing = await Application.findOne({ candidateId: candidate._id, requisitionId });
   if (existing) {
@@ -144,4 +218,38 @@ const apply = asyncHandler(async (req, res) => {
   res.status(201).json({ application });
 });
 
-module.exports = { list, create, getOne, update, apply };
+/**
+ * DELETE /api/candidates/:id
+ * Permanently removes the candidate and every record/evidence file owned by
+ * their applications. Cloudinary files are deleted first so a storage failure
+ * cannot leave an apparently-deleted candidate with personal files behind.
+ */
+const remove = asyncHandler(async (req, res) => {
+  const candidate = await Candidate.findById(req.params.id);
+  if (!candidate) return res.status(404).json({ error: 'NOT_FOUND', message: 'Candidate not found.' });
+
+  const applications = await Application.find({ candidateId: candidate._id }).select('_id').lean();
+  const applicationIds = applications.map((application) => application._id);
+  const interviews = await Interview.find({ applicationId: { $in: applicationIds } })
+    .select('artifactFilePublicId')
+    .lean();
+
+  const fileIds = [...new Set([
+    candidate.resumeFilePublicId,
+    ...interviews.map((interview) => interview.artifactFilePublicId),
+  ].filter(Boolean))];
+  await Promise.all(fileIds.map((publicId) => destroyFile(publicId)));
+
+  await AuditLog.deleteMany({ applicationId: { $in: applicationIds } });
+  const interviewResult = await Interview.deleteMany({ applicationId: { $in: applicationIds } });
+  const applicationResult = await Application.deleteMany({ _id: { $in: applicationIds } });
+  await candidate.deleteOne();
+
+  logger.info(`[Candidate] Permanently deleted ${candidate._id}: applications=${applicationResult.deletedCount}, interviews=${interviewResult.deletedCount}, cloudinaryFiles=${fileIds.length}.`);
+  res.json({
+    message: 'Candidate and all related records were deleted.',
+    deleted: { applications: applicationResult.deletedCount, interviews: interviewResult.deletedCount, cloudinaryFiles: fileIds.length },
+  });
+});
+
+module.exports = { list, create, bulkCreate, getOne, update, apply, remove };

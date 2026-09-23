@@ -34,8 +34,9 @@ const SENIOR_ROLE_PATTERN = /\b(senior|chief executive|chief|director|\bvp\b|vic
 const SYSTEM_PROMPT = `You are an expert interview designer helping an internal HR team build a structured, role-specific interview scorecard.
 
 For each stage provided:
-- For "resume_screen" stage ONLY: Generate EXACTLY 1 comprehensive evaluation attribute named "Overall Resume & Qualification Evaluation" assessing if the candidate's application meets the Job Description, Initial Screening Criteria, and Questionnaire requirements.
-- For all other interview stages (hr_screen, technical, simulation, final, etc.): Generate 5-8 role-specific interview questions/attributes to evaluate the candidate during that interview call.
+- For "resume_screen" stage ONLY: Generate EXACTLY 1 comprehensive evaluation attribute named "Overall Resume & Qualification Evaluation" assessing whether the candidate's CV meets the Job Description and Initial Screening Criteria. Do not use the application questionnaire for this stage.
+- For "hr_screen" stage: return an empty attributes array. Its scorecard is built directly from the requisition questionnaire and each question's ideal answer.
+- For all other interview stages (technical, simulation, final, etc.): Generate 5-8 role-specific interview questions/attributes to evaluate the candidate during that interview call.
 
 Each attribute must have:
 - "name": a short label
@@ -149,6 +150,20 @@ ${batch.map((s) => `- stageKey: "${s.key}" (${s.label}, inputType: ${s.inputType
       logger.error(`[QuestionGenerator] Batch [${batch.map((s) => s.key).join(',')}] failed, falling back to an empty skeleton for it: ${err.message}`);
       resultStages.push(...buildEmptySkeleton(batch).stages);
     }
+  }
+
+  const hrStage = resultStages.find((stage) => stage.stageKey === 'hr_screen');
+  if (hrStage && hasQuestionnaire) {
+    hrStage.attributes = requisition.questionnaire.map((item, index) => {
+      const question = typeof item === 'string' ? item : item.question;
+      const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+      return {
+        name: `Question ${index + 1}`,
+        question,
+        anchor5: idealAnswer || 'Fully addresses the question with a relevant, specific answer.',
+        redFlags: 'Does not answer the question, or provides an unclear or irrelevant response.',
+      };
+    });
   }
 
   return { stages: resultStages };

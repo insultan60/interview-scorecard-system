@@ -500,13 +500,13 @@ export default function InterviewRoom() {
         </CardContent>
       </Card>
 
-      {/* Requisition Criteria & Questionnaire Context (Shown ONLY for Resume Screen stage) */}
+      {/* Requisition criteria shown only for the résumé screen. */}
       {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
-        (requisition?.initialScreeningCriteria || (requisition?.questionnaire && requisition.questionnaire.length > 0)) && (
+        (requisition?.jobDescription || requisition?.initialScreeningCriteria) && (
         <Card className="mt-4 border-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/10">
           <CardHeader className="py-3">
             <CardTitle className="text-sm font-semibold text-foreground flex items-center justify-between">
-              <span>Candidate Application & Questionnaire Responses</span>
+              <span>Job Description & Initial Screening Criteria</span>
               {application?.source && (
                 <span className="text-xs font-normal text-muted-foreground capitalize">
                   Source: {application.source.replace('_', ' ')}
@@ -515,6 +515,14 @@ export default function InterviewRoom() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-0 pb-4 text-xs">
+            {requisition.jobDescription && (
+              <div>
+                <span className="font-semibold text-foreground">Job Description:</span>
+                <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
+                  {requisition.jobDescription}
+                </p>
+              </div>
+            )}
             {requisition.initialScreeningCriteria && (
               <div>
                 <span className="font-semibold text-foreground">Initial Screening Criteria & Requirements:</span>
@@ -536,48 +544,6 @@ export default function InterviewRoom() {
                     {requisition.initialScreeningCriteria}
                   </p>
                 )}
-              </div>
-            )}
-            {requisition.questionnaire && requisition.questionnaire.length > 0 && (
-              <div className="space-y-3">
-                <span className="font-semibold text-foreground">Questionnaire Answers vs. HR Benchmarks:</span>
-                <div className="space-y-2.5">
-                  {requisition.questionnaire.map((q, idx) => {
-                    const qText = typeof q === 'string' ? q : q.question;
-                    const ideal = typeof q === 'object' ? q.idealAnswer : '';
-                    const candidateAns = application?.questionnaireAnswers
-                      ? (application.questionnaireAnswers[qText] || application.questionnaireAnswers[idx] || '(No answer submitted)')
-                      : null;
-
-                    return (
-                      <div key={idx} className="rounded-lg border bg-card p-3 space-y-2">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {idx + 1}. {qText}
-                        </div>
-                        {candidateAns !== null && (
-                          <div className="rounded bg-slate-50 dark:bg-slate-900/60 p-2.5 border border-slate-200 dark:border-slate-800">
-                            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block mb-0.5">
-                              Candidate Written Response:
-                            </span>
-                            <p className="text-sm text-slate-900 dark:text-slate-100 font-medium whitespace-pre-wrap">
-                              {candidateAns}
-                            </p>
-                          </div>
-                        )}
-                        {ideal && (
-                          <div className="pt-1">
-                            <div className="rounded border border-emerald-200 bg-emerald-50/80 p-2 text-emerald-950">
-                              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
-                                Ideal Answer
-                              </span>
-                              <p className="text-xs mt-0.5">{ideal}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             )}
           </CardContent>

@@ -111,4 +111,21 @@ async function sendOfferEmail({ candidateEmail, candidateName, requisitionTitle,
   return sendEmail({ to: candidateEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail };
+/** Sends a confirmation after a candidate submits a public job application. */
+async function sendApplicationConfirmationEmail({ candidateEmail, candidateName, requisitionTitle }) {
+  const subject = `Application received — ${requisitionTitle}`;
+  const text = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    `Thank you for applying for the ${requisitionTitle} position at Red Star Technologies.`,
+    '',
+    'We have received your application and our hiring team will review it.',
+    '',
+    'Best regards,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  return sendEmail({ to: candidateEmail, subject, text });
+}
+
+module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail };

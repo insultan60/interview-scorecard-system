@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/hooks/useApi';
+import { sendApplicationConfirmationEmailClient } from '../services/emailService';
 import {
   Briefcase, Calendar, CheckCircle2, FileText, Upload, AlertCircle, Sparkles, ArrowRight, MapPin,
 } from 'lucide-react';
@@ -12,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import redstarIcon from '../assets/redstar-icon.png';
 
 const formatDeadline = (date) => {
   const d = new Date(date);
@@ -22,6 +24,54 @@ const formatDeadline = (date) => {
     day: 'numeric',
     timeZone: 'UTC',
   }).format(d);
+}
+
+const TURNSTILE_SCRIPT_ID = 'cloudflare-turnstile-script';
+
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve(window.turnstile);
+  const existing = document.getElementById(TURNSTILE_SCRIPT_ID);
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(window.turnstile), { once: true });
+      existing.addEventListener('error', reject, { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => resolve(window.turnstile);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function TurnstileCaptcha({ siteKey, onToken }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    let widgetId;
+    let active = true;
+    loadTurnstile()
+      .then((turnstile) => {
+        if (!active || !turnstile || !containerRef.current) return;
+        widgetId = turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: onToken,
+          'expired-callback': () => onToken(''),
+          'error-callback': () => onToken(''),
+        });
+      })
+      .catch(() => onToken(''));
+    return () => {
+      active = false;
+      if (widgetId !== undefined && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [siteKey, onToken]);
+
+  return <div ref={containerRef} />;
 }
 
 
@@ -40,8 +90,16 @@ export default function CandidateApply() {
   const [phone, setPhone] = useState('');
   const [answers, setAnswers] = useState({});
   const [resumeFile, setResumeFile] = useState(null);
+  const [formPart, setFormPart] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [captcha, setCaptcha] = useState({ enabled: false, siteKey: '' });
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+
+  useEffect(() => {
+    if (formPart !== 2) setCaptchaToken('');
+  }, [formPart]);
 
   useEffect(() => {
     async function fetchPublicRequisition() {
@@ -52,6 +110,7 @@ export default function CandidateApply() {
         const res = await api.get(`/requisitions/${id}/public`);
         console.log('[CandidateApply] Received requisition data:', res.data);
         setRequisition(res.data.requisition);
+        setCaptcha(res.data.captcha || { enabled: false, siteKey: '' });
       } catch (err) {
         console.error('[CandidateApply] Failed to load requisition error:', err);
         const serverMsg = err?.response?.data?.message || err?.message;
@@ -75,6 +134,34 @@ export default function CandidateApply() {
     setPhone('');
     setAnswers({});
     setResumeFile(null);
+    setFormPart(1);
+    setCaptchaToken('');
+  }
+
+  function handlePersonalContinue(e) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) {
+      toast.error('Name and Email are required.');
+      return;
+    }
+    if (!/^\d{11}$/.test(phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+    if (!resumeFile) {
+      toast.error('Please upload your CV / Resume file (PDF).');
+      return;
+    }
+    const isPdf = resumeFile.type === 'application/pdf' || resumeFile.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      toast.error('Please upload your CV / Resume as a PDF file.');
+      return;
+    }
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      toast.error('Your CV / Resume must be 5 MB or smaller.');
+      return;
+    }
+    setFormPart(2);
   }
 
   async function handleSubmit(e) {
@@ -84,8 +171,36 @@ export default function CandidateApply() {
       return;
     }
 
+    if (!/^\d{11}$/.test(phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+
+    const unansweredQuestionIndex = (requisition?.questionnaire || []).findIndex((question) => {
+      const questionText = typeof question === 'string' ? question : question.question;
+      return !answers[questionText]?.trim();
+    });
+    if (unansweredQuestionIndex !== -1) {
+      toast.error(`Please answer screening question ${unansweredQuestionIndex + 1}.`);
+      return;
+    }
+
     if (!resumeFile) {
       toast.error('Please upload your CV / Resume file (PDF).');
+      return;
+    }
+    const isPdf = resumeFile.type === 'application/pdf' || resumeFile.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      toast.error('Please upload your CV / Resume as a PDF file.');
+      return;
+    }
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      toast.error('Your CV / Resume must be 5 MB or smaller.');
+      return;
+    }
+
+    if (captcha.enabled && !captchaToken) {
+      toast.error('Please complete the security check.');
       return;
     }
 
@@ -98,10 +213,24 @@ export default function CandidateApply() {
       formData.append('phone', phone.trim());
       formData.append('questionnaireAnswers', JSON.stringify(answers));
       formData.append('resume', resumeFile);
+      if (captcha.enabled) formData.append('captchaToken', captchaToken);
 
       const res = await api.post(`/requisitions/${id}/apply`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
+      // Use browser EmailJS when backend email delivery is unavailable. The
+      // application has already been saved, so a mail failure never blocks it.
+      if (!res.data.confirmationEmailSent) {
+        const emailResult = await sendApplicationConfirmationEmailClient({
+          candidateEmail: email.trim(),
+          candidateName: name.trim(),
+          requisitionTitle: requisition.title,
+        });
+        if (!emailResult.sent) {
+          console.warn('[CandidateApply] Application confirmation email was not sent:', emailResult.reason);
+        }
+      }
 
       console.log('[CandidateApply] Application submission success:', res.data);
       setResult(res.data);
@@ -110,6 +239,10 @@ export default function CandidateApply() {
       toast.success('Application submitted successfully!');
     } catch (err) {
       console.error('[CandidateApply] Application submission failed:', err);
+      if (err?.response?.data?.error === 'CAPTCHA_FAILED') {
+        setCaptchaToken('');
+        setCaptchaResetKey((key) => key + 1);
+      }
       toast.error(err?.response?.data?.message || 'Failed to submit application. Please try again.');
     } finally {
       setSubmitting(false);
@@ -161,10 +294,8 @@ export default function CandidateApply() {
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
         <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-[#d21e2b] text-white flex items-center justify-center font-bold text-lg">
-              R
-            </div>
-            <span className="font-semibold text-lg tracking-tight">Red Star Careers</span>
+            <img src={redstarIcon} alt="Red Star Technologies" className="h-9 w-9 object-contain" />
+            <span className="font-semibold text-lg tracking-tight">Red Star Technologies</span>
           </div>
           {requisition.applicationDeadline && (
             <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3">
@@ -184,11 +315,6 @@ export default function CandidateApply() {
                 <Badge className="bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10">
                   Open Position
                 </Badge>
-                {requisition.aiScreeningEnabled && (
-                  <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-800 border-amber-200">
-                    <Sparkles className="h-3 w-3 text-amber-600" /> Fast-Track AI Screening
-                  </Badge>
-                )}
               </div>
               <CardTitle className="text-3xl font-bold text-slate-900 tracking-tight">
                 {requisition.title}
@@ -238,7 +364,7 @@ export default function CandidateApply() {
               ) : (
                 <div className="pt-4 flex justify-end">
                   <Button
-                    onClick={() => setStep('form')}
+                    onClick={() => { setFormPart(1); setStep('form'); }}
                     className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6 py-2.5 text-base font-medium shadow-sm gap-2"
                   >
                     Apply for this Position <ArrowRight className="h-4 w-4" />
@@ -258,19 +384,19 @@ export default function CandidateApply() {
                     Application Form
                   </CardTitle>
                   <CardDescription className="text-sm">
-                    Position: <span className="font-medium text-slate-800">{requisition.title}</span>
+                    Step {formPart} of 2 · Position: <span className="font-medium text-slate-800">{requisition.title}</span>
                   </CardDescription>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setStep('jd')} className="text-slate-500">
+                <Button variant="ghost" size="sm" onClick={() => { setFormPart(1); setStep('jd'); }} className="text-slate-500">
                   Back to JD
                 </Button>
               </div>
             </CardHeader>
 
             <CardContent className="pt-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={formPart === 1 ? handlePersonalContinue : handleSubmit} className="space-y-6">
                 {/* Contact Information */}
-                <div className="space-y-4">
+                {formPart === 1 && <div className="space-y-4">
                   <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                     Personal Information
                   </h3>
@@ -306,20 +432,24 @@ export default function CandidateApply() {
 
                   <div className="space-y-1.5">
                     <Label htmlFor="candidate-phone" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-                      Phone Number
+                      Phone Number <span className="text-red-500">*</span>
                     </Label>
                     <Input
                       id="candidate-phone"
                       type="tel"
-                      placeholder="+1 (555) 000-0000"
+                      inputMode="numeric"
+                      pattern="[0-9]{11}"
+                      maxLength={11}
+                      placeholder="03001234567"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                      required
                     />
                   </div>
-                </div>
+                </div>}
 
                 {/* Questionnaire Questions */}
-                {requisition.questionnaire && requisition.questionnaire.length > 0 && (
+                {formPart === 2 && requisition.questionnaire && requisition.questionnaire.length > 0 && (
                   <div className="space-y-4 pt-2">
                     <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                       Application Questionnaire
@@ -328,14 +458,16 @@ export default function CandidateApply() {
                       const qText = typeof q === 'string' ? q : q.question;
                       return (
                         <div key={idx} className="space-y-1.5">
-                          <Label className="text-sm font-medium text-slate-800">
-                            {idx + 1}. {qText}
+                          <Label htmlFor={`question-${idx}`} className="text-sm font-medium text-slate-800">
+                            {idx + 1}. {qText} <span className="text-red-500">*</span>
                           </Label>
                           <Textarea
+                            id={`question-${idx}`}
                             placeholder="Your answer..."
                             rows={3}
                             value={answers[qText] || ''}
                             onChange={(e) => handleAnswerChange(qText, e.target.value)}
+                            required
                           />
                         </div>
                       );
@@ -343,24 +475,22 @@ export default function CandidateApply() {
                   </div>
                 )}
 
-                {/* Resume Upload */}
-                <div className="space-y-2 pt-2">
+                {formPart === 1 && <div className="space-y-2 pt-2">
                   <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                     Resume / CV Attachment <span className="text-red-500">*</span>
                   </h3>
                   <div className="rounded-lg border-2 border-dashed border-slate-300 p-6 text-center hover:border-[#d21e2b]/50 transition-colors bg-slate-50/50">
                     <Upload className="mx-auto h-8 w-8 text-slate-400 mb-2" />
                     <Label htmlFor="resume-file" className="cursor-pointer text-sm font-medium text-[#d21e2b] hover:underline">
-                      Upload CV / Resume (PDF)
+                      Upload CV / Resume (PDF, max 5 MB)
                     </Label>
-                    <p className="text-xs text-slate-500 mt-1">PDF or Word Document up to 10MB</p>
+                    <p className="text-xs text-slate-500 mt-1">PDF only, up to 5 MB</p>
                     <input
                       id="resume-file"
                       type="file"
-                      accept=".pdf,.docx,.doc"
+                      accept="application/pdf,.pdf"
                       onChange={(e) => setResumeFile(e.target.files[0] || null)}
                       className="hidden"
-                      required
                     />
                     {resumeFile && (
                       <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-slate-800 border shadow-sm">
@@ -369,18 +499,26 @@ export default function CandidateApply() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div>}
+
+                {formPart === 2 && captcha.enabled && (
+                  <div>
+                    <TurnstileCaptcha key={captchaResetKey} siteKey={captcha.siteKey} onToken={setCaptchaToken} />
+                  </div>
+                )}
 
                 <div className="pt-4 flex justify-end gap-3">
-                  <Button type="button" variant="outline" onClick={() => setStep('jd')}>
-                    Cancel
-                  </Button>
+                  {formPart === 1 ? (
+                    <Button type="button" variant="outline" onClick={() => { setFormPart(1); setStep('jd'); }}>Cancel</Button>
+                  ) : (
+                    <Button type="button" variant="outline" onClick={() => setFormPart(1)}>Back</Button>
+                  )}
                   <Button
                     type="submit"
                     disabled={submitting}
                     className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6"
                   >
-                    {submitting ? 'Submitting Application...' : 'Submit Application'}
+                    {formPart === 1 ? 'Continue' : (submitting ? 'Submitting Application...' : 'Submit Application')}
                   </Button>
                 </div>
               </form>
