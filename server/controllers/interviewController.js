@@ -168,12 +168,30 @@ const createMeeting = asyncHandler(async (req, res) => {
   await assertInterviewMutable(interview, 'create or change a meeting');
 
   if (req.body?.meetingUri) {
+    if (interview.calendarEventId) await transcriptProvider.cancelMeeting(interview);
     interview.meetingUri = req.body.meetingUri;
     interview.provider = 'manual';
+    interview.conferenceId = undefined;
+    interview.calendarEventId = undefined;
+    interview.meetingStart = undefined;
+    interview.meetingEnd = undefined;
   } else {
-    const { meetingUri, conferenceId } = await transcriptProvider.createMeeting(interview);
+    const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
+    const requisition = await Requisition.findById(interview.requisitionId);
+    const stage = requisition?.stages?.find((item) => item.key === interview.stageKey);
+    const { meetingUri, conferenceId, calendarEventId, meetingStart, meetingEnd } = await transcriptProvider.createMeeting(interview, {
+      startTime: req.body?.meetingStart,
+      endTime: req.body?.meetingEnd,
+      candidateEmail: application?.candidateId?.email,
+      candidateName: application?.candidateId?.name,
+      requisitionTitle: requisition?.title,
+      stageLabel: stage?.label || interview.stageKey,
+    });
     interview.meetingUri = meetingUri;
     interview.conferenceId = conferenceId;
+    interview.calendarEventId = calendarEventId;
+    interview.meetingStart = meetingStart;
+    interview.meetingEnd = meetingEnd;
     // Only google_meet actually reaches this line in Phase 1 — zoom/fathom throw
     // "not enabled" inside createMeeting() before ever returning.
     interview.provider = 'google_meet';
@@ -181,7 +199,11 @@ const createMeeting = asyncHandler(async (req, res) => {
   interview.status = 'scheduled';
   await interview.save();
 
-  const emailResult = await emailMeetingLinkToCandidate(interview);
+  // Calendar sends the candidate the official invitation itself. Keep the
+  // existing email fallback only for manually pasted meeting links.
+  const emailResult = interview.calendarEventId
+    ? { sent: true, reason: 'Google Calendar invitation sent.' }
+    : await emailMeetingLinkToCandidate(interview);
 
   logger.info(`[Interview] Meeting set for ${interview._id}: ${interview.meetingUri}`);
   res.json({ interview, emailSent: emailResult.sent, emailReason: emailResult.reason });
@@ -216,8 +238,15 @@ const cancelMeeting = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
   await assertInterviewMutable(interview, 'cancel a meeting');
 
+  if (interview.calendarEventId) {
+    await transcriptProvider.cancelMeeting(interview);
+  }
+
   interview.meetingUri = undefined;
   interview.conferenceId = undefined;
+  interview.calendarEventId = undefined;
+  interview.meetingStart = undefined;
+  interview.meetingEnd = undefined;
 
   if (!interview.scores?.length) {
     interview.status = 'pending';

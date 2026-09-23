@@ -46,6 +46,8 @@ export default function RequisitionDetail() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [dispositionFilter, setDispositionFilter] = useState('all');
   const [pendingClose, setPendingClose] = useState(false);
+  const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
+  const [removingCandidate, setRemovingCandidate] = useState(false);
 
   const [overrideModalApp, setOverrideModalApp] = useState(null);
   const [overrideReason, setOverrideReason] = useState('');
@@ -183,6 +185,19 @@ export default function RequisitionDetail() {
     // Closing starts the retention countdown — confirm before it's irreversible.
     if (newStatus === 'closed') { setPendingClose(true); return; }
     applyStatus(newStatus);
+  }
+
+  async function handleRemoveCandidate() {
+    if (!removeCandidateApp?.candidateId?._id) return;
+    setRemovingCandidate(true);
+    try {
+      const res = await api.delete(`/candidates/${removeCandidateApp.candidateId._id}/requisitions/${id}`);
+      toast.success(res.data.message || 'Candidate removed from this requisition.');
+      setRemoveCandidateApp(null);
+      load();
+    } finally {
+      setRemovingCandidate(false);
+    }
   }
 
   if (loading) {
@@ -397,6 +412,13 @@ export default function RequisitionDetail() {
                       >
                         {goingToInterview === app._id ? 'Opening…' : 'Go to Interview'}
                       </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        onClick={() => setRemoveCandidateApp(app)}
+                      >
+                        Remove
+                      </Button>
                     </div>
                   </li>
                 );
@@ -481,6 +503,27 @@ export default function RequisitionDetail() {
               className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
             >
               {savingStatus ? 'Closing…' : 'Close job'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!removeCandidateApp} onOpenChange={(open) => !open && setRemoveCandidateApp(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeCandidateApp?.candidateId?.name || 'candidate'} from this job opening?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes their application, interviews, interview documents, scores, and audit records for this job opening. Their profile and applications to other job openings will remain. Calendar invitations created by this app will be cancelled first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingCandidate}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removingCandidate}
+              onClick={(event) => { event.preventDefault(); handleRemoveCandidate(); }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {removingCandidate ? 'Removing…' : 'Remove candidate'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

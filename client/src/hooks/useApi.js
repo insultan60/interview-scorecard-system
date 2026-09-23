@@ -30,7 +30,12 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const isLoginRequest = error.config?.url?.includes('/auth/login');
 
-    if (status === 401 && !isLoginRequest) {
+    // A 401 from our auth middleware means the user's session expired. External
+    // services (for example Google Calendar with an insufficient OAuth scope)
+    // can also return 401 through the API, and those must show their error
+    // instead of logging the HR user out.
+    const isSessionAuthError = error.response?.data?.error === 'AUTH_ERROR';
+    if (status === 401 && isSessionAuthError && !isLoginRequest) {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';

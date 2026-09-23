@@ -22,6 +22,8 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
+  const [meetingStartInput, setMeetingStartInput] = useState('');
+  const [meetingEndInput, setMeetingEndInput] = useState('');
   const [creatingMeeting, setCreatingMeeting] = useState(false);
   const [changingMeeting, setChangingMeeting] = useState(false);
   const [confirmingConsent, setConfirmingConsent] = useState(false);
@@ -118,15 +120,34 @@ export default function InterviewRoom() {
   async function handleCreateMeeting(useProvider) {
     setCreatingMeeting(true);
     try {
-      const body = useProvider ? {} : { meetingUri: meetingLinkInput.trim() };
+      const body = useProvider
+        ? {
+          meetingStart: meetingStartInput ? new Date(meetingStartInput).toISOString() : '',
+          meetingEnd: meetingEndInput ? new Date(meetingEndInput).toISOString() : '',
+        }
+        : { meetingUri: meetingLinkInput.trim() };
       if (!useProvider && !body.meetingUri) {
         toast.error('Paste a meeting link first.');
+        return;
+      }
+      if (useProvider && (!meetingStartInput || !meetingEndInput)) {
+        toast.error('Choose the meeting start and end time first.');
+        return;
+      }
+      if (useProvider && new Date(meetingStartInput) <= new Date()) {
+        toast.error('Meeting start time must be in the future.');
+        return;
+      }
+      if (useProvider && new Date(meetingEndInput) - new Date(meetingStartInput) > 60 * 60 * 1000) {
+        toast.error('Interview duration cannot be longer than 1 hour.');
         return;
       }
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
       setChangingMeeting(false);
       setMeetingLinkInput('');
+      setMeetingStartInput('');
+      setMeetingEndInput('');
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
         toast.success('Meeting set and emailed to candidate.');
@@ -653,11 +674,23 @@ export default function InterviewRoom() {
                       Use Link
                     </button>
                   </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      type="datetime-local" value={meetingStartInput} onChange={(e) => setMeetingStartInput(e.target.value)}
+                      aria-label="Meeting start time"
+                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                    />
+                    <input
+                      type="datetime-local" value={meetingEndInput} onChange={(e) => setMeetingEndInput(e.target.value)}
+                      aria-label="Meeting end time"
+                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                    />
+                  </div>
                   <button
                     type="button" onClick={() => handleCreateMeeting(true)} disabled={creatingMeeting}
                     className="rounded-md bg-[#d21e2b] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {creatingMeeting ? 'Creating...' : 'Create Google Meet Link'}
+                    {creatingMeeting ? 'Creating...' : 'Create & Invite via Google Calendar'}
                   </button>
                 </div>
               )}

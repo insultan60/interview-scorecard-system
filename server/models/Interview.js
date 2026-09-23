@@ -19,6 +19,9 @@ const interviewSchema = new mongoose.Schema({
   meetingMode: { type: String, enum: MEETING_MODES, default: 'online' },
   provider: { type: String, enum: TRANSCRIPT_PROVIDERS, default: 'google_meet' },
   meetingUri: String,          // Created via provider API, or pasted by HR
+  calendarEventId: String,
+  meetingStart: Date,
+  meetingEnd: Date,
   conferenceId: String,        // Provider's record id — maps transcript back to THIS interview
   designatedScorerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 

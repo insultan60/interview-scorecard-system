@@ -27,6 +27,10 @@ async function getMeetClient() {
   return google.meet({ version: 'v2', auth: await getOAuthClient() });
 }
 
+async function getCalendarClient() {
+  return google.calendar({ version: 'v3', auth: await getOAuthClient() });
+}
+
 /**
  * Creates a Google Meet space via the Meet REST API.
  *
@@ -43,12 +47,55 @@ async function getMeetClient() {
  * @throws {import('../utils/errors').RateLimitError} if 429 persists (Meet API ~60 req/min/project).
  * @throws {import('../utils/errors').ServiceError} on persistent network failure.
  */
-async function createMeeting(interview) {
-  const meet = await getMeetClient();
-  logger.info('[GoogleMeet] Creating a new Meet space.');
-  const { data } = await withRetry('GoogleMeet', () => meet.spaces.create({ requestBody: {} }));
-  logger.info(`[GoogleMeet] Space created: ${data.name} uri=${data.meetingUri}`);
-  return { meetingUri: data.meetingUri, conferenceId: data.name };
+async function createMeeting(interview, details = {}) {
+  const { startTime, endTime, candidateEmail, candidateName, requisitionTitle, stageLabel } = details;
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (!startTime || !endTime || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    throw new ValidationError(['meetingStart', 'meetingEnd'], 'Choose a valid meeting start and end time.');
+  }
+  if (start.getTime() <= Date.now()) {
+    throw new ValidationError(['meetingStart'], 'The meeting start time must be in the future.');
+  }
+  if (end.getTime() - start.getTime() > 60 * 60 * 1000) {
+    throw new ValidationError(['meetingEnd'], 'Interview duration cannot be longer than 1 hour.');
+  }
+
+  const calendar = await getCalendarClient();
+  const { data } = await withRetry('GoogleCalendar', () => calendar.events.insert({
+    calendarId: 'primary',
+    conferenceDataVersion: 1,
+    sendUpdates: candidateEmail ? 'all' : 'none',
+    requestBody: {
+      summary: `${stageLabel || 'Interview'} — ${requisitionTitle || 'Interview'}`,
+      description: `Interview with ${candidateName || 'candidate'}.`,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+      attendees: candidateEmail ? [{ email: candidateEmail }] : [],
+      conferenceData: { createRequest: { requestId: `interview-${interview._id}-${Date.now()}` } },
+    },
+  }));
+  const entryPoint = (data.conferenceData?.entryPoints || []).find((entry) => entry.entryPointType === 'video');
+  if (!data.id || !entryPoint?.uri) throw new Error('Google Calendar did not return a Meet link.');
+
+  logger.info(`[GoogleMeet] Calendar event created: ${data.id} uri=${entryPoint.uri}`);
+  return {
+    meetingUri: entryPoint.uri,
+    conferenceId: data.conferenceData?.conferenceId ? `meetingCode:${data.conferenceData.conferenceId}` : undefined,
+    calendarEventId: data.id,
+    meetingStart: start,
+    meetingEnd: end,
+  };
+}
+
+async function cancelMeeting(interview) {
+  if (!interview.calendarEventId) return { cancelled: false };
+  const calendar = await getCalendarClient();
+  await withRetry('GoogleCalendar', () => calendar.events.delete({
+    calendarId: 'primary', eventId: interview.calendarEventId, sendUpdates: 'all',
+  }));
+  logger.info(`[GoogleMeet] Calendar event cancelled: ${interview.calendarEventId}`);
+  return { cancelled: true };
 }
 
 /**
@@ -64,6 +111,15 @@ async function findConferenceRecordForSpace(meet, spaceName) {
   const records = data.conferenceRecords || [];
   if (records.length === 0) return null;
   // Most recent call in this space (records aren't guaranteed pre-sorted).
+  return records.sort((a, b) => new Date(b.startTime) - new Date(a.startTime))[0];
+}
+
+async function findConferenceRecordForMeetingCode(meet, meetingCode) {
+  const { data } = await withRetry('GoogleMeet', () => meet.conferenceRecords.list({
+    filter: `space.meeting_code="${meetingCode}"`,
+  }));
+  const records = data.conferenceRecords || [];
+  if (records.length === 0) return null;
   return records.sort((a, b) => new Date(b.startTime) - new Date(a.startTime))[0];
 }
 
@@ -145,7 +201,9 @@ async function fetchTranscript(interview) {
 
   if (!conferenceRecordName) {
     logger.info(`[GoogleMeet] Looking up conference record for ${stored}`);
-    const record = await findConferenceRecordForSpace(meet, stored);
+    const record = stored.startsWith('meetingCode:')
+      ? await findConferenceRecordForMeetingCode(meet, stored.slice('meetingCode:'.length))
+      : await findConferenceRecordForSpace(meet, stored);
     if (!record) {
       logger.info('[GoogleMeet] No conference record yet — call hasn\'t happened or hasn\'t synced. status=pending');
       return { status: 'pending' };
@@ -181,4 +239,4 @@ async function fetchTranscript(interview) {
   return { status: 'ready', text: lines.join('\n'), resolvedConferenceId: conferenceRecordName };
 }
 
-module.exports = { createMeeting, fetchTranscript };
+module.exports = { createMeeting, cancelMeeting, fetchTranscript };

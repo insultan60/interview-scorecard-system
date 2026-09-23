@@ -207,9 +207,10 @@ interview-scorecard-system/
 - **Node.js** v18+
 - **MongoDB** v6+ (running locally or via MongoDB Atlas)
 - **Anthropic API Key** — Required for AI scoring ([console.anthropic.com](https://console.anthropic.com))
-- **Google Cloud Project** (optional) — Required only for automatic Google Meet transcript fetching
-  - Google Meet REST API enabled
+- **Google Cloud Project** (optional) — Required for Google Calendar interview invitations and automatic Google Meet transcript fetching
+  - Google Meet REST API and Google Calendar API enabled
   - OAuth 2.0 credentials (Client ID, Client Secret, Refresh Token)
+  - Refresh token authorized for `https://www.googleapis.com/auth/calendar.events`, `https://www.googleapis.com/auth/meetings.space.created`, and `https://www.googleapis.com/auth/meetings.space.readonly`
   - Paid Google Workspace account (Business Standard or higher)
 - **Slack Webhook URL** (optional) — For team notifications
 
@@ -255,7 +256,8 @@ CLAUDE_MODEL_DEFAULT=claude-sonnet-4-20250514
 CLAUDE_MODEL_CHEAP=claude-haiku-4-5-20251001
 CLAUDE_MODEL_DEEP=claude-opus-4-20250514
 
-# Google Meet (Optional — leave blank for manual transcript upload)
+# Google Meet + Google Calendar (optional — leave blank for manual links/transcript upload)
+# The refresh token must include calendar.events, meetings.space.created, and meetings.space.readonly scopes.
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_REDIRECT_URI=http://localhost:5000/api/interviews/google/callback
