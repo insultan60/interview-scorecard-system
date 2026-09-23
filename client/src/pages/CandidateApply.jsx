@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/hooks/useApi';
@@ -26,6 +26,54 @@ const formatDeadline = (date) => {
   }).format(d);
 }
 
+const TURNSTILE_SCRIPT_ID = 'cloudflare-turnstile-script';
+
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve(window.turnstile);
+  const existing = document.getElementById(TURNSTILE_SCRIPT_ID);
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(window.turnstile), { once: true });
+      existing.addEventListener('error', reject, { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => resolve(window.turnstile);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function TurnstileCaptcha({ siteKey, onToken }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    let widgetId;
+    let active = true;
+    loadTurnstile()
+      .then((turnstile) => {
+        if (!active || !turnstile || !containerRef.current) return;
+        widgetId = turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: onToken,
+          'expired-callback': () => onToken(''),
+          'error-callback': () => onToken(''),
+        });
+      })
+      .catch(() => onToken(''));
+    return () => {
+      active = false;
+      if (widgetId !== undefined && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [siteKey, onToken]);
+
+  return <div ref={containerRef} />;
+}
+
 
 export default function CandidateApply() {
   const { id } = useParams();
@@ -45,6 +93,13 @@ export default function CandidateApply() {
   const [formPart, setFormPart] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [captcha, setCaptcha] = useState({ enabled: false, siteKey: '' });
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+
+  useEffect(() => {
+    if (formPart !== 2) setCaptchaToken('');
+  }, [formPart]);
 
   useEffect(() => {
     async function fetchPublicRequisition() {
@@ -55,6 +110,7 @@ export default function CandidateApply() {
         const res = await api.get(`/requisitions/${id}/public`);
         console.log('[CandidateApply] Received requisition data:', res.data);
         setRequisition(res.data.requisition);
+        setCaptcha(res.data.captcha || { enabled: false, siteKey: '' });
       } catch (err) {
         console.error('[CandidateApply] Failed to load requisition error:', err);
         const serverMsg = err?.response?.data?.message || err?.message;
@@ -79,6 +135,7 @@ export default function CandidateApply() {
     setAnswers({});
     setResumeFile(null);
     setFormPart(1);
+    setCaptchaToken('');
   }
 
   function handlePersonalContinue(e) {
@@ -142,6 +199,11 @@ export default function CandidateApply() {
       return;
     }
 
+    if (captcha.enabled && !captchaToken) {
+      toast.error('Please complete the security check.');
+      return;
+    }
+
     setSubmitting(true);
     console.log('[CandidateApply] Submitting application for requisition:', id, { name, email, phone });
     try {
@@ -151,6 +213,7 @@ export default function CandidateApply() {
       formData.append('phone', phone.trim());
       formData.append('questionnaireAnswers', JSON.stringify(answers));
       formData.append('resume', resumeFile);
+      if (captcha.enabled) formData.append('captchaToken', captchaToken);
 
       const res = await api.post(`/requisitions/${id}/apply`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -176,6 +239,10 @@ export default function CandidateApply() {
       toast.success('Application submitted successfully!');
     } catch (err) {
       console.error('[CandidateApply] Application submission failed:', err);
+      if (err?.response?.data?.error === 'CAPTCHA_FAILED') {
+        setCaptchaToken('');
+        setCaptchaResetKey((key) => key + 1);
+      }
       toast.error(err?.response?.data?.message || 'Failed to submit application. Please try again.');
     } finally {
       setSubmitting(false);
@@ -433,6 +500,12 @@ export default function CandidateApply() {
                     )}
                   </div>
                 </div>}
+
+                {formPart === 2 && captcha.enabled && (
+                  <div>
+                    <TurnstileCaptcha key={captchaResetKey} siteKey={captcha.siteKey} onToken={setCaptchaToken} />
+                  </div>
+                )}
 
                 <div className="pt-4 flex justify-end gap-3">
                   {formPart === 1 ? (

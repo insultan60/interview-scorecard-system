@@ -244,6 +244,11 @@ NODE_ENV=development
 MONGODB_URI=mongodb://localhost:27017/interview-scorecard
 JWT_SECRET=your_long_random_secret_string
 
+# Cloudflare Turnstile CAPTCHA for public candidate applications
+# Create a widget at https://dash.cloudflare.com/?to=/:account/turnstile
+TURNSTILE_SITE_KEY=your_turnstile_site_key
+TURNSTILE_SECRET_KEY=your_turnstile_secret_key
+
 # Anthropic Claude API
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 CLAUDE_MODEL_DEFAULT=claude-sonnet-4-20250514

@@ -17,6 +17,7 @@ const { computeStageAverage, isStagePassed, rankApplications } = require('../ser
 const { uploadBuffer } = require('../config/cloudinary');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 const emailNotifier = require('../services/emailNotifier');
+const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
@@ -618,6 +619,10 @@ const getPublic = asyncHandler(async (req, res) => {
       ...requisition,
       isExpired,
     },
+    captcha: (() => {
+      const { enabled, siteKey } = getCaptchaConfig();
+      return { enabled, siteKey: enabled ? siteKey : undefined };
+    })(),
   });
 });
 
@@ -637,6 +642,14 @@ const applyPublic = asyncHandler(async (req, res) => {
 
   if (hasApplicationDeadlinePassed(requisition.applicationDeadline)) {
     return res.status(400).json({ error: 'EXPIRED', message: 'The application deadline for this position has passed.' });
+  }
+
+  const captchaResult = await verifyCaptcha(req.body?.captchaToken, req.ip);
+  if (!captchaResult.valid) {
+    return res.status(400).json({
+      error: 'CAPTCHA_FAILED',
+      message: 'Please complete the security check and submit your application again.',
+    });
   }
 
   const { name, email, phone, questionnaireAnswers } = req.body;
