@@ -108,15 +108,14 @@ export default function CandidateApply() {
       setError(null);
       try {
         const res = await api.get(`/requisitions/${id}/public`);
-        console.log('[CandidateApply] Received requisition data:', res.data);
         setRequisition(res.data.requisition);
         setCaptcha(res.data.captcha || { enabled: false, siteKey: '' });
       } catch (err) {
-        console.error('[CandidateApply] Failed to load requisition error:', err);
+        console.error('[CandidateApply] Failed to load job opening error:', err);
         const serverMsg = err?.response?.data?.message || err?.message;
         const statusCode = err?.response?.status;
         console.error(`[CandidateApply] Status: ${statusCode}, Message: ${serverMsg}`);
-        setError(serverMsg || 'Requisition not found or is closed.');
+        setError(serverMsg || 'Job Opening not found or is closed.');
       } finally {
         setLoading(false);
       }
@@ -205,7 +204,6 @@ export default function CandidateApply() {
     }
 
     setSubmitting(true);
-    console.log('[CandidateApply] Submitting application for requisition:', id, { name, email, phone });
     try {
       const formData = new FormData();
       formData.append('name', name.trim());

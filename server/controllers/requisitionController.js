@@ -252,7 +252,7 @@ const list = asyncHandler(async (req, res) => {
  */
 const getOne = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
-  if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
+  if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
 
   const scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : null;
   const applications = await Application.find({ requisitionId: requisition._id })

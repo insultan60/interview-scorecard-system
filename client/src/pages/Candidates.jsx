@@ -227,7 +227,7 @@ export default function Candidates() {
         setAttachFor(null);
         loadCandidates(); // reflect the new badge without a manual refresh
       } else if (res.status === 409) {
-        toast.error(res.data?.message || 'Already attached to this requisition.');
+        toast.error(res.data?.message || 'Already attached to this Job Opening.');
       } else {
         toast.error(res.data?.message || 'Could not attach candidate.');
       }
@@ -421,10 +421,10 @@ export default function Candidates() {
 
           <Select value={requisitionFilter} onValueChange={(value) => { setRequisitionFilter(value); setPage(1); }}>
             <SelectTrigger className="w-full sm:w-56">
-              <SelectValue placeholder="All requisitions" />
+              <SelectValue placeholder="All Job Openings" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All requisitions</SelectItem>
+              <SelectItem value="all">All Job Openings</SelectItem>
               {attachedRequisitions.map((requisition) => (
                 <SelectItem key={requisition.id} value={requisition.id}>{requisition.title}</SelectItem>
               ))}
@@ -467,7 +467,7 @@ export default function Candidates() {
               <div>
                 <p className="text-sm font-medium text-foreground">No candidates yet</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Add someone, then attach them to a requisition to start interviewing.
+                  Add someone, then attach them to a job opening to start interviewing.
                 </p>
               </div>
               <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
@@ -844,7 +844,7 @@ export default function Candidates() {
       <Dialog open={!!attachFor} onOpenChange={(open) => !open && setAttachFor(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Attach to a requisition</DialogTitle>
+            <DialogTitle>Attach to a job opening</DialogTitle>
             <DialogDescription>
               {attachFor ? `${attachFor.name} will start at the first stage of the pipeline.` : ''}
             </DialogDescription>
@@ -864,12 +864,12 @@ export default function Candidates() {
           {availableRequisitions.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {requisitions.length === 0
-                ? 'No open requisitions yet — create one first.'
-                : 'This candidate is already attached to every open requisition.'}
+                ? 'No open job opening yet — create one first.'
+                : 'This candidate is already attached to every job Opening.'}
             </p>
           ) : (
             <div className="space-y-1.5">
-              <Label htmlFor="attach-req">Requisition</Label>
+              <Label htmlFor="attach-req">Job Openings</Label>
               {/* Searchable rather than a plain Select: a hiring team can easily
                   carry dozens of open roles, and scrolling a flat list to find
                   one is unusable. Capping the list instead would be worse — it
@@ -887,7 +887,7 @@ export default function Candidates() {
                     <span className={attachTarget ? '' : 'text-muted-foreground'}>
                       {attachTarget
                         ? availableRequisitions.find((r) => r._id === attachTarget)?.title
-                        : `Search ${availableRequisitions.length} open requisition${availableRequisitions.length === 1 ? '' : 's'}…`}
+                        : `Search ${availableRequisitions.length} open jobs ${availableRequisitions.length === 1 ? '' : 's'}…`}
                     </span>
                     <ChevronsUpDown className="opacity-50" />
                   </Button>
@@ -896,7 +896,7 @@ export default function Candidates() {
                   <Command>
                     <CommandInput placeholder="Type to filter…" />
                     <CommandList>
-                      <CommandEmpty>No requisition matches.</CommandEmpty>
+                      <CommandEmpty>No job matches.</CommandEmpty>
                       <CommandGroup>
                         {availableRequisitions.map((r) => (
                           <CommandItem

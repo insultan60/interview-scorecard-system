@@ -378,7 +378,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{template.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This can’t be undone. Requisitions already created from this template keep their own
+              This can’t be undone. Job Openings already created from this template keep their own
               copy of the stages, so they aren’t affected.
             </AlertDialogDescription>
           </AlertDialogHeader>

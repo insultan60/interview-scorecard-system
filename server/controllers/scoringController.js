@@ -403,7 +403,7 @@ const passFail = asyncHandler(async (req, res) => {
   if (!requisition) {
     return res.status(404).json({
       error: 'NOT_FOUND',
-      message: 'Requisition not found.',
+      message: 'Job Opening not found.',
     });
   }
   assertRequisitionNotClosed(requisition, 'record a pass or fail result');

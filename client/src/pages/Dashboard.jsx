@@ -94,7 +94,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Overview of hiring activity across all open requisitions.
+            Overview of hiring activity across all active job openings.
           </p>
         </div>
         <div className="flex gap-2">
@@ -107,7 +107,7 @@ export default function Dashboard() {
           <Button asChild className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
             <Link to="/requisitions">
               <Plus />
-              New requisition
+              New job opening
             </Link>
           </Button>
         </div>
@@ -129,11 +129,11 @@ export default function Dashboard() {
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
-            label="Open Requisitions" value={openRequisitions.length} icon={Briefcase}
+            label="Active Job Openings" value={openRequisitions.length} icon={Briefcase}
             hint={totalCandidates > 0 ? `${totalCandidates} candidates attached` : 'No candidates attached yet'}
           />
           <StatsCard
-            label="Candidates in Flight" value={candidatesInFlight} icon={Users}
+            label="Candidates in Progress" value={candidatesInFlight} icon={Users}
             hint="Active applications, no final decision yet"
           />
           <StatsCard
@@ -151,7 +151,7 @@ export default function Dashboard() {
         {/* ---------- open requisitions ---------- */}
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle>Open Requisitions</CardTitle>
+            <CardTitle>Job Openings</CardTitle>
             {!loading && openRequisitions.length > 5 && (
               <Link to="/requisitions" className="text-xs font-medium text-[#d21e2b] hover:underline">
                 View all {openRequisitions.length}
@@ -170,7 +170,7 @@ export default function Dashboard() {
               </div>
             ) : openRequisitions.length === 0 ? (
               <div className="px-6 pb-8 pt-2 text-center">
-                <p className="text-sm text-muted-foreground">No open requisitions yet.</p>
+                <p className="text-sm text-muted-foreground">No job opening yet.</p>
                 <Button asChild variant="outline" size="sm" className="mt-3">
                   <Link to="/requisitions">Create the first one</Link>
                 </Button>

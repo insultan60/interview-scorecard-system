@@ -220,7 +220,7 @@ export default function Requisitions() {
     e.preventDefault();
 
     if (!form.title.trim()) {
-      toast.error('Requisition Title is required.');
+      toast.error('Job Opening Title is required.');
       return;
     }
     if (!form.employmentType) {
@@ -286,7 +286,7 @@ export default function Requisitions() {
     try {
       const createRes = await api.post('/requisitions', form);
       const requisition = createRes.data.requisition;
-      toast.success('Requisition created. Generating scorecard from the JD…');
+      toast.success('Job Opening created. Generating scorecard from the JD…');
       await api.post(`/requisitions/${requisition._id}/generate-scorecard`);
       toast.success('Scorecard generated — review and edit below.');
       setCreateOpen(false);
@@ -295,10 +295,10 @@ export default function Requisitions() {
       navigate(`/requisitions/${requisition._id}`);
 
     } catch (error) {
-      console.error('Failed to create requisition:', error);
+      console.error('Failed to create job opening:', error);
       toast.error(
         error?.response?.data?.message ||
-        'Failed to create requisition. Please check all fields.'
+        'Failed to create job opening. Please check all fields.'
       );
     } finally {
       setCreating(false);
@@ -325,7 +325,7 @@ export default function Requisitions() {
             <ArrowLeft />
           </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Requisitions</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Job Openings</h1>
             <p className="text-sm text-muted-foreground">
               {loading ? 'Loading…' : `${requisitions.length} ${statusFilter ? STATUS_LABEL[statusFilter].toLowerCase() : 'total'}`}
             </p>
@@ -333,7 +333,7 @@ export default function Requisitions() {
         </div>
         <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
           <Plus />
-          New Requisition
+          New Job Opening
         </Button>
       </div>
 
@@ -396,7 +396,7 @@ export default function Requisitions() {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  {statusFilter ? `No ${STATUS_LABEL[statusFilter].toLowerCase()} requisitions` : 'No requisitions yet'}
+                  {statusFilter ? `No ${STATUS_LABEL[statusFilter].toLowerCase()} job openings` : 'No job opening yet'}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {statusFilter
@@ -407,7 +407,7 @@ export default function Requisitions() {
               {!statusFilter && (
                 <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
                   <Plus />
-                  New Requisition
+                  New Job Opening
                 </Button>
               )}
             </div>
@@ -420,7 +420,7 @@ export default function Requisitions() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Requisition</TableHead>
+                  <TableHead>Job Opening</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Candidates</TableHead>
                   <TableHead>Pipeline</TableHead>
@@ -531,7 +531,7 @@ export default function Requisitions() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>New requisition</DialogTitle>
+            <DialogTitle>New job opening</DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4 pt-2">

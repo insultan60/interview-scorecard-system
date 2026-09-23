@@ -123,8 +123,8 @@ export default function RequisitionDetail() {
   async function handleGoToInterview(app) {
     if (data?.requisition?.status !== 'open') {
       toast.error(data?.requisition?.status === 'on_hold'
-        ? 'This requisition is on hold. Reopen it before starting a new interview stage.'
-        : 'This requisition is closed and cannot start new interview stages.');
+        ? 'This job opening is on hold. Reopen it before starting a new interview stage.'
+        : 'This job opening is closed and cannot start new interview stages.');
       return;
     }
     const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
@@ -205,7 +205,7 @@ export default function RequisitionDetail() {
       </div>
     );
   }
-  if (!data) return <div className="text-muted-foreground">Requisition not found.</div>;
+  if (!data) return <div className="text-muted-foreground">Job Opening not found.</div>;
 
   const { requisition, scorecard, applications } = data;
   const canStartNewWork = requisition.status === 'open';
@@ -277,8 +277,8 @@ export default function RequisitionDetail() {
       {!canStartNewWork && (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {requisition.status === 'on_hold'
-            ? 'This requisition is on hold. New candidate attachments and interview stages are paused; existing interviews can still be completed.'
-            : 'This requisition is closed and read-only. Reopen it to make changes or start new interview stages.'}
+            ? 'This job opening is on hold. New candidate attachments and interview stages are paused; existing interviews can still be completed.'
+            : 'This job opening is closed and read-only. Reopen it to make changes or start new interview stages.'}
         </div>
       )}
 
@@ -467,7 +467,7 @@ export default function RequisitionDetail() {
       <AlertDialog open={pendingClose} onOpenChange={setPendingClose}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Close this requisition?</AlertDialogTitle>
+            <AlertDialogTitle>Close this job opening?</AlertDialogTitle>
             <AlertDialogDescription>
               New candidates will no longer be able to apply for this position using the public application link.
               Existing candidates and their scores will remain available.
@@ -480,7 +480,7 @@ export default function RequisitionDetail() {
               disabled={savingStatus}
               className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
             >
-              {savingStatus ? 'Closing…' : 'Close requisition'}
+              {savingStatus ? 'Closing…' : 'Close job'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

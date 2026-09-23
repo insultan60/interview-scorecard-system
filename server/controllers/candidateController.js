@@ -228,7 +228,7 @@ const apply = asyncHandler(async (req, res) => {
   if (existing) {
     return res.status(409).json({
       error: 'VALIDATION_ERROR',
-      message: 'This candidate already has an application for this requisition.',
+      message: 'This candidate already has an application for this job opening.',
       applicationId: existing._id,
     });
   }
@@ -244,7 +244,7 @@ const apply = asyncHandler(async (req, res) => {
     stageProgress: enabledStages.map((s) => ({ stageKey: s.key, status: 'pending' })),
   });
 
-  logger.info(`[Candidate] ${candidate._id} applied to requisition ${requisitionId} -> application ${application._id}`);
+  logger.info(`[Candidate] ${candidate._id} applied to job ${requisitionId} -> application ${application._id}`);
   res.status(201).json({ application });
 });
 

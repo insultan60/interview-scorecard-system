@@ -184,11 +184,11 @@ export default function AuditLog() {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Requisition</Label>
+              <Label className="text-xs text-muted-foreground">Job Opening</Label>
               <Select value={filters.requisitionId || ALL} onValueChange={handleRequisitionFilterChange}>
-                <SelectTrigger><SelectValue placeholder="All requisitions" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="All Job Openings" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL}>All requisitions</SelectItem>
+                  <SelectItem value={ALL}>All Job Openings</SelectItem>
                   {requisitions.map((r) => <SelectItem key={r._id} value={r._id}>{r.title}</SelectItem>)}
                 </SelectContent>
               </Select>
