@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import heroBg from '../assets/hero-bg.webp';
@@ -99,6 +99,9 @@ export default function Login() {
               {submitting ? 'Logging in...' : 'Log in'}
             </button>
           </form>
+          <Link to="/forgot-password" className="mt-4 text-center text-sm font-medium text-[#d21e2b] hover:underline">
+            Forgot your password?
+          </Link>
         </div>
       </div>
     </div>
