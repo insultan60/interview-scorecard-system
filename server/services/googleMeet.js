@@ -67,7 +67,7 @@ async function createMeeting(interview, details = {}) {
     conferenceDataVersion: 1,
     sendUpdates: candidateEmail ? 'all' : 'none',
     requestBody: {
-      summary: `${stageLabel || 'Interview'} — ${requisitionTitle || 'Interview'}`,
+      summary: `${candidateName || 'Candidate'} — ${stageLabel || 'Interview'} — ${requisitionTitle || 'Interview'}`,
       description: `Interview with ${candidateName || 'candidate'}.`,
       start: { dateTime: start.toISOString() },
       end: { dateTime: end.toISOString() },
