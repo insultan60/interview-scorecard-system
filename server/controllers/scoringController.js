@@ -6,6 +6,7 @@ const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
+const { assertCalendarMeetingCancelled } = require('../utils/meetingLifecycle');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
@@ -154,6 +155,7 @@ async function getOrCreateNextInterview(application, requisition, currentStageKe
 const approve = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  assertCalendarMeetingCancelled(interview, 'approve or re-approve this stage');
 
   const requisitionForType = await Requisition.findById(interview.requisitionId);
   assertRequisitionNotClosed(requisitionForType, 'approve interview scores');
@@ -397,6 +399,7 @@ const passFail = asyncHandler(async (req, res) => {
       message: 'Interview not found.',
     });
   }
+  assertCalendarMeetingCancelled(interview, 'save this stage decision');
 
   const requisition = await Requisition.findById(interview.requisitionId);
 

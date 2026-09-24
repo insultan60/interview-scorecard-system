@@ -332,6 +332,10 @@ export default function InterviewRoom() {
 
   async function handleSavePassFail() {
     if (!passFailResult) return;
+    if (interview?.calendarEventId) {
+      toast.error('Cancel the active Google Calendar meeting before saving this decision.');
+      return;
+    }
 
     const wasAlreadyApproved = interview?.status === 'approved';
     setPassFailSaving(true);
@@ -370,6 +374,11 @@ export default function InterviewRoom() {
 
   async function handleSendOffer(e) {
     if (e) e.preventDefault();
+
+    if (interview?.calendarEventId) {
+      toast.error('Cancel the active Google Calendar meeting before completing this stage.');
+      return;
+    }
 
     if (!offerFile) {
       toast.error('Please select an offer letter PDF document before sending.');
@@ -457,6 +466,7 @@ export default function InterviewRoom() {
   const canScore = (showConsentCard ? interview?.consentObtained : true)
     && (stageConfig?.inputType === 'artifact' ? !!interview.artifactFileUrl : interview?.transcriptStatus === 'ready')
     && interview?.status !== 'approved';
+  const hasActiveCalendarMeeting = Boolean(interview?.calendarEventId);
 
   if (loading) return <div className="text-muted-foreground">Loading...</div>;
   if (!interview || !requisition) return <div className="text-muted-foreground">Interview not found.</div>;
@@ -759,12 +769,16 @@ export default function InterviewRoom() {
               <button
                 type="button"
                 onClick={handleSavePassFail}
-                disabled={!passFailResult || passFailSaving}
+                disabled={!passFailResult || hasActiveCalendarMeeting || passFailSaving}
                 className="ml-2 rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {passFailSaving ? 'Saving...' : 'Save Decision'}
               </button>
             </div>
+
+            {hasActiveCalendarMeeting && (
+              <p className="mt-3 text-xs text-amber-700">Cancel the active Google Calendar meeting before saving this decision.</p>
+            )}
 
             {interview.status === 'approved' && stageConfig?.inputType === 'pass_fail' && (
               <p className="mt-3 text-xs text-muted-foreground">
@@ -896,7 +910,7 @@ export default function InterviewRoom() {
                   <button
                     type="button"
                     onClick={handleSendOffer}
-                    disabled={sendingOffer || !offerFile}
+                    disabled={sendingOffer || !offerFile || hasActiveCalendarMeeting}
                     className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {sendingOffer
@@ -918,6 +932,9 @@ export default function InterviewRoom() {
                     </button>
                   )}
                 </div>
+                {hasActiveCalendarMeeting && (
+                  <p className="text-xs text-amber-700">Cancel the active Google Calendar meeting before completing this stage.</p>
+                )}
               </div>
             )}
           </CardContent>
@@ -956,6 +973,7 @@ export default function InterviewRoom() {
             interview={interview}
             attributes={stageAttributes}
             passThreshold={stageConfig?.passThreshold}
+            meetingActive={hasActiveCalendarMeeting}
             onUpdated={(updatedInterview, stageAverage, passed, nextInterviewId, wasAlreadyApproved, updatedApplication) => {
               console.log('[DEBUG - FRONTEND ONUPDATED]', { status: updatedInterview.status, passed, nextInterviewId, wasAlreadyApproved, updatedApplication });
               setInterview(updatedInterview);

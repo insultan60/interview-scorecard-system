@@ -8,6 +8,7 @@ require('../models/Candidate'); // registers the Candidate model for populate('c
 const logger = require('../utils/logger');
 const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
+const { assertCalendarMeetingCancelled } = require('../utils/meetingLifecycle');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
@@ -74,6 +75,8 @@ async function assertPriorStagesApproved(requisition, applicationId, stageKey) {
       err.statusCode = 409;
       throw err;
     }
+    const label = ordered.find((s) => s.key === key)?.label || key;
+    assertCalendarMeetingCancelled(interview, `start the ${label} stage`);
   }
 }
 
@@ -501,6 +504,7 @@ const googleOAuthCallback = asyncHandler(async (req, res) => {
 const sendOffer = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  assertCalendarMeetingCancelled(interview, 'complete this stage');
 
   if (!req.file) {
     throw new ValidationError(['offerLetter'], 'An offer letter PDF document is required.');
