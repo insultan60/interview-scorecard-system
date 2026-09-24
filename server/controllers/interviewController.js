@@ -176,6 +176,22 @@ const createMeeting = asyncHandler(async (req, res) => {
     interview.meetingStart = undefined;
     interview.meetingEnd = undefined;
   } else {
+    // Replacing a Google-created meeting must close its Calendar event first.
+    // If Google cannot cancel it, do not create another event and leave two
+    // active invitations for the candidate. Persist the cleared metadata
+    // before creating the replacement so a later retry never targets a
+    // Calendar event that has already been cancelled.
+    if (interview.calendarEventId) {
+      await transcriptProvider.cancelMeeting(interview);
+      interview.meetingUri = undefined;
+      interview.conferenceId = undefined;
+      interview.calendarEventId = undefined;
+      interview.meetingStart = undefined;
+      interview.meetingEnd = undefined;
+      await interview.save();
+      logger.info(`[Interview] Previous Calendar meeting cancelled before replacement for ${interview._id}.`);
+    }
+
     const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
     const requisition = await Requisition.findById(interview.requisitionId);
     const stage = requisition?.stages?.find((item) => item.key === interview.stageKey);
