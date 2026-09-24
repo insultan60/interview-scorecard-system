@@ -28,7 +28,7 @@ const DISPOSITION_BADGE = {
   NO_HIRE: 'bg-red-100 text-red-800 hover:bg-red-100',
 };
 
-const STATUS_LABEL = { open: 'Open', on_hold: 'On Hold', closed: 'Closed' };
+const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
 const CANDIDATE_PAGE_SIZE = 5;
 
 export default function RequisitionDetail() {
@@ -124,9 +124,12 @@ export default function RequisitionDetail() {
 
   async function handleGoToInterview(app) {
     if (data?.requisition?.status !== 'open') {
-      toast.error(data?.requisition?.status === 'on_hold'
-        ? 'This job opening is on hold. Reopen it before starting a new interview stage.'
-        : 'This job opening is closed and cannot start new interview stages.');
+      const status = data?.requisition?.status;
+      toast.error(status === 'paused' || status === 'on_hold'
+        ? 'This job opening is paused. Reopen it before starting a new interview stage.'
+        : status === 'draft'
+          ? 'This job opening is a draft. Open it before starting a new interview stage.'
+          : 'This job opening is closed and cannot start new interview stages.');
       return;
     }
     const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
@@ -266,8 +269,9 @@ export default function RequisitionDetail() {
             <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="on_hold">On Hold</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
               <SelectItem value="closed">Closed</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -288,14 +292,6 @@ export default function RequisitionDetail() {
           Copy Candidate Apply Link
         </Button>
       </div>
-
-      {!canStartNewWork && (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {requisition.status === 'on_hold'
-            ? 'This job opening is on hold. New candidate attachments and interview stages are paused; existing interviews can still be completed.'
-            : 'This job opening is closed and read-only. Reopen it to make changes or start new interview stages.'}
-        </div>
-      )}
 
       {/* ---------- candidates ---------- */}
       <Card className="mt-6">
@@ -393,6 +389,7 @@ export default function RequisitionDetail() {
                         currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
                         onStartStage={() => handleGoToInterview(app)}
                         startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
+                        disabled={!canStartNewWork}
                       />
                     </div>
 

@@ -41,7 +41,9 @@ const requisitionSchema = new mongoose.Schema({
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
   status: {
     type: String,
-    enum: ['open', 'on_hold', 'closed'],
+    // `on_hold` remains accepted for legacy records; new requisitions use
+    // the clearer `paused` status exposed in the UI.
+    enum: ['open', 'paused', 'closed', 'draft', 'on_hold'],
     default: 'open',
     index: true,
   },

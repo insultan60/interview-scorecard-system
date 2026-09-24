@@ -10,7 +10,7 @@ const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
-const { assertRequisitionOpen } = require('../utils/requisitionStatus');
+const { assertRequisitionOpen, assertRequisitionConfigurable } = require('../utils/requisitionStatus');
 const { generateScorecard } = require('../services/questionGenerator');
 const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
@@ -134,7 +134,7 @@ function assignMissingAttributeIds(stages) {
 const create = asyncHandler(async (req, res) => {
   const {
     title, employmentType, location, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status,
   } = req.body;
 
   const missingFields = [];
@@ -172,6 +172,9 @@ const create = asyncHandler(async (req, res) => {
   if (missingFields.length > 0) {
     throw new ValidationError(missingFields, `Please fill out all required fields: ${missingFields.join(', ')}.`);
   }
+  if (status !== undefined && !['open', 'paused', 'closed', 'draft'].includes(status)) {
+    throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
+  }
 
   const template = await PipelineTemplate.findById(pipelineTemplateId);
   if (!template) {
@@ -201,6 +204,8 @@ const create = asyncHandler(async (req, res) => {
     questionnaire: normalizeQuestionnaire(questionnaire),
     applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
     aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
+    status: status || 'open',
+    closedAt: status === 'closed' ? new Date() : undefined,
     createdBy: req.user._id,
   });
 
@@ -210,7 +215,7 @@ const create = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/requisitions
- * Lists requisitions, optionally filtered by status (?status=open|on_hold|closed).
+ * Lists requisitions, optionally filtered by status (?status=open|paused|closed|draft).
  *
  * Each row carries a candidate rollup (total, still in progress, and the
  * hire/maybe/no-hire split) so the list can answer "which roles are actually
@@ -218,7 +223,10 @@ const create = asyncHandler(async (req, res) => {
  */
 const list = asyncHandler(async (req, res) => {
   const filter = {};
-  if (req.query.status) filter.status = req.query.status;
+  if (req.query.status) {
+    // Include legacy `on_hold` records in the new Paused filter.
+    filter.status = req.query.status === 'paused' ? { $in: ['paused', 'on_hold'] } : req.query.status;
+  }
   const requisitions = await Requisition.find(filter).sort({ createdAt: -1 }).lean();
 
   const applications = await Application.find({ requisitionId: { $in: requisitions.map((r) => r._id) } })
@@ -240,6 +248,7 @@ const list = asyncHandler(async (req, res) => {
   res.json({
     requisitions: requisitions.map((r) => ({
       ...r,
+      status: r.status === 'on_hold' ? 'paused' : r.status,
       candidateStats: statsByRequisition.get(String(r._id))
         || { total: 0, inProgress: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 },
     })),
@@ -264,7 +273,9 @@ const getOne = asyncHandler(async (req, res) => {
     return a.rank - b.rank;
   });
 
-  res.json({ requisition, scorecard, applications });
+  const requisitionResponse = requisition.toObject();
+  if (requisitionResponse.status === 'on_hold') requisitionResponse.status = 'paused';
+  res.json({ requisition: requisitionResponse, scorecard, applications });
 });
 
 /**
@@ -291,8 +302,8 @@ const update = asyncHandler(async (req, res) => {
     error.statusCode = 409;
     throw error;
   }
-  if (status !== undefined && !['open', 'on_hold', 'closed'].includes(status)) {
-    throw new ValidationError(['status'], 'status must be open, on_hold, or closed.');
+  if (status !== undefined && !['open', 'paused', 'closed', 'draft'].includes(status)) {
+    throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
   }
 
   if (title !== undefined) requisition.title = title;
@@ -380,7 +391,7 @@ const remove = asyncHandler(async (req, res) => {
 const generateScorecardHandler = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'generate a scorecard');
+  assertRequisitionConfigurable(requisition, 'generate a scorecard');
 
   const generated = await generateScorecard(requisition);
   assignMissingAttributeIds(generated.stages);
@@ -411,7 +422,7 @@ const generateScorecardHandler = asyncHandler(async (req, res) => {
 const cloneScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'edit the scorecard');
+  assertRequisitionConfigurable(requisition, 'edit the scorecard');
 
   const { sourceRequisitionId } = req.body;
   if (!sourceRequisitionId) throw new ValidationError(['sourceRequisitionId'], 'sourceRequisitionId is required.');
@@ -452,7 +463,7 @@ const cloneScorecard = asyncHandler(async (req, res) => {
 const updateScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'edit the scorecard');
+  assertRequisitionConfigurable(requisition, 'edit the scorecard');
   if (!requisition.scorecardId) {
     throw new ValidationError(['scorecardId'], 'This requisition has no scorecard yet — generate one first.');
   }

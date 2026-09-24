@@ -491,6 +491,7 @@ export default function InterviewRoom() {
         <CardContent className="pt-6">
           <PipelineStepper
             stages={requisition.stages}
+            disabled={requisition.status !== 'open'}
             progress={Object.fromEntries(
               (requisition?.stages || []).map((stage) => {
                 const p = (application?.stageProgress || []).find((pr) => pr.stageKey === stage.key);

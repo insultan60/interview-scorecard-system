@@ -28,10 +28,12 @@ const PAGE_SIZE = 10;
 
 const STATUS_BADGE = {
   open: 'bg-green-100 text-green-800 hover:bg-green-100',
-  on_hold: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  paused: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  on_hold: 'bg-amber-100 text-amber-800 hover:bg-amber-100', // legacy records
   closed: 'bg-gray-100 text-gray-600 hover:bg-gray-100',
+  draft: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
 };
-const STATUS_LABEL = { open: 'Open', on_hold: 'On Hold', closed: 'Closed' };
+const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
 const EMPLOYMENT_TYPE_LABEL = {
   full_time: 'Full-Time',
   part_time: 'Part-Time',
@@ -50,6 +52,7 @@ const EMPTY_FORM = {
   applicationDeadline: '',
   aiScreeningEnabled: true,
   pipelineTemplateId: '',
+  status: 'open',
 };
 
 export default function Requisitions() {
@@ -286,9 +289,13 @@ export default function Requisitions() {
     try {
       const createRes = await api.post('/requisitions', form);
       const requisition = createRes.data.requisition;
-      toast.success('Job Opening created. Generating scorecard from the JD…');
-      await api.post(`/requisitions/${requisition._id}/generate-scorecard`);
-      toast.success('Scorecard generated — review and edit below.');
+      if (requisition.status !== 'closed') {
+        toast.success('Job Opening created. Generating scorecard from the JD…');
+        await api.post(`/requisitions/${requisition._id}/generate-scorecard`);
+        toast.success('Scorecard generated — review and edit below.');
+      } else {
+        toast.success('Closed job opening created. Reopen it before generating a scorecard.');
+      }
       setCreateOpen(false);
       setForm(EMPTY_FORM);
       loadRequisitions();
@@ -367,8 +374,9 @@ export default function Requisitions() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="open">Open</SelectItem>
-            <SelectItem value="on_hold">On Hold</SelectItem>
+            <SelectItem value="paused">Paused</SelectItem>
             <SelectItem value="closed">Closed</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -535,7 +543,7 @@ export default function Requisitions() {
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4 pt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
                 <Input
@@ -574,6 +582,19 @@ export default function Requisitions() {
                   placeholder="e.g. Remote, NY, Hybrid..."
                   required
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="req-status">Status</Label>
+                <Select value={form.status || 'open'} onValueChange={(val) => setForm({ ...form, status: val })}>
+                  <SelectTrigger id="req-status" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
