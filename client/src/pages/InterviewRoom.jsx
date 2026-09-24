@@ -25,7 +25,6 @@ export default function InterviewRoom() {
   const [meetingStartInput, setMeetingStartInput] = useState('');
   const [meetingEndInput, setMeetingEndInput] = useState('');
   const [creatingMeeting, setCreatingMeeting] = useState(false);
-  const [changingMeeting, setChangingMeeting] = useState(false);
   const [confirmingConsent, setConfirmingConsent] = useState(false);
   const [fetchingTranscript, setFetchingTranscript] = useState(false);
   const [uploadingTranscript, setUploadingTranscript] = useState(false);
@@ -144,7 +143,6 @@ export default function InterviewRoom() {
       }
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
-      setChangingMeeting(false);
       setMeetingLinkInput('');
       setMeetingStartInput('');
       setMeetingEndInput('');
@@ -622,7 +620,7 @@ export default function InterviewRoom() {
               <CardTitle>Meeting</CardTitle>
             </CardHeader>
             <CardContent>
-              {interview.meetingUri && !changingMeeting ? (
+              {interview.meetingUri ? (
                 <div className="space-y-2.5">
                   <div>
                     <a href={interview.meetingUri} target="_blank" rel="noreferrer" className="break-all text-sm text-blue-600 hover:underline">
@@ -631,12 +629,6 @@ export default function InterviewRoom() {
                     <span className="ml-2 text-xs text-muted-foreground">({interview.provider === 'manual' ? 'pasted link' : 'created via Google Meet'})</span>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      type="button" onClick={() => setChangingMeeting(true)}
-                      className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
-                    >
-                      Change
-                    </button>
                     <button
                       type="button" onClick={handleResendMeetingEmail} disabled={sendingMeetingEmail}
                       className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
@@ -653,14 +645,6 @@ export default function InterviewRoom() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {interview.meetingUri && (
-                    <button
-                      type="button" onClick={() => setChangingMeeting(false)}
-                      className="text-xs text-muted-foreground underline hover:text-foreground"
-                    >
-                      Cancel
-                    </button>
-                  )}
                   <div className="flex gap-2">
                     <input
                       type="text" value={meetingLinkInput} onChange={(e) => setMeetingLinkInput(e.target.value)}
