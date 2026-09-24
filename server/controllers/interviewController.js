@@ -19,6 +19,12 @@ const emailNotifier = require('../services/emailNotifier');
 const { extractArtifactText } = require('../utils/textExtractor');
 const { recomputeAndPersist, getOrCreateNextInterview } = require('./scoringController');
 
+/** Temporary diagnostic: remove after transcript parsing is verified. */
+function logParsedText(interviewId, source, text) {
+  const value = String(text || '');
+  logger.info(`[Interview] Parsed ${source} text for ${interviewId} (${value.length} chars):\n${value}`);
+}
+
 /**
  * Emails the candidate their current meeting link. Never throws — a missing
  * candidate email or a send failure is reported in the return value, never
@@ -322,16 +328,16 @@ const fetchTranscript = asyncHandler(async (req, res) => {
   interview.transcriptStatus = 'ready';
   await interview.save();
 
+  logParsedText(interview._id, 'Google Meet transcript', result.text);
   logger.info(`[Interview] Transcript ready for ${interview._id}.`);
   res.json({ interview });
 });
 
 /**
  * POST /api/interviews/:id/upload-transcript
- * Manual transcript upload (in-person / fallback). The uploaded file's text
- * is read straight from the in-memory buffer into transcriptText — the
- * Interview schema has no separate field to track a raw transcript file, so
- * the raw upload itself is never persisted anywhere, just its text content.
+ * Manual transcript upload (in-person / fallback). Extracts clean text from
+ * .txt/.md/.pdf/.docx into transcriptText. The raw transcript file itself is
+ * not persisted; only the extracted text is retained for scoring.
  */
 const uploadTranscript = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
@@ -339,13 +345,22 @@ const uploadTranscript = asyncHandler(async (req, res) => {
   await assertInterviewMutable(interview, 'upload a transcript');
   if (!req.file) throw new ValidationError(['transcript'], 'A transcript file is required (field name "transcript").');
 
-  const text = req.file.buffer.toString('utf8');
+  let text;
+  try {
+    text = await extractArtifactText(req.file.buffer, req.file.originalname);
+  } catch (err) {
+    throw new ValidationError(['transcript'], err.message);
+  }
 
   interview.transcriptText = text;
   interview.transcriptStatus = 'ready';
-  if (interview.provider !== 'manual') interview.provider = 'manual';
+  // A manually uploaded transcript can be a fallback for a Google-scheduled
+  // interview. Keep its provider when a Calendar event exists so cancelling
+  // the interview still deletes that event and notifies attendees.
+  if (!interview.calendarEventId) interview.provider = 'manual';
   await interview.save();
 
+  logParsedText(interview._id, 'uploaded transcript', text);
   await AuditLog.create({
     action: 'transcript_upload', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
     targetType: 'interview', targetId: interview._id.toString(), newValue: { transcriptStatus: 'ready', wordCount: text.split(/\s+/).length },
@@ -386,6 +401,7 @@ const uploadArtifact = asyncHandler(async (req, res) => {
   }
 
   await interview.save();
+  logParsedText(interview._id, 'extracted artifact', interview.transcriptText);
   if (oldArtifactPublicId) {
     destroyFileIfUnreferenced(oldArtifactPublicId)
       .catch((err) => logger.warn(`[Interview] Could not clean up replaced artifact ${oldArtifactPublicId}: ${err.message}`));
