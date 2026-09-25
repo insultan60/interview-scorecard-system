@@ -7,6 +7,7 @@ import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Requisitions from './pages/Requisitions';
 import RequisitionDetail from './pages/RequisitionDetail';
+import RequisitionCandidates from './pages/RequisitionCandidates';
 import Pipelines from './pages/Pipelines';
 import Candidates from './pages/Candidates';
 import InterviewRoom from './pages/InterviewRoom';
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
       <Route path="/requisitions" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
       <Route path="/requisitions/:id" element={<ProtectedPage><RequisitionDetail /></ProtectedPage>} />
+      <Route path="/requisitions/:id/candidates" element={<ProtectedPage><RequisitionCandidates /></ProtectedPage>} />
       <Route path="/pipelines" element={<ProtectedPage><Pipelines /></ProtectedPage>} />
       <Route path="/candidates" element={<ProtectedPage><Candidates /></ProtectedPage>} />
       <Route path="/interview/:id" element={<ProtectedPage><InterviewRoom /></ProtectedPage>} />

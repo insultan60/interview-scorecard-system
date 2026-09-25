@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Search, X, Users, Link2 } from 'lucide-react';
 import api from '../hooks/useApi';
@@ -34,6 +34,8 @@ const CANDIDATE_PAGE_SIZE = 5;
 export default function RequisitionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const candidateIdFromUrl = searchParams.get('candidateId');
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -230,6 +232,7 @@ export default function RequisitionDetail() {
   const stageLabels = Object.fromEntries(requisition.stages.map((s) => [s.key, s.label]));
   const candidateQuery = candidateSearch.trim().toLowerCase();
   const filteredApplications = applications.filter((app) => {
+    if (candidateIdFromUrl && String(app.candidateId?._id || app.candidateId) !== candidateIdFromUrl) return false;
     if (dispositionFilter === 'in_progress' && app.disposition) return false;
     if (dispositionFilter !== 'all' && dispositionFilter !== 'in_progress' && app.disposition !== dispositionFilter) return false;
     if (candidateQuery) {

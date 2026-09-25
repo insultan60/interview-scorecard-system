@@ -89,6 +89,7 @@ export default function Requisitions() {
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [jobOpeningFilter, setJobOpeningFilter] = useState('all');
   const [page, setPage] = useState(1);
 
   function togglePromptBox(fieldType) {
@@ -370,9 +371,11 @@ export default function Requisitions() {
   }
 
   const query = search.trim().toLowerCase();
-  const filtered = useMemo(() => (
-    query ? requisitions.filter((r) => (r.title || '').toLowerCase().includes(query)) : requisitions
-  ), [requisitions, query]);
+  const filtered = useMemo(() => requisitions.filter((r) => {
+    const matchesSearch = !query || (r.title || '').toLowerCase().includes(query);
+    const matchesJobOpening = jobOpeningFilter === 'all' || r._id === jobOpeningFilter;
+    return matchesSearch && matchesJobOpening;
+  }), [requisitions, query, jobOpeningFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -438,6 +441,13 @@ export default function Requisitions() {
             <SelectItem value="paused">Paused</SelectItem>
             <SelectItem value="closed">Closed</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={jobOpeningFilter} onValueChange={(value) => { setJobOpeningFilter(value); setPage(1); }}>
+          <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="All job openings" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All job openings</SelectItem>
+            {requisitions.map((requisition) => <SelectItem key={requisition._id} value={requisition._id}>{requisition.title}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -541,7 +551,14 @@ export default function Requisitions() {
                         {stats.total === 0 ? (
                           <span className="text-xs text-muted-foreground">None yet</span>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted"
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/requisitions/${r._id}/candidates`); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); navigate(`/candidates?requisitionId=${r._id}`); } }}
+                            title="View candidates for this job opening"
+                          >
                             <span className="inline-flex items-center gap-1.5 text-sm text-foreground">
                               <Users className="h-3.5 w-3.5 text-muted-foreground" />
                               {stats.total}
