@@ -70,13 +70,13 @@ async function seedDefaultPipeline() {
   const existing = await PipelineTemplate.findOne({ isDefault: true });
   if (existing) {
     logger.info(
-      `[Seed] Default pipeline template already exists ("${existing.name}"), skipping.`,
+      `[Seed] Default hiring process template already exists ("${existing.name}"), skipping.`,
     );
     return existing;
   }
 
   const template = await PipelineTemplate.create({
-    name: "Standard Hiring Pipeline",
+    name: "Standard Hiring Process",
     description:
       "HR Screen (10%) -> Sales Simulation (35%) -> Technical/Ops (35%) -> Final/CEO (20%).",
     isDefault: true,
@@ -84,7 +84,7 @@ async function seedDefaultPipeline() {
   });
 
   logger.info(
-    '[Seed] Created default pipeline template "Standard Hiring Pipeline".',
+    '[Seed] Created default hiring process template "Standard Hiring Process".',
   );
   return template;
 }

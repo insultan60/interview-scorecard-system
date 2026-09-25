@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/requisitions', label: 'Job Openings', icon: Briefcase },
-  { to: '/pipelines', label: 'Pipelines', icon: GitBranch },
+  { to: '/pipelines', label: 'Hiring Process', icon: GitBranch },
   { to: '/candidates', label: 'Candidates', icon: Users },
   { to: '/audit-log', label: 'Audit Log', icon: ScrollText },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
