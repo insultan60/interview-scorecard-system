@@ -627,7 +627,7 @@ export default function Requisitions() {
                 <Input
                   id="req-title" value={form.title} autoFocus
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="e.g. Sales Executive (at least 5 characters)"
+                  placeholder="e.g. Sales Executive"
                 />
                 {duplicateActiveOpening && (
                   <p className="text-xs text-amber-700">
@@ -750,72 +750,78 @@ export default function Requisitions() {
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="req-workplace-type">Work arrangement <span className="text-red-500">*</span></Label>
-              <Select
-                value={form.workplaceType || 'remote'}
-                onValueChange={(val) => setForm((current) => ({
-                  ...current,
-                  workplaceType: val,
-                  officeLocation: val === 'onsite' ? (officeLocations[0] || '') : (val === 'remote' ? '' : current.officeLocation),
-                  remoteRegion: val === 'remote' ? current.remoteRegion : '',
-                }))}
-              >
-                <SelectTrigger id="req-workplace-type" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="onsite">Onsite</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                  <SelectItem value="remote">Remote</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-            {form.workplaceType === 'onsite' && (
               <div className="space-y-1.5">
-                <Label htmlFor="req-onsite-location">Office location</Label>
-                <Input
-                  id="req-onsite-location"
-                  value={officeLocations[0] || 'No registered office location configured'}
-                  disabled
-                />
-                {!officeLocations[0] && (
-                  <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable onsite roles.</p>
-                )}
-              </div>
-            )}
-
-            {form.workplaceType === 'hybrid' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="req-hybrid-location">Office location <span className="text-red-500">*</span></Label>
+                <Label htmlFor="req-workplace-type">Work arrangement <span className="text-red-500">*</span></Label>
                 <Select
-                  value={form.officeLocation || undefined}
-                  onValueChange={(val) => setForm({ ...form, officeLocation: val })}
-                  disabled={officeLocations.length === 0}
+                  value={form.workplaceType || 'remote'}
+                  onValueChange={(val) => setForm((current) => ({
+                    ...current,
+                    workplaceType: val,
+                    officeLocation: val === 'onsite' ? (officeLocations[0] || '') : (val === 'remote' ? '' : current.officeLocation),
+                    remoteRegion: val === 'remote' ? current.remoteRegion : '',
+                  }))}
                 >
-                  <SelectTrigger id="req-hybrid-location" className="w-full">
-                    <SelectValue placeholder={officeLocations.length ? 'Select an office...' : 'No registered office location configured'} />
-                  </SelectTrigger>
+                  <SelectTrigger id="req-workplace-type" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {officeLocations.map((office) => <SelectItem key={office} value={office}>{office}</SelectItem>)}
+                    <SelectItem value="onsite">Onsite</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
                   </SelectContent>
                 </Select>
-                {officeLocations.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable hybrid roles.</p>
-                )}
               </div>
-            )}
 
-            {form.workplaceType === 'remote' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="req-remote-region">Remote region or time zone <span className="text-muted-foreground">(optional)</span></Label>
-                <Input
-                  id="req-remote-region"
-                  value={form.remoteRegion || ''}
-                  onChange={(e) => setForm({ ...form, remoteRegion: e.target.value })}
-                  placeholder="e.g. Pakistan (PKT), EMEA, US Eastern"
-                />
-              </div>
-            )}
+              {form.workplaceType === 'onsite' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-onsite-location">Office location</Label>
+                  <Input
+                    id="req-onsite-location"
+                    value={officeLocations[0] || 'No registered office location configured'}
+                    title={officeLocations[0] || 'No registered office location configured'}
+                    className="truncate"
+                    disabled
+                  />
+                  {!officeLocations[0] && (
+                    <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable onsite roles.</p>
+                  )}
+                </div>
+              )}
+
+              {form.workplaceType === 'hybrid' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-hybrid-location">Office location <span className="text-red-500">*</span></Label>
+                  <Select
+                    value={form.officeLocation || undefined}
+                    onValueChange={(val) => setForm({ ...form, officeLocation: val })}
+                    disabled={officeLocations.length === 0}
+                  >
+                    <SelectTrigger id="req-hybrid-location" className="w-full">
+                      <SelectValue placeholder={officeLocations.length ? 'Select an office...' : 'No registered office location configured'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {officeLocations.map((office) => <SelectItem key={office} value={office}>{office}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {officeLocations.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable hybrid roles.</p>
+                  )}
+                </div>
+              )}
+
+              {form.workplaceType === 'remote' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="req-remote-region">Remote region or time zone <span className="text-muted-foreground">(optional)</span></Label>
+                  <Input
+                    id="req-remote-region"
+                    value={form.remoteRegion || ''}
+                    onChange={(e) => setForm({ ...form, remoteRegion: e.target.value })}
+                    placeholder="e.g. Pakistan (PKT), EMEA, US Eastern"
+                  />
+                </div>
+              )}
+
+            </div>
 
             {/* Job Description with Generate AI button on right */}
             <div className="space-y-1.5">
