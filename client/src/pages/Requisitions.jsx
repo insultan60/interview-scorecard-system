@@ -338,7 +338,7 @@ export default function Requisitions() {
     }
 
     if (!form.pipelineTemplateId) {
-      toast.error('Pipeline Template is required.');
+      toast.error('Hiring Process Template is required.');
       return;
     }
 
@@ -502,7 +502,7 @@ export default function Requisitions() {
                   <TableHead>Job Opening</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Candidates</TableHead>
-                  <TableHead>Pipeline</TableHead>
+                  <TableHead>Hiring Process</TableHead>
                   <TableHead className="hidden lg:table-cell">Created</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -1208,7 +1208,7 @@ export default function Requisitions() {
 
             {/* Pipeline template picker */}
             <div className="space-y-1.5 pt-1">
-              <Label htmlFor="req-template">Pipeline template <span className="text-red-500">*</span></Label>
+              <Label htmlFor="req-template">Hiring process template <span className="text-red-500">*</span></Label>
               <Popover open={templatePickerOpen} onOpenChange={setTemplatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -1219,7 +1219,7 @@ export default function Requisitions() {
                     <span className={selectedTemplate ? '' : 'text-muted-foreground'}>
                       {selectedTemplate
                         ? `${selectedTemplate.name}${selectedTemplate.isDefault ? ' (default)' : ''}`
-                        : 'Choose a pipeline…'}
+                        : 'Choose a hiring process…'}
                     </span>
                     <ChevronsUpDown className="opacity-50" />
                   </Button>
@@ -1228,7 +1228,7 @@ export default function Requisitions() {
                   <Command>
                     <CommandInput placeholder="Type to filter…" />
                     <CommandList>
-                      <CommandEmpty>No pipeline matches.</CommandEmpty>
+                      <CommandEmpty>No hiring process matches.</CommandEmpty>
                       <CommandGroup>
                         {templates.map((t) => {
                           const stageCount = (t.stages || []).filter((s) => s.enabled).length;

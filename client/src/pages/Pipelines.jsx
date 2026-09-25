@@ -472,7 +472,7 @@ export default function Pipelines() {
             <ArrowLeft />
           </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Pipelines</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Hiring Process</h1>
             <p className="text-sm text-muted-foreground">
               {loading ? 'Loading…' : `${templates.length} template${templates.length === 1 ? '' : 's'}`}
             </p>
@@ -528,7 +528,7 @@ export default function Pipelines() {
                 <GitBranch className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-sm font-medium text-foreground">No pipeline templates yet</p>
+                <p className="text-sm font-medium text-foreground">No hiring process templates yet</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   A template defines the interview stages, their order, gates and weights.
                 </p>
@@ -579,7 +579,7 @@ export default function Pipelines() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New pipeline template</DialogTitle>
+            <DialogTitle>New Hiring Process template</DialogTitle>
             <DialogDescription>
               Every stage type is included but switched off — enable the ones this role needs after creating.
             </DialogDescription>
@@ -591,7 +591,7 @@ export default function Pipelines() {
               <Input
                 id="tpl-name" value={newName} autoFocus
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. Engineering Pipeline"
+                placeholder="e.g. Engineering Hiring Process"
               />
             </div>
             <div className="space-y-1.5">

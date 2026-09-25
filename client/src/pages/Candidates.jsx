@@ -846,7 +846,7 @@ export default function Candidates() {
           <DialogHeader>
             <DialogTitle>Attach to a job opening</DialogTitle>
             <DialogDescription>
-              {attachFor ? `${attachFor.name} will start at the first stage of the pipeline.` : ''}
+              {attachFor ? `${attachFor.name} will start at the first stage of the hiring process.` : ''}
             </DialogDescription>
           </DialogHeader>
 

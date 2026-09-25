@@ -372,7 +372,7 @@ const create = asyncHandler(async (req, res) => {
 
   const template = await PipelineTemplate.findById(pipelineTemplateId);
   if (!template) {
-    throw new ValidationError(['pipelineTemplateId'], 'No pipeline template found with that id.');
+    throw new ValidationError(['pipelineTemplateId'], 'No hiring process template found with that id.');
   }
   const pipelineTemplateName = template.name;
 

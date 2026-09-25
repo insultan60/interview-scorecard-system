@@ -151,7 +151,7 @@ export default function RequisitionDetail() {
       return;
     }
     if (!app.currentStageKey) {
-      toast.error('This candidate has no remaining stage — check their pipeline status.');
+      toast.error('This candidate has no remaining stage — check their hiring process status.');
       return;
     }
     setGoingToInterview(app._id);
@@ -364,7 +364,7 @@ export default function RequisitionDetail() {
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Application deadline</p><p className="mt-1 text-sm font-medium">{requisition.applicationDeadline ? new Date(requisition.applicationDeadline).toLocaleDateString() : 'Not specified'}</p></div>
               <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">AI screening</p><p className="mt-1 text-sm font-medium">{requisition.aiScreeningEnabled ? 'Enabled' : 'Disabled'}</p></div>
-              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Pipeline template</p><p className="mt-1 text-sm font-medium">{requisition.pipelineTemplateName || 'Not specified'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Hiring process template</p><p className="mt-1 text-sm font-medium">{requisition.pipelineTemplateName || 'Not specified'}</p></div>
             </div>
           </section>
         </CardContent>}

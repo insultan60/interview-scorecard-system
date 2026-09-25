@@ -151,7 +151,7 @@ const create = asyncHandler(async (req, res) => {
  */
 const update = asyncHandler(async (req, res) => {
   const template = await PipelineTemplate.findById(req.params.id);
-  if (!template) return res.status(404).json({ error: 'NOT_FOUND', message: 'Pipeline template not found.' });
+  if (!template) return res.status(404).json({ error: 'NOT_FOUND', message: 'Hiring process template not found.' });
 
   const { name, description, stages, autoWeights } = req.body;
   if (name !== undefined) template.name = name;
@@ -185,14 +185,14 @@ const update = asyncHandler(async (req, res) => {
       await AuditLog.create({
         action: 'stage_toggle', userId: req.user._id, targetType: 'pipelineTemplate', targetId: template._id.toString(),
         oldValue: oldEnabled, newValue: Object.fromEntries(template.stages.map((s) => [s.key, s.enabled])),
-        reason: 'Stage enabled/disabled via pipeline template edit.',
+        reason: 'Stage enabled/disabled via hiring process template edit.',
       });
     }
     if (weightsChanged) {
       await AuditLog.create({
         action: 'weight_change', userId: req.user._id, targetType: 'pipelineTemplate', targetId: template._id.toString(),
         oldValue: oldWeights, newValue: Object.fromEntries(template.stages.map((s) => [s.key, s.weight])),
-        reason: 'Stage weights re-normalized via pipeline template edit.',
+        reason: 'Stage weights re-normalized via hiring process template edit.',
       });
     }
   } else if (autoMode) {
@@ -210,7 +210,7 @@ const update = asyncHandler(async (req, res) => {
 /** PUT /api/pipelines/:id/default — flags this template as the default (unsets all others). */
 const setDefault = asyncHandler(async (req, res) => {
   const template = await PipelineTemplate.findById(req.params.id);
-  if (!template) return res.status(404).json({ error: 'NOT_FOUND', message: 'Pipeline template not found.' });
+  if (!template) return res.status(404).json({ error: 'NOT_FOUND', message: 'Hiring process template not found.' });
 
   await PipelineTemplate.updateMany({ _id: { $ne: template._id } }, { $set: { isDefault: false } });
   template.isDefault = true;
@@ -223,13 +223,13 @@ const setDefault = asyncHandler(async (req, res) => {
 /** DELETE /api/pipelines/:id — refuses to delete the current default (set another default first). */
 const remove = asyncHandler(async (req, res) => {
   const template = await PipelineTemplate.findById(req.params.id);
-  if (!template) return res.status(404).json({ error: 'NOT_FOUND', message: 'Pipeline template not found.' });
+  if (!template) return res.status(404).json({ error: 'NOT_FOUND', message: 'Hiring process template not found.' });
   if (template.isDefault) {
     throw new ValidationError(['isDefault'], 'Cannot delete the default template — set another template as default first.');
   }
   await PipelineTemplate.findByIdAndDelete(req.params.id);
-  logger.info(`[Pipeline] Deleted template ${req.params.id} by user=${req.user._id}`);
-  res.json({ message: 'Pipeline template deleted.' });
+  logger.info(`[Hiring process] Deleted template ${req.params.id} by user=${req.user._id}`);
+  res.json({ message: 'Hiring process template deleted.' });
 });
 
 module.exports = { list, create, update, setDefault, remove };
