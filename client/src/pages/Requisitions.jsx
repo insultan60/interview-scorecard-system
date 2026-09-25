@@ -25,6 +25,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatDate } from '../utils/formatters';
 
 const PAGE_SIZE = 10;
+const JOB_TITLE_MIN_LENGTH = 5;
+
+const normalizeJobTitle = (title) => title.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').trim();
+const isBlankField = (value) => typeof value !== 'string' || !value.trim();
 
 const STATUS_BADGE = {
   open: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -230,9 +234,14 @@ export default function Requisitions() {
 
   async function handleCreate(e) {
     e.preventDefault();
+    const normalizedTitle = normalizeJobTitle(form.title);
 
-    if (!form.title.trim()) {
+    if (!normalizedTitle) {
       toast.error('Job Opening Title is required.');
+      return;
+    }
+    if (normalizedTitle.length < JOB_TITLE_MIN_LENGTH) {
+      toast.error(`Job Opening Title must be at least ${JOB_TITLE_MIN_LENGTH} characters.`);
       return;
     }
     if (!form.employmentType) {
@@ -247,7 +256,7 @@ export default function Requisitions() {
       temporary: [['temporaryDetails', 'startDate', 'Temporary role start date'], ['temporaryDetails', 'endDate', 'Temporary role end date'], ['temporaryDetails', 'workingHours', 'Temporary role working hours']],
     };
     for (const [group, field, label] of employmentValidation[form.employmentType] || []) {
-      if (!form[group]?.[field]?.trim?.()) {
+      if (isBlankField(form[group]?.[field])) {
         toast.error(`${label} is required.`);
         return;
       }
@@ -321,8 +330,9 @@ export default function Requisitions() {
 
     setCreating(true);
     try {
-      const createRes = await api.post('/requisitions', form);
+      const createRes = await api.post('/requisitions', { ...form, title: normalizedTitle });
       const requisition = createRes.data.requisition;
+      if (createRes.data.warning) toast(createRes.data.warning, { icon: '⚠️' });
       if (requisition.status !== 'closed') {
         toast.success('Job Opening created. Generating scorecard from the JD…');
         await api.post(`/requisitions/${requisition._id}/generate-scorecard`);
@@ -356,6 +366,10 @@ export default function Requisitions() {
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const selectedTemplate = templates.find((t) => t._id === form.pipelineTemplateId);
+  const normalizedFormTitle = normalizeJobTitle(form.title);
+  const duplicateActiveOpening = form.status === 'open' && normalizedFormTitle && requisitions.some((r) => (
+    r.status === 'open' && normalizeJobTitle(r.title || '').toLowerCase() === normalizedFormTitle.toLowerCase()
+  ));
 
   return (
     <div>
@@ -576,16 +590,20 @@ export default function Requisitions() {
             <DialogTitle>New job opening</DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleCreate} className="space-y-4 pt-2">
+          <form noValidate onSubmit={handleCreate} className="space-y-4 pt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
                 <Input
                   id="req-title" value={form.title} autoFocus
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="e.g. Sales Executive"
-                  required
+                  placeholder="e.g. Sales Executive (at least 5 characters)"
                 />
+                {duplicateActiveOpening && (
+                  <p className="text-xs text-amber-700">
+                    An active job opening with this title already exists.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -831,7 +849,6 @@ export default function Requisitions() {
                 id="req-jd" rows={5} value={form.jobDescription}
                 onChange={(e) => setForm({ ...form, jobDescription: e.target.value })}
                 placeholder="Paste or generate the full job description here…"
-                required
               />
             </div>
 

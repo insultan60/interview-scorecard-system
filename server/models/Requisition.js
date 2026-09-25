@@ -58,7 +58,7 @@ const temporaryDetailsSchema = new mongoose.Schema({
 }, { _id: false });
 
 const requisitionSchema = new mongoose.Schema({
-  title: { type: String, required: true, index: true },   // e.g., "Sales Executive / Closer"
+  title: { type: String, required: true, trim: true, minlength: 5, index: true },   // e.g., "Sales Executive / Closer"
   employmentType: {
     type: String,
     enum: ['full_time', 'part_time', 'contract', 'internship', 'temporary'],

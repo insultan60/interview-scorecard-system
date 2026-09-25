@@ -22,6 +22,7 @@ const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup'
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const WORKPLACE_TYPES = ['onsite', 'hybrid', 'remote'];
+const JOB_TITLE_MIN_LENGTH = 5;
 
 /** Office locations are configured as a pipe-separated environment variable. */
 function getRegisteredOfficeLocations() {
@@ -157,6 +158,24 @@ function validateEmploymentDetails(employmentType, details, missingFields) {
   if (!details.workingHours) missingFields.push('temporary role working hours');
 }
 
+function normalizeJobTitle(title) {
+  if (typeof title !== 'string' || !title.trim()) {
+    throw new ValidationError(['title'], 'Job title is required and cannot be blank.');
+  }
+  const normalizedTitle = title.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').trim();
+  if (!normalizedTitle) {
+    throw new ValidationError(['title'], 'Job title is required and cannot be blank.');
+  }
+  if (normalizedTitle.length < JOB_TITLE_MIN_LENGTH) {
+    throw new ValidationError(['title'], `Job title must be at least ${JOB_TITLE_MIN_LENGTH} characters.`);
+  }
+  return normalizedTitle;
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key });
@@ -274,17 +293,16 @@ const create = asyncHandler(async (req, res) => {
   } = req.body;
 
   const missingFields = [];
-  if (!title || !title.trim()) missingFields.push('title');
+  if (typeof title !== 'string' || !title.trim()) missingFields.push('title');
   if (!employmentType) missingFields.push('employmentType');
-  if (!workplaceType) missingFields.push('workplaceType');
-  if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
-  if (!applicationDeadline) missingFields.push('applicationDeadline');
-  if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
 
   const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
   const employmentDetailField = EMPLOYMENT_DETAIL_FIELDS[employmentType];
   const normalizedEmploymentDetails = normalizeEmploymentDetails(employmentType, employmentDetailInputs[employmentDetailField]);
   if (employmentDetailField) validateEmploymentDetails(employmentType, normalizedEmploymentDetails, missingFields);
+
+  if (!workplaceType) missingFields.push('workplaceType');
+  if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
 
   const normalizedCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
   if (normalizedCriteria.length === 0) {
@@ -310,13 +328,22 @@ const create = asyncHandler(async (req, res) => {
     }
   }
 
+  if (!applicationDeadline) missingFields.push('applicationDeadline');
+  if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
+
   if (missingFields.length > 0) {
     throw new ValidationError(missingFields, `Please fill out all required fields: ${missingFields.join(', ')}.`);
   }
   if (status !== undefined && !['open', 'paused', 'closed', 'draft'].includes(status)) {
     throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
   }
+  const normalizedTitle = normalizeJobTitle(title);
   const workplace = resolveWorkplace({ workplaceType, officeLocation, remoteRegion });
+
+  const duplicateActiveOpening = await Requisition.findOne({
+    title: { $regex: `^${escapeRegex(normalizedTitle)}$`, $options: 'i' },
+    status: 'open',
+  }).select('_id title').lean();
 
   const template = await PipelineTemplate.findById(pipelineTemplateId);
   if (!template) {
@@ -333,7 +360,7 @@ const create = asyncHandler(async (req, res) => {
   const defaultMaybe = await getSettingValue('maybeThreshold', 3.0);
 
   const requisition = await Requisition.create({
-    title,
+    title: normalizedTitle,
     employmentType: employmentType || 'full_time',
     ...(employmentDetailField ? { [employmentDetailField]: normalizedEmploymentDetails } : {}),
     ...workplace,
@@ -352,8 +379,13 @@ const create = asyncHandler(async (req, res) => {
     createdBy: req.user._id,
   });
 
-  logger.info(`[Requisition] Created "${title}" (${requisition._id}) by user=${req.user._id}`);
-  res.status(201).json({ requisition });
+  logger.info(`[Requisition] Created "${normalizedTitle}" (${requisition._id}) by user=${req.user._id}`);
+  res.status(201).json({
+    requisition,
+    warning: duplicateActiveOpening
+      ? `An active job opening named "${duplicateActiveOpening.title}" already exists.`
+      : undefined,
+  });
 });
 
 /**
@@ -452,7 +484,7 @@ const update = asyncHandler(async (req, res) => {
     throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
   }
 
-  if (title !== undefined) requisition.title = title;
+  if (title !== undefined) requisition.title = normalizeJobTitle(title);
   if (employmentType !== undefined) requisition.employmentType = employmentType;
   const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
   const hasEmploymentDetailsChanges = Object.values(employmentDetailInputs).some((value) => value !== undefined);
