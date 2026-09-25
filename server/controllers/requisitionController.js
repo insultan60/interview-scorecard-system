@@ -87,6 +87,76 @@ function resolveWorkplace({ workplaceType, officeLocation, remoteRegion }, curre
   };
 }
 
+const EMPLOYMENT_DETAIL_FIELDS = {
+  full_time: 'fullTimeDetails',
+  part_time: 'partTimeDetails',
+  contract: 'contractDetails',
+  internship: 'internshipDetails',
+  temporary: 'temporaryDetails',
+};
+
+function normalizeEmploymentDetails(employmentType, raw) {
+  const details = raw && typeof raw === 'object' ? raw : {};
+  if (employmentType === 'full_time') {
+    return { workingHours: String(details.workingHours || '').trim() };
+  }
+  if (employmentType === 'part_time') {
+    return {
+      weeklyHours: String(details.weeklyHours || '').trim(),
+      workingHours: String(details.workingHours || '').trim(),
+    };
+  }
+  if (employmentType === 'contract') {
+    return {
+      duration: String(details.duration || '').trim(),
+      workingHours: String(details.workingHours || '').trim(),
+      paymentRate: String(details.paymentRate || '').trim(),
+    };
+  }
+  if (employmentType === 'internship') {
+    return {
+      duration: String(details.duration || '').trim(),
+      paidStatus: String(details.paidStatus ?? 'paid').trim(),
+      workingHours: String(details.workingHours || '').trim(),
+    };
+  }
+  return {
+    startDate: details.startDate ? new Date(details.startDate) : null,
+    endDate: details.endDate ? new Date(details.endDate) : null,
+    workingHours: String(details.workingHours || '').trim(),
+  };
+}
+
+function validateEmploymentDetails(employmentType, details, missingFields) {
+  if (employmentType === 'full_time') {
+    if (!details.workingHours) missingFields.push('full-time working hours');
+    return;
+  }
+  if (employmentType === 'part_time') {
+    if (!details.weeklyHours) missingFields.push('part-time weekly hours');
+    if (!details.workingHours) missingFields.push('part-time working hours');
+    return;
+  }
+  if (employmentType === 'contract') {
+    if (!details.duration) missingFields.push('contract duration');
+    if (!details.workingHours) missingFields.push('contract working hours');
+    if (!details.paymentRate) missingFields.push('contract payment/rate');
+    return;
+  }
+  if (employmentType === 'internship') {
+    if (!details.duration) missingFields.push('internship duration');
+    if (!['paid', 'unpaid'].includes(details.paidStatus)) missingFields.push('internship paid status (paid or unpaid)');
+    if (!details.workingHours) missingFields.push('internship working hours');
+    return;
+  }
+  if (!details.startDate || Number.isNaN(details.startDate.getTime())) missingFields.push('temporary role start date');
+  if (!details.endDate || Number.isNaN(details.endDate.getTime())) missingFields.push('temporary role end date');
+  if (details.startDate && details.endDate && details.endDate < details.startDate) {
+    missingFields.push('temporary end date (must be after start date)');
+  }
+  if (!details.workingHours) missingFields.push('temporary role working hours');
+}
+
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
   const setting = await Setting.findOne({ key });
@@ -198,7 +268,8 @@ function assignMissingAttributeIds(stages) {
  */
 const create = asyncHandler(async (req, res) => {
   const {
-    title, employmentType, workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
+    workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status,
   } = req.body;
 
@@ -209,6 +280,11 @@ const create = asyncHandler(async (req, res) => {
   if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
   if (!applicationDeadline) missingFields.push('applicationDeadline');
   if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
+
+  const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
+  const employmentDetailField = EMPLOYMENT_DETAIL_FIELDS[employmentType];
+  const normalizedEmploymentDetails = normalizeEmploymentDetails(employmentType, employmentDetailInputs[employmentDetailField]);
+  if (employmentDetailField) validateEmploymentDetails(employmentType, normalizedEmploymentDetails, missingFields);
 
   const normalizedCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
   if (normalizedCriteria.length === 0) {
@@ -259,6 +335,7 @@ const create = asyncHandler(async (req, res) => {
   const requisition = await Requisition.create({
     title,
     employmentType: employmentType || 'full_time',
+    ...(employmentDetailField ? { [employmentDetailField]: normalizedEmploymentDetails } : {}),
     ...workplace,
     jobDescription,
     pipelineTemplateId,
@@ -356,12 +433,14 @@ const update = asyncHandler(async (req, res) => {
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
 
   const {
-    title, employmentType, location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
+    title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
+    location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
   const hasNonStatusChanges = [
-    title, employmentType, location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
+    title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
+    location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
     weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   ].some((value) => value !== undefined);
   if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
@@ -375,6 +454,25 @@ const update = asyncHandler(async (req, res) => {
 
   if (title !== undefined) requisition.title = title;
   if (employmentType !== undefined) requisition.employmentType = employmentType;
+  const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
+  const hasEmploymentDetailsChanges = Object.values(employmentDetailInputs).some((value) => value !== undefined);
+  if (employmentType !== undefined || hasEmploymentDetailsChanges) {
+    const nextEmploymentType = employmentType ?? requisition.employmentType;
+    const employmentDetailField = EMPLOYMENT_DETAIL_FIELDS[nextEmploymentType];
+    if (employmentDetailField) {
+      const details = normalizeEmploymentDetails(
+        nextEmploymentType,
+        employmentDetailInputs[employmentDetailField] ?? requisition[employmentDetailField]
+      );
+      const missingFields = [];
+      validateEmploymentDetails(nextEmploymentType, details, missingFields);
+      if (missingFields.length) {
+        throw new ValidationError(missingFields, `Please fill out all required fields: ${missingFields.join(', ')}.`);
+      }
+      Object.values(EMPLOYMENT_DETAIL_FIELDS).forEach((field) => { requisition[field] = undefined; });
+      requisition[employmentDetailField] = details;
+    }
+  }
   const hasWorkplaceChanges = [workplaceType, officeLocation, remoteRegion].some((value) => value !== undefined);
   if (hasWorkplaceChanges) {
     Object.assign(requisition, resolveWorkplace({ workplaceType, officeLocation, remoteRegion }, requisition));
@@ -682,7 +780,7 @@ const getPublic = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(req.params.id)
-    .select('title employmentType location workplaceType officeLocation remoteRegion jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .select('title employmentType fullTimeDetails partTimeDetails contractDetails internshipDetails temporaryDetails location workplaceType officeLocation remoteRegion jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
     .lean();
 
   if (!requisition) {

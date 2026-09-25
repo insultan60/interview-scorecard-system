@@ -45,6 +45,11 @@ const EMPLOYMENT_TYPE_LABEL = {
 const EMPTY_FORM = {
   title: '',
   employmentType: 'full_time',
+  fullTimeDetails: { workingHours: '' },
+  partTimeDetails: { weeklyHours: '', workingHours: '' },
+  contractDetails: { duration: '', workingHours: '', paymentRate: '' },
+  internshipDetails: { duration: '', paidStatus: 'paid', workingHours: '' },
+  temporaryDetails: { startDate: '', endDate: '', workingHours: '' },
   workplaceType: 'remote',
   officeLocation: '',
   remoteRegion: '',
@@ -232,6 +237,23 @@ export default function Requisitions() {
     }
     if (!form.employmentType) {
       toast.error('Employment Type is required.');
+      return;
+    }
+    const employmentValidation = {
+      full_time: [['fullTimeDetails', 'workingHours', 'Full-Time working hours']],
+      part_time: [['partTimeDetails', 'weeklyHours', 'Part-Time weekly hours'], ['partTimeDetails', 'workingHours', 'Part-Time working hours']],
+      contract: [['contractDetails', 'duration', 'Contract duration'], ['contractDetails', 'workingHours', 'Contract working hours'], ['contractDetails', 'paymentRate', 'Contract payment/rate']],
+      internship: [['internshipDetails', 'duration', 'Internship duration'], ['internshipDetails', 'workingHours', 'Internship working hours']],
+      temporary: [['temporaryDetails', 'startDate', 'Temporary role start date'], ['temporaryDetails', 'endDate', 'Temporary role end date'], ['temporaryDetails', 'workingHours', 'Temporary role working hours']],
+    };
+    for (const [group, field, label] of employmentValidation[form.employmentType] || []) {
+      if (!form[group]?.[field]?.trim?.()) {
+        toast.error(`${label} is required.`);
+        return;
+      }
+    }
+    if (form.employmentType === 'temporary' && form.temporaryDetails.endDate < form.temporaryDetails.startDate) {
+      toast.error('Temporary role end date must be after the start date.');
       return;
     }
     if (!form.workplaceType) {
@@ -555,7 +577,7 @@ export default function Requisitions() {
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4 pt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
                 <Input
@@ -564,45 +586,6 @@ export default function Requisitions() {
                   placeholder="e.g. Sales Executive"
                   required
                 />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="req-employment-type">Employment Type <span className="text-red-500">*</span></Label>
-                <Select
-                  value={form.employmentType || 'full_time'}
-                  onValueChange={(val) => setForm({ ...form, employmentType: val })}
-                >
-                  <SelectTrigger id="req-employment-type" className="w-full">
-                    <SelectValue placeholder="Select type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="full_time">Full-Time</SelectItem>
-                    <SelectItem value="part_time">Part-Time</SelectItem>
-                    <SelectItem value="contract">Contract</SelectItem>
-                    <SelectItem value="internship">Internship</SelectItem>
-                    <SelectItem value="temporary">Temporary</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="req-workplace-type">Work arrangement <span className="text-red-500">*</span></Label>
-                <Select
-                  value={form.workplaceType || 'remote'}
-                  onValueChange={(val) => setForm((current) => ({
-                    ...current,
-                    workplaceType: val,
-                    officeLocation: val === 'onsite' ? (officeLocations[0] || '') : (val === 'remote' ? '' : current.officeLocation),
-                    remoteRegion: val === 'remote' ? current.remoteRegion : '',
-                  }))}
-                >
-                  <SelectTrigger id="req-workplace-type" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="onsite">Onsite</SelectItem>
-                    <SelectItem value="hybrid">Hybrid</SelectItem>
-                    <SelectItem value="remote">Remote</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               <div className="space-y-1.5">
@@ -617,6 +600,126 @@ export default function Requisitions() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-employment-type">Employment Type <span className="text-red-500">*</span></Label>
+              <Select
+                value={form.employmentType || 'full_time'}
+                onValueChange={(val) => setForm({ ...form, employmentType: val })}
+              >
+                <SelectTrigger id="req-employment-type" className="w-full">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full_time">Full-Time</SelectItem>
+                  <SelectItem value="part_time">Part-Time</SelectItem>
+                  <SelectItem value="contract">Contract</SelectItem>
+                  <SelectItem value="internship">Internship</SelectItem>
+                  <SelectItem value="temporary">Temporary</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {form.employmentType === 'full_time' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Full-Time details</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="full-time-working-hours">Working hours / shift <span className="text-red-500">*</span></Label>
+                  <Input id="full-time-working-hours" value={form.fullTimeDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, fullTimeDetails: { ...form.fullTimeDetails, workingHours: e.target.value } })} placeholder="e.g. 9 AM–6 PM, Monday–Friday" />
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'part_time' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Part-Time details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label htmlFor="part-time-weekly-hours">Weekly hours <span className="text-red-500">*</span></Label><Input id="part-time-weekly-hours" value={form.partTimeDetails?.weeklyHours || ''} onChange={(e) => setForm({ ...form, partTimeDetails: { ...form.partTimeDetails, weeklyHours: e.target.value } })} placeholder="e.g. 20 hours per week" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="part-time-working-hours">Working hours / shift <span className="text-red-500">*</span></Label><Input id="part-time-working-hours" value={form.partTimeDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, partTimeDetails: { ...form.partTimeDetails, workingHours: e.target.value } })} placeholder="e.g. 1 PM–5 PM, Mon–Fri" /></div>
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'contract' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Contract details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5"><Label htmlFor="contract-duration">Duration <span className="text-red-500">*</span></Label><Input id="contract-duration" value={form.contractDetails?.duration || ''} onChange={(e) => setForm({ ...form, contractDetails: { ...form.contractDetails, duration: e.target.value } })} placeholder="e.g. 6 months" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="contract-working-hours">Working hours <span className="text-red-500">*</span></Label><Input id="contract-working-hours" value={form.contractDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, contractDetails: { ...form.contractDetails, workingHours: e.target.value } })} placeholder="e.g. 9 AM–6 PM" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="contract-payment-rate">Payment / rate <span className="text-red-500">*</span></Label><Input id="contract-payment-rate" value={form.contractDetails?.paymentRate || ''} onChange={(e) => setForm({ ...form, contractDetails: { ...form.contractDetails, paymentRate: e.target.value } })} placeholder="e.g. PKR 150,000/month" /></div>
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'internship' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Internship details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="internship-duration">Duration <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="internship-duration"
+                      value={form.internshipDetails?.duration || ''}
+                      onChange={(e) => setForm({ ...form, internshipDetails: { ...form.internshipDetails, duration: e.target.value } })}
+                      placeholder="e.g. 3 months"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="internship-paid-status">Paid status</Label>
+                    <Select
+                      value={form.internshipDetails?.paidStatus || 'paid'}
+                      onValueChange={(val) => setForm({ ...form, internshipDetails: { ...form.internshipDetails, paidStatus: val } })}
+                    >
+                      <SelectTrigger id="internship-paid-status"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="internship-working-hours">Working hours <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="internship-working-hours"
+                      value={form.internshipDetails?.workingHours || ''}
+                      onChange={(e) => setForm({ ...form, internshipDetails: { ...form.internshipDetails, workingHours: e.target.value } })}
+                      placeholder="e.g. 9 AM–5 PM, Mon–Fri"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'temporary' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Temporary role details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5"><Label htmlFor="temporary-start-date">Start date <span className="text-red-500">*</span></Label><Input id="temporary-start-date" type="date" value={form.temporaryDetails?.startDate || ''} onChange={(e) => setForm({ ...form, temporaryDetails: { ...form.temporaryDetails, startDate: e.target.value } })} /></div>
+                  <div className="space-y-1.5"><Label htmlFor="temporary-end-date">End date <span className="text-red-500">*</span></Label><Input id="temporary-end-date" type="date" value={form.temporaryDetails?.endDate || ''} onChange={(e) => setForm({ ...form, temporaryDetails: { ...form.temporaryDetails, endDate: e.target.value } })} /></div>
+                  <div className="space-y-1.5"><Label htmlFor="temporary-working-hours">Working hours <span className="text-red-500">*</span></Label><Input id="temporary-working-hours" value={form.temporaryDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, temporaryDetails: { ...form.temporaryDetails, workingHours: e.target.value } })} placeholder="e.g. 9 AM–6 PM, Mon–Fri" /></div>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-workplace-type">Work arrangement <span className="text-red-500">*</span></Label>
+              <Select
+                value={form.workplaceType || 'remote'}
+                onValueChange={(val) => setForm((current) => ({
+                  ...current,
+                  workplaceType: val,
+                  officeLocation: val === 'onsite' ? (officeLocations[0] || '') : (val === 'remote' ? '' : current.officeLocation),
+                  remoteRegion: val === 'remote' ? current.remoteRegion : '',
+                }))}
+              >
+                <SelectTrigger id="req-workplace-type" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="onsite">Onsite</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                  <SelectItem value="remote">Remote</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {form.workplaceType === 'onsite' && (

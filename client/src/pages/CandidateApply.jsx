@@ -28,6 +28,21 @@ const formatDeadline = (date) => {
 
 const TURNSTILE_SCRIPT_ID = 'cloudflare-turnstile-script';
 
+function getEmploymentDetails(requisition) {
+  const byType = {
+    full_time: ['Full-Time details', [['Working hours', requisition.fullTimeDetails?.workingHours]]],
+    part_time: ['Part-Time details', [['Weekly hours', requisition.partTimeDetails?.weeklyHours], ['Working hours', requisition.partTimeDetails?.workingHours]]],
+    contract: ['Contract details', [['Duration', requisition.contractDetails?.duration], ['Working hours', requisition.contractDetails?.workingHours], ['Payment / rate', requisition.contractDetails?.paymentRate]]],
+    internship: ['Internship details', [['Duration', requisition.internshipDetails?.duration], ['Status', requisition.internshipDetails?.paidStatus === 'paid' ? 'Paid' : requisition.internshipDetails?.paidStatus === 'unpaid' ? 'Unpaid' : ''], ['Working hours', requisition.internshipDetails?.workingHours]]],
+    temporary: ['Temporary role details', [['Start date', requisition.temporaryDetails?.startDate ? String(requisition.temporaryDetails.startDate).slice(0, 10) : ''], ['End date', requisition.temporaryDetails?.endDate ? String(requisition.temporaryDetails.endDate).slice(0, 10) : ''], ['Working hours', requisition.temporaryDetails?.workingHours]]],
+  };
+  const details = byType[requisition.employmentType];
+  if (!details) return null;
+  const [title, items] = details;
+  const populatedItems = items.filter(([, value]) => value);
+  return populatedItems.length ? { title, items: populatedItems } : null;
+}
+
 function loadTurnstile() {
   if (window.turnstile) return Promise.resolve(window.turnstile);
   const existing = document.getElementById(TURNSTILE_SCRIPT_ID);
@@ -79,6 +94,7 @@ export default function CandidateApply() {
   const { id } = useParams();
 
   const [requisition, setRequisition] = useState(null);
+  const employmentDetails = requisition ? getEmploymentDetails(requisition) : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -348,6 +364,17 @@ export default function CandidateApply() {
                   {requisition.jobDescription}
                 </div>
               </div>
+
+              {employmentDetails && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                  <h3 className="text-base font-semibold text-slate-900 mb-2">{employmentDetails.title}</h3>
+                  <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                    {employmentDetails.items.map(([label, value]) => (
+                      <p key={label}><span className="font-medium">{label}:</span> {value}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {isExpired ? (
                 <div className="rounded-lg bg-red-50 p-4 border border-red-200 text-red-800 text-sm flex items-center gap-2">
