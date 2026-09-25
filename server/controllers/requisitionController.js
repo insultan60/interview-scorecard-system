@@ -21,6 +21,71 @@ const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService'
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+const WORKPLACE_TYPES = ['onsite', 'hybrid', 'remote'];
+
+/** Office locations are configured as a pipe-separated environment variable. */
+function getRegisteredOfficeLocations() {
+  return (process.env.REGISTERED_OFFICE_LOCATIONS || '')
+    .split('|')
+    .map((location) => location.trim())
+    .filter(Boolean);
+}
+
+/** Builds the structured and display location values for a requisition. */
+function resolveWorkplace({ workplaceType, officeLocation, remoteRegion }, current = {}) {
+  const type = workplaceType ?? current.workplaceType ?? 'remote';
+  if (!WORKPLACE_TYPES.includes(type)) {
+    throw new ValidationError(['workplaceType'], 'Work arrangement must be onsite, hybrid, or remote.');
+  }
+
+  const offices = getRegisteredOfficeLocations();
+  const selectedOffice = String(officeLocation ?? current.officeLocation ?? '').trim();
+  const selectedRegion = String(remoteRegion ?? current.remoteRegion ?? '').trim();
+
+  if (type === 'onsite') {
+    const primaryOffice = offices[0];
+    if (!primaryOffice) {
+      throw new ValidationError(
+        ['officeLocation'],
+        'A registered office location must be configured before creating an onsite requisition.'
+      );
+    }
+    return {
+      workplaceType: type,
+      officeLocation: primaryOffice,
+      remoteRegion: '',
+      location: `Onsite — ${primaryOffice}`,
+    };
+  }
+
+  if (type === 'hybrid') {
+    if (!offices.length) {
+      throw new ValidationError(
+        ['officeLocation'],
+        'A registered office location must be configured before creating a hybrid requisition.'
+      );
+    }
+    if (!selectedOffice) {
+      throw new ValidationError(['officeLocation'], 'Please select an office location for a hybrid requisition.');
+    }
+    if (!offices.includes(selectedOffice)) {
+      throw new ValidationError(['officeLocation'], 'Please select a registered office location for a hybrid requisition.');
+    }
+    return {
+      workplaceType: type,
+      officeLocation: selectedOffice,
+      remoteRegion: '',
+      location: `Hybrid — ${selectedOffice}`,
+    };
+  }
+
+  return {
+    workplaceType: type,
+    officeLocation: '',
+    remoteRegion: selectedRegion,
+    location: selectedRegion ? `Remote — ${selectedRegion}` : 'Remote',
+  };
+}
 
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
@@ -133,14 +198,14 @@ function assignMissingAttributeIds(stages) {
  */
 const create = asyncHandler(async (req, res) => {
   const {
-    title, employmentType, location, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    title, employmentType, workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status,
   } = req.body;
 
   const missingFields = [];
   if (!title || !title.trim()) missingFields.push('title');
   if (!employmentType) missingFields.push('employmentType');
-  if (!location || !location.trim()) missingFields.push('location');
+  if (!workplaceType) missingFields.push('workplaceType');
   if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
   if (!applicationDeadline) missingFields.push('applicationDeadline');
   if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
@@ -175,6 +240,7 @@ const create = asyncHandler(async (req, res) => {
   if (status !== undefined && !['open', 'paused', 'closed', 'draft'].includes(status)) {
     throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
   }
+  const workplace = resolveWorkplace({ workplaceType, officeLocation, remoteRegion });
 
   const template = await PipelineTemplate.findById(pipelineTemplateId);
   if (!template) {
@@ -193,7 +259,7 @@ const create = asyncHandler(async (req, res) => {
   const requisition = await Requisition.create({
     title,
     employmentType: employmentType || 'full_time',
-    location: location || '',
+    ...workplace,
     jobDescription,
     pipelineTemplateId,
     pipelineTemplateName,
@@ -246,6 +312,7 @@ const list = asyncHandler(async (req, res) => {
   });
 
   res.json({
+    registeredOfficeLocations: getRegisteredOfficeLocations(),
     requisitions: requisitions.map((r) => ({
       ...r,
       status: r.status === 'on_hold' ? 'paused' : r.status,
@@ -289,12 +356,12 @@ const update = asyncHandler(async (req, res) => {
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
 
   const {
-    title, employmentType, location, jobDescription, status, hireThreshold, maybeThreshold, weights,
+    title, employmentType, location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
   const hasNonStatusChanges = [
-    title, employmentType, location, jobDescription, hireThreshold, maybeThreshold,
+    title, employmentType, location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
     weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   ].some((value) => value !== undefined);
   if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
@@ -308,7 +375,13 @@ const update = asyncHandler(async (req, res) => {
 
   if (title !== undefined) requisition.title = title;
   if (employmentType !== undefined) requisition.employmentType = employmentType;
-  if (location !== undefined) requisition.location = location;
+  const hasWorkplaceChanges = [workplaceType, officeLocation, remoteRegion].some((value) => value !== undefined);
+  if (hasWorkplaceChanges) {
+    Object.assign(requisition, resolveWorkplace({ workplaceType, officeLocation, remoteRegion }, requisition));
+  } else if (location !== undefined) {
+    // Keeps older API clients working while the UI uses structured workplace fields.
+    requisition.location = location;
+  }
   if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
@@ -609,7 +682,7 @@ const getPublic = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(req.params.id)
-    .select('title employmentType location jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .select('title employmentType location workplaceType officeLocation remoteRegion jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
     .lean();
 
   if (!requisition) {

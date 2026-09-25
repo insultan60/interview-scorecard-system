@@ -37,7 +37,18 @@ const requisitionSchema = new mongoose.Schema({
     enum: ['full_time', 'part_time', 'contract', 'internship', 'temporary'],
     default: 'full_time',
   },
+  // `location` is retained as a readable display value for existing records
+  // and public application links. New records derive it from the structured
+  // workplace fields below.
   location: { type: String, default: 'Remote' },
+  workplaceType: {
+    type: String,
+    enum: ['onsite', 'hybrid', 'remote'],
+    default: 'remote',
+    index: true,
+  },
+  officeLocation: { type: String, default: '' },
+  remoteRegion: { type: String, default: '' },
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
   status: {
     type: String,

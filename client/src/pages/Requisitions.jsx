@@ -45,7 +45,9 @@ const EMPLOYMENT_TYPE_LABEL = {
 const EMPTY_FORM = {
   title: '',
   employmentType: 'full_time',
-  location: '',
+  workplaceType: 'remote',
+  officeLocation: '',
+  remoteRegion: '',
   jobDescription: '',
   initialScreeningCriteria: [{ criteria: '', requirement: '' }],
   questionnaire: [{ question: '', idealAnswer: '' }],
@@ -60,6 +62,7 @@ export default function Requisitions() {
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [requisitions, setRequisitions] = useState([]);
+  const [officeLocations, setOfficeLocations] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -205,6 +208,7 @@ export default function Requisitions() {
     try {
       const res = await api.get('/requisitions', { params: statusFilter ? { status: statusFilter } : {} });
       setRequisitions(res.data.requisitions);
+      setOfficeLocations(res.data.registeredOfficeLocations || []);
     } finally {
       setLoading(false);
     }
@@ -230,8 +234,16 @@ export default function Requisitions() {
       toast.error('Employment Type is required.');
       return;
     }
-    if (!form.location.trim()) {
-      toast.error('Location is required.');
+    if (!form.workplaceType) {
+      toast.error('Work arrangement is required.');
+      return;
+    }
+    if (form.workplaceType === 'onsite' && !officeLocations[0]) {
+      toast.error('Add a registered office location before creating an onsite job opening.');
+      return;
+    }
+    if (form.workplaceType === 'hybrid' && !form.officeLocation) {
+      toast.error('Select an office location for a hybrid job opening.');
       return;
     }
     if (!form.jobDescription.trim()) {
@@ -574,14 +586,23 @@ export default function Requisitions() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="req-location">Location <span className="text-red-500">*</span></Label>
-                <Input
-                  id="req-location"
-                  value={form.location || ''}
-                  onChange={(e) => setForm({ ...form, location: e.target.value })}
-                  placeholder="e.g. Remote, NY, Hybrid..."
-                  required
-                />
+                <Label htmlFor="req-workplace-type">Work arrangement <span className="text-red-500">*</span></Label>
+                <Select
+                  value={form.workplaceType || 'remote'}
+                  onValueChange={(val) => setForm((current) => ({
+                    ...current,
+                    workplaceType: val,
+                    officeLocation: val === 'onsite' ? (officeLocations[0] || '') : (val === 'remote' ? '' : current.officeLocation),
+                    remoteRegion: val === 'remote' ? current.remoteRegion : '',
+                  }))}
+                >
+                  <SelectTrigger id="req-workplace-type" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="onsite">Onsite</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
@@ -597,6 +618,53 @@ export default function Requisitions() {
                 </Select>
               </div>
             </div>
+
+            {form.workplaceType === 'onsite' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="req-onsite-location">Office location</Label>
+                <Input
+                  id="req-onsite-location"
+                  value={officeLocations[0] || 'No registered office location configured'}
+                  disabled
+                />
+                {!officeLocations[0] && (
+                  <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable onsite roles.</p>
+                )}
+              </div>
+            )}
+
+            {form.workplaceType === 'hybrid' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="req-hybrid-location">Office location <span className="text-red-500">*</span></Label>
+                <Select
+                  value={form.officeLocation || undefined}
+                  onValueChange={(val) => setForm({ ...form, officeLocation: val })}
+                  disabled={officeLocations.length === 0}
+                >
+                  <SelectTrigger id="req-hybrid-location" className="w-full">
+                    <SelectValue placeholder={officeLocations.length ? 'Select an office...' : 'No registered office location configured'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {officeLocations.map((office) => <SelectItem key={office} value={office}>{office}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {officeLocations.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable hybrid roles.</p>
+                )}
+              </div>
+            )}
+
+            {form.workplaceType === 'remote' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="req-remote-region">Remote region or time zone <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  id="req-remote-region"
+                  value={form.remoteRegion || ''}
+                  onChange={(e) => setForm({ ...form, remoteRegion: e.target.value })}
+                  placeholder="e.g. Pakistan (PKT), EMEA, US Eastern"
+                />
+              </div>
+            )}
 
             {/* Job Description with Generate AI button on right */}
             <div className="space-y-1.5">
