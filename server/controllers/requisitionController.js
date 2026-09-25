@@ -10,7 +10,7 @@ const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
 const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
-const { assertRequisitionOpen } = require('../utils/requisitionStatus');
+const { assertRequisitionOpen, assertRequisitionConfigurable } = require('../utils/requisitionStatus');
 const { generateScorecard } = require('../services/questionGenerator');
 const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
@@ -19,8 +19,167 @@ const { callClaude, getModelIds } = require('../services/claudeClient');
 const emailNotifier = require('../services/emailNotifier');
 const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
+// Server-side validation mirror. The editable UI definition lives in client/src/constants.
+const screeningCriteriaConfig = {
+  education: { label: 'Education', options: ["Bachelor's degree", "Master's degree", 'PhD'] },
+  experience: { label: 'Experience', options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'] },
+};
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
+const WORKPLACE_TYPES = ['onsite', 'hybrid', 'remote'];
+const JOB_TITLE_MIN_LENGTH = 5;
+
+/** Office locations are configured as a pipe-separated environment variable. */
+function getRegisteredOfficeLocations() {
+  return (process.env.REGISTERED_OFFICE_LOCATIONS || '')
+    .split('|')
+    .map((location) => location.trim())
+    .filter(Boolean);
+}
+
+/** Builds the structured and display location values for a requisition. */
+function resolveWorkplace({ workplaceType, officeLocation, remoteRegion }, current = {}) {
+  const type = workplaceType ?? current.workplaceType ?? 'remote';
+  if (!WORKPLACE_TYPES.includes(type)) {
+    throw new ValidationError(['workplaceType'], 'Work arrangement must be onsite, hybrid, or remote.');
+  }
+
+  const offices = getRegisteredOfficeLocations();
+  const selectedOffice = String(officeLocation ?? current.officeLocation ?? '').trim();
+  const selectedRegion = String(remoteRegion ?? current.remoteRegion ?? '').trim();
+
+  if (type === 'onsite') {
+    const primaryOffice = offices[0];
+    if (!primaryOffice) {
+      throw new ValidationError(
+        ['officeLocation'],
+        'A registered office location must be configured before creating an onsite requisition.'
+      );
+    }
+    return {
+      workplaceType: type,
+      officeLocation: primaryOffice,
+      remoteRegion: '',
+      location: `Onsite — ${primaryOffice}`,
+    };
+  }
+
+  if (type === 'hybrid') {
+    if (!offices.length) {
+      throw new ValidationError(
+        ['officeLocation'],
+        'A registered office location must be configured before creating a hybrid requisition.'
+      );
+    }
+    if (!selectedOffice) {
+      throw new ValidationError(['officeLocation'], 'Please select an office location for a hybrid requisition.');
+    }
+    if (!offices.includes(selectedOffice)) {
+      throw new ValidationError(['officeLocation'], 'Please select a registered office location for a hybrid requisition.');
+    }
+    return {
+      workplaceType: type,
+      officeLocation: selectedOffice,
+      remoteRegion: '',
+      location: `Hybrid — ${selectedOffice}`,
+    };
+  }
+
+  return {
+    workplaceType: type,
+    officeLocation: '',
+    remoteRegion: selectedRegion,
+    location: selectedRegion ? `Remote — ${selectedRegion}` : 'Remote',
+  };
+}
+
+const EMPLOYMENT_DETAIL_FIELDS = {
+  full_time: 'fullTimeDetails',
+  part_time: 'partTimeDetails',
+  contract: 'contractDetails',
+  internship: 'internshipDetails',
+  temporary: 'temporaryDetails',
+};
+
+function normalizeEmploymentDetails(employmentType, raw) {
+  const details = raw && typeof raw === 'object' ? raw : {};
+  if (employmentType === 'full_time') {
+    return { workingHours: String(details.workingHours || '').trim() };
+  }
+  if (employmentType === 'part_time') {
+    return {
+      weeklyHours: String(details.weeklyHours || '').trim(),
+      workingHours: String(details.workingHours || '').trim(),
+    };
+  }
+  if (employmentType === 'contract') {
+    return {
+      duration: String(details.duration || '').trim(),
+      workingHours: String(details.workingHours || '').trim(),
+      paymentRate: String(details.paymentRate || '').trim(),
+    };
+  }
+  if (employmentType === 'internship') {
+    return {
+      duration: String(details.duration || '').trim(),
+      paidStatus: String(details.paidStatus ?? 'paid').trim(),
+      workingHours: String(details.workingHours || '').trim(),
+    };
+  }
+  return {
+    startDate: details.startDate ? new Date(details.startDate) : null,
+    endDate: details.endDate ? new Date(details.endDate) : null,
+    workingHours: String(details.workingHours || '').trim(),
+  };
+}
+
+function validateEmploymentDetails(employmentType, details, missingFields) {
+  if (employmentType === 'full_time') {
+    if (!details.workingHours) missingFields.push('full-time working hours');
+    return;
+  }
+  if (employmentType === 'part_time') {
+    if (!details.weeklyHours) missingFields.push('part-time weekly hours');
+    if (!details.workingHours) missingFields.push('part-time working hours');
+    return;
+  }
+  if (employmentType === 'contract') {
+    if (!details.duration) missingFields.push('contract duration');
+    if (!details.workingHours) missingFields.push('contract working hours');
+    if (!details.paymentRate) missingFields.push('contract payment/rate');
+    return;
+  }
+  if (employmentType === 'internship') {
+    if (!details.duration) missingFields.push('internship duration');
+    if (!['paid', 'unpaid'].includes(details.paidStatus)) missingFields.push('internship paid status (paid or unpaid)');
+    if (!details.workingHours) missingFields.push('internship working hours');
+    return;
+  }
+  if (!details.startDate || Number.isNaN(details.startDate.getTime())) missingFields.push('temporary role start date');
+  if (!details.endDate || Number.isNaN(details.endDate.getTime())) missingFields.push('temporary role end date');
+  if (details.startDate && details.endDate && details.endDate < details.startDate) {
+    missingFields.push('temporary end date (must be after start date)');
+  }
+  if (!details.workingHours) missingFields.push('temporary role working hours');
+}
+
+function normalizeJobTitle(title) {
+  if (typeof title !== 'string' || !title.trim()) {
+    throw new ValidationError(['title'], 'Job title is required and cannot be blank.');
+  }
+  const normalizedTitle = title.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').trim();
+  if (!normalizedTitle) {
+    throw new ValidationError(['title'], 'Job title is required and cannot be blank.');
+  }
+  if (normalizedTitle.length < JOB_TITLE_MIN_LENGTH) {
+    throw new ValidationError(['title'], `Job title must be at least ${JOB_TITLE_MIN_LENGTH} characters.`);
+  }
+  return normalizedTitle;
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /** Reads a Setting's scalar value, falling back to a default if missing. */
 async function getSettingValue(key, fallback) {
@@ -54,32 +213,61 @@ function normalizeQuestionnaire(raw) {
   return [];
 }
 
-/** Normalizes raw screening criteria inputs into objects { criteria, requirement }. */
+/** Normalizes the two supported, structured screening criteria. */
 function normalizeInitialScreeningCriteria(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) {
-    return raw.map((item) => {
-      if (typeof item === 'string') {
-        return { criteria: item.trim(), requirement: '' };
-      }
-      if (typeof item === 'object' && item !== null) {
-        return {
-          criteria: (item.criteria || '').trim(),
-          requirement: (item.requirement || '').trim(),
-        };
-      }
-      return null;
-    }).filter((item) => item && (item.criteria || item.requirement));
+  const items = Array.isArray(raw) ? raw : [];
+  const experience = items.find((item) => String(item?.criteria || '').toLowerCase() === 'experience') || {};
+  const educationInput = items.find((item) => String(item?.criteria || '').toLowerCase() === 'education') || {};
+  const education = screeningCriteriaConfig.education;
+  const educationMinimum = String(educationInput.minimumValue || '').trim();
+  const educationMaximum = String(educationInput.maximumValue || '').trim();
+  const relevantField = String(educationInput.relevantField || '').trim();
+  const minimumValue = String(experience.minimumValue || '').trim();
+  const maximumValue = String(experience.maximumValue || '').trim();
+
+  return [
+    {
+      criteria: education.label,
+      minimumValue: educationMinimum,
+      maximumValue: educationMaximum,
+      relevantField,
+      requirement: relevantField && educationMinimum && educationMaximum ? `${educationMinimum} to ${educationMaximum} in ${relevantField}` : '',
+    },
+    {
+      criteria: screeningCriteriaConfig.experience.label,
+      minimumValue,
+      maximumValue,
+      requirement: minimumValue && maximumValue ? `Minimum: ${minimumValue} years; Maximum: ${maximumValue} years` : '',
+    },
+  ];
+}
+
+function validateInitialScreeningCriteria(criteria, missingFields) {
+  const education = criteria.find((criterion) => criterion.criteria === screeningCriteriaConfig.education.label);
+  if (!education?.relevantField) missingFields.push('education relevant field or major');
+  if (!education?.minimumValue || !education?.maximumValue) {
+    missingFields.push('education minimum and maximum qualification');
+  } else {
+    const options = screeningCriteriaConfig.education.options;
+    if (!options.includes(education.minimumValue) || !options.includes(education.maximumValue)) {
+      missingFields.push('valid education minimum and maximum qualification');
+    } else if (options.indexOf(education.minimumValue) > options.indexOf(education.maximumValue)) {
+      missingFields.push('education maximum qualification must be equal to or higher than the minimum qualification');
+    }
   }
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (!trimmed) return [];
-    return trimmed.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => ({
-      criteria: line,
-      requirement: '',
-    }));
+  const experience = criteria.find((criterion) => criterion.criteria === screeningCriteriaConfig.experience.label);
+  if (!experience?.minimumValue || !experience?.maximumValue) {
+    missingFields.push('experience minimum and maximum values');
+    return;
   }
-  return [];
+  const options = screeningCriteriaConfig.experience.options;
+  if (!options.includes(experience.minimumValue) || !options.includes(experience.maximumValue)) {
+    missingFields.push('valid experience minimum and maximum values');
+    return;
+  }
+  const minimumIndex = options.indexOf(experience.minimumValue);
+  const maximumIndex = options.indexOf(experience.maximumValue);
+  if (minimumIndex > maximumIndex) missingFields.push('experience maximum value must be equal to or greater than the minimum value');
 }
 
 /** A date-only application deadline remains open through the whole UTC day. */
@@ -133,29 +321,25 @@ function assignMissingAttributeIds(stages) {
  */
 const create = asyncHandler(async (req, res) => {
   const {
-    title, employmentType, location, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+    title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
+    workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status,
   } = req.body;
 
   const missingFields = [];
-  if (!title || !title.trim()) missingFields.push('title');
+  if (typeof title !== 'string' || !title.trim()) missingFields.push('title');
   if (!employmentType) missingFields.push('employmentType');
-  if (!location || !location.trim()) missingFields.push('location');
+
+  const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
+  const employmentDetailField = EMPLOYMENT_DETAIL_FIELDS[employmentType];
+  const normalizedEmploymentDetails = normalizeEmploymentDetails(employmentType, employmentDetailInputs[employmentDetailField]);
+  if (employmentDetailField) validateEmploymentDetails(employmentType, normalizedEmploymentDetails, missingFields);
+
+  if (!workplaceType) missingFields.push('workplaceType');
   if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
-  if (!applicationDeadline) missingFields.push('applicationDeadline');
-  if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
 
   const normalizedCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
-  if (normalizedCriteria.length === 0) {
-    missingFields.push('initialScreeningCriteria');
-  } else {
-    for (let i = 0; i < normalizedCriteria.length; i++) {
-      const c = normalizedCriteria[i];
-      if (!c.criteria || !c.requirement) {
-        missingFields.push(`initialScreeningCriteria item #${i + 1} (criteria & requirement details)`);
-      }
-    }
-  }
+  validateInitialScreeningCriteria(normalizedCriteria, missingFields);
 
   const normalizedQuestions = normalizeQuestionnaire(questionnaire);
   if (normalizedQuestions.length === 0) {
@@ -169,9 +353,22 @@ const create = asyncHandler(async (req, res) => {
     }
   }
 
+  if (!applicationDeadline) missingFields.push('applicationDeadline');
+  if (!pipelineTemplateId) missingFields.push('pipelineTemplateId');
+
   if (missingFields.length > 0) {
     throw new ValidationError(missingFields, `Please fill out all required fields: ${missingFields.join(', ')}.`);
   }
+  if (status !== undefined && !['open', 'paused', 'closed', 'draft'].includes(status)) {
+    throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
+  }
+  const normalizedTitle = normalizeJobTitle(title);
+  const workplace = resolveWorkplace({ workplaceType, officeLocation, remoteRegion });
+
+  const duplicateActiveOpening = await Requisition.findOne({
+    title: { $regex: `^${escapeRegex(normalizedTitle)}$`, $options: 'i' },
+    status: 'open',
+  }).select('_id title').lean();
 
   const template = await PipelineTemplate.findById(pipelineTemplateId);
   if (!template) {
@@ -188,9 +385,10 @@ const create = asyncHandler(async (req, res) => {
   const defaultMaybe = await getSettingValue('maybeThreshold', 3.0);
 
   const requisition = await Requisition.create({
-    title,
+    title: normalizedTitle,
     employmentType: employmentType || 'full_time',
-    location: location || '',
+    ...(employmentDetailField ? { [employmentDetailField]: normalizedEmploymentDetails } : {}),
+    ...workplace,
     jobDescription,
     pipelineTemplateId,
     pipelineTemplateName,
@@ -201,16 +399,23 @@ const create = asyncHandler(async (req, res) => {
     questionnaire: normalizeQuestionnaire(questionnaire),
     applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
     aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
+    status: status || 'open',
+    closedAt: status === 'closed' ? new Date() : undefined,
     createdBy: req.user._id,
   });
 
-  logger.info(`[Requisition] Created "${title}" (${requisition._id}) by user=${req.user._id}`);
-  res.status(201).json({ requisition });
+  logger.info(`[Requisition] Created "${normalizedTitle}" (${requisition._id}) by user=${req.user._id}`);
+  res.status(201).json({
+    requisition,
+    warning: duplicateActiveOpening
+      ? `An active job opening named "${duplicateActiveOpening.title}" already exists.`
+      : undefined,
+  });
 });
 
 /**
  * GET /api/requisitions
- * Lists requisitions, optionally filtered by status (?status=open|on_hold|closed).
+ * Lists requisitions, optionally filtered by status (?status=open|paused|closed|draft).
  *
  * Each row carries a candidate rollup (total, still in progress, and the
  * hire/maybe/no-hire split) so the list can answer "which roles are actually
@@ -218,7 +423,10 @@ const create = asyncHandler(async (req, res) => {
  */
 const list = asyncHandler(async (req, res) => {
   const filter = {};
-  if (req.query.status) filter.status = req.query.status;
+  if (req.query.status) {
+    // Include legacy `on_hold` records in the new Paused filter.
+    filter.status = req.query.status === 'paused' ? { $in: ['paused', 'on_hold'] } : req.query.status;
+  }
   const requisitions = await Requisition.find(filter).sort({ createdAt: -1 }).lean();
 
   const applications = await Application.find({ requisitionId: { $in: requisitions.map((r) => r._id) } })
@@ -238,8 +446,10 @@ const list = asyncHandler(async (req, res) => {
   });
 
   res.json({
+    registeredOfficeLocations: getRegisteredOfficeLocations(),
     requisitions: requisitions.map((r) => ({
       ...r,
+      status: r.status === 'on_hold' ? 'paused' : r.status,
       candidateStats: statsByRequisition.get(String(r._id))
         || { total: 0, inProgress: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 },
     })),
@@ -264,7 +474,9 @@ const getOne = asyncHandler(async (req, res) => {
     return a.rank - b.rank;
   });
 
-  res.json({ requisition, scorecard, applications });
+  const requisitionResponse = requisition.toObject();
+  if (requisitionResponse.status === 'on_hold') requisitionResponse.status = 'paused';
+  res.json({ requisition: requisitionResponse, scorecard, applications });
 });
 
 /**
@@ -278,12 +490,14 @@ const update = asyncHandler(async (req, res) => {
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
 
   const {
-    title, employmentType, location, jobDescription, status, hireThreshold, maybeThreshold, weights,
+    title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
+    location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
     initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   } = req.body;
 
   const hasNonStatusChanges = [
-    title, employmentType, location, jobDescription, hireThreshold, maybeThreshold,
+    title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
+    location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
     weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
   ].some((value) => value !== undefined);
   if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
@@ -291,18 +505,47 @@ const update = asyncHandler(async (req, res) => {
     error.statusCode = 409;
     throw error;
   }
-  if (status !== undefined && !['open', 'on_hold', 'closed'].includes(status)) {
-    throw new ValidationError(['status'], 'status must be open, on_hold, or closed.');
+  if (status !== undefined && !['open', 'paused', 'closed', 'draft'].includes(status)) {
+    throw new ValidationError(['status'], 'status must be open, paused, closed, or draft.');
   }
 
-  if (title !== undefined) requisition.title = title;
+  if (title !== undefined) requisition.title = normalizeJobTitle(title);
   if (employmentType !== undefined) requisition.employmentType = employmentType;
-  if (location !== undefined) requisition.location = location;
+  const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
+  const hasEmploymentDetailsChanges = Object.values(employmentDetailInputs).some((value) => value !== undefined);
+  if (employmentType !== undefined || hasEmploymentDetailsChanges) {
+    const nextEmploymentType = employmentType ?? requisition.employmentType;
+    const employmentDetailField = EMPLOYMENT_DETAIL_FIELDS[nextEmploymentType];
+    if (employmentDetailField) {
+      const details = normalizeEmploymentDetails(
+        nextEmploymentType,
+        employmentDetailInputs[employmentDetailField] ?? requisition[employmentDetailField]
+      );
+      const missingFields = [];
+      validateEmploymentDetails(nextEmploymentType, details, missingFields);
+      if (missingFields.length) {
+        throw new ValidationError(missingFields, `Please fill out all required fields: ${missingFields.join(', ')}.`);
+      }
+      Object.values(EMPLOYMENT_DETAIL_FIELDS).forEach((field) => { requisition[field] = undefined; });
+      requisition[employmentDetailField] = details;
+    }
+  }
+  const hasWorkplaceChanges = [workplaceType, officeLocation, remoteRegion].some((value) => value !== undefined);
+  if (hasWorkplaceChanges) {
+    Object.assign(requisition, resolveWorkplace({ workplaceType, officeLocation, remoteRegion }, requisition));
+  } else if (location !== undefined) {
+    // Keeps older API clients working while the UI uses structured workplace fields.
+    requisition.location = location;
+  }
   if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
   if (initialScreeningCriteria !== undefined) {
-    requisition.initialScreeningCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
+    const criteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
+    const missingFields = [];
+    validateInitialScreeningCriteria(criteria, missingFields);
+    if (missingFields.length) throw new ValidationError(missingFields, `Please correct: ${missingFields.join(', ')}.`);
+    requisition.initialScreeningCriteria = criteria;
   }
   if (questionnaire !== undefined) {
     requisition.questionnaire = normalizeQuestionnaire(questionnaire);
@@ -380,7 +623,7 @@ const remove = asyncHandler(async (req, res) => {
 const generateScorecardHandler = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'generate a scorecard');
+  assertRequisitionConfigurable(requisition, 'generate a scorecard');
 
   const generated = await generateScorecard(requisition);
   assignMissingAttributeIds(generated.stages);
@@ -411,7 +654,7 @@ const generateScorecardHandler = asyncHandler(async (req, res) => {
 const cloneScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'edit the scorecard');
+  assertRequisitionConfigurable(requisition, 'edit the scorecard');
 
   const { sourceRequisitionId } = req.body;
   if (!sourceRequisitionId) throw new ValidationError(['sourceRequisitionId'], 'sourceRequisitionId is required.');
@@ -452,7 +695,7 @@ const cloneScorecard = asyncHandler(async (req, res) => {
 const updateScorecard = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'edit the scorecard');
+  assertRequisitionConfigurable(requisition, 'edit the scorecard');
   if (!requisition.scorecardId) {
     throw new ValidationError(['scorecardId'], 'This requisition has no scorecard yet — generate one first.');
   }
@@ -516,6 +759,9 @@ const generateField = asyncHandler(async (req, res) => {
   const { fieldType, title, jobDescription, prompt: userPromptText } = req.body;
   if (!fieldType || !title) {
     throw new ValidationError(['fieldType', 'title'], 'fieldType and title are required.');
+  }
+  if (fieldType === 'initialScreeningCriteria') {
+    throw new ValidationError(['fieldType'], 'Initial screening criteria are fixed and cannot be generated with AI.');
   }
 
   const modelIds = await getModelIds();
@@ -598,7 +844,7 @@ const getPublic = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(req.params.id)
-    .select('title employmentType location jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .select('title employmentType fullTimeDetails partTimeDetails contractDetails internshipDetails temporaryDetails location workplaceType officeLocation remoteRegion jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
     .lean();
 
   if (!requisition) {

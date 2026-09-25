@@ -35,10 +35,11 @@ const STATUS_STYLES = {
  *   currentStageKey?: string,
  *   onStartStage?: (stageKey: string) => void,
  *   startingStageKey?: string|null,
+ *   disabled?: boolean,
  *   compact?: boolean,
  * }} props
  */
-export default function PipelineStepper({ stages, progress, stageLinks, currentStageKey, onStartStage, startingStageKey, compact }) {
+export default function PipelineStepper({ stages, progress, stageLinks, currentStageKey, onStartStage, startingStageKey, disabled = false, compact }) {
   const enabledStages = stages.filter((s) => s.enabled);
   let priorStageFailed = false;
 
@@ -56,7 +57,7 @@ export default function PipelineStepper({ stages, progress, stageLinks, currentS
             rawStatus = 'passed';
           }
 
-          const isBlocked = priorStageFailed;
+          const isBlocked = priorStageFailed || disabled;
 
           if (rawStatus === 'failed') {
             priorStageFailed = true;
@@ -99,8 +100,10 @@ export default function PipelineStepper({ stages, progress, stageLinks, currentS
             );
           }
 
-          const title = isBlocked
-            ? `${stage.label}: disabled (prior stage failed)`
+          const title = disabled
+            ? `${stage.label}: disabled (requisition is not open)`
+            : isBlocked
+              ? `${stage.label}: disabled (prior stage failed)`
             : interviewId
               ? `${stage.label}: ${status.replace('_', ' ')} — click to open`
               : canStart

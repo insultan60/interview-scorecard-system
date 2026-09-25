@@ -28,20 +28,68 @@ const questionnaireItemSchema = new mongoose.Schema({
 const screeningCriteriaItemSchema = new mongoose.Schema({
   criteria: { type: String, required: true },
   requirement: { type: String, default: '' },
+  minimumValue: { type: String, default: '' },
+  maximumValue: { type: String, default: '' },
+  relevantField: { type: String, default: '' },
+}, { _id: false });
+
+const internshipDetailsSchema = new mongoose.Schema({
+  duration: { type: String, default: '' },
+  paidStatus: { type: String, enum: ['paid', 'unpaid'], default: 'paid' },
+  workingHours: { type: String, default: '' },
+}, { _id: false });
+
+const workingHoursDetailsSchema = new mongoose.Schema({
+  workingHours: { type: String, default: '' },
+}, { _id: false });
+
+const partTimeDetailsSchema = new mongoose.Schema({
+  weeklyHours: { type: String, default: '' },
+  workingHours: { type: String, default: '' },
+}, { _id: false });
+
+const contractDetailsSchema = new mongoose.Schema({
+  duration: { type: String, default: '' },
+  workingHours: { type: String, default: '' },
+  paymentRate: { type: String, default: '' },
+}, { _id: false });
+
+const temporaryDetailsSchema = new mongoose.Schema({
+  startDate: { type: Date, default: null },
+  endDate: { type: Date, default: null },
+  workingHours: { type: String, default: '' },
 }, { _id: false });
 
 const requisitionSchema = new mongoose.Schema({
-  title: { type: String, required: true, index: true },   // e.g., "Sales Executive / Closer"
+  title: { type: String, required: true, trim: true, minlength: 5, index: true },   // e.g., "Sales Executive / Closer"
   employmentType: {
     type: String,
     enum: ['full_time', 'part_time', 'contract', 'internship', 'temporary'],
     default: 'full_time',
   },
+  fullTimeDetails: { type: workingHoursDetailsSchema, default: undefined },
+  partTimeDetails: { type: partTimeDetailsSchema, default: undefined },
+  contractDetails: { type: contractDetailsSchema, default: undefined },
+  internshipDetails: { type: internshipDetailsSchema, default: undefined },
+  temporaryDetails: { type: temporaryDetailsSchema, default: undefined },
+  // `location` is retained as a readable display value for existing records
+  // and public application links. New records derive it from the structured
+  // workplace fields below.
   location: { type: String, default: 'Remote' },
+  workplaceType: {
+    type: String,
+    enum: ['onsite', 'hybrid', 'remote'],
+    default: 'remote',
+    index: true,
+  },
+  officeLocation: { type: String, default: '' },
+  remoteRegion: { type: String, default: '' },
   jobDescription: { type: String, required: true },        // Pasted JD — source for AI generation
   status: {
     type: String,
-    enum: ['open', 'on_hold', 'closed'],
+    // `on_hold` remains accepted for legacy records; new requisitions use
+    // the clearer `paused` status exposed in the UI.
+    enum: ['open', 'paused', 'closed', 'draft', 'on_hold'],
     default: 'open',
     index: true,
   },

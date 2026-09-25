@@ -22,6 +22,11 @@ async function requireAuth(req, res, next) {
     if (!user || !user.active) {
       return res.status(401).json({ error: 'AUTH_ERROR', message: 'User not found or inactive.' });
     }
+    // A password reset invalidates JWTs issued before the new password was
+    // saved, including sessions on other devices.
+    if (user.passwordChangedAt && payload.iat && payload.iat * 1000 < user.passwordChangedAt.getTime()) {
+      return res.status(401).json({ error: 'AUTH_ERROR', message: 'Your password was changed. Please sign in again.' });
+    }
 
     req.user = user;
     return next();

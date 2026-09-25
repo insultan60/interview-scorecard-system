@@ -16,8 +16,9 @@ dayjs.extend(relativeTime);
 
 const STATUS_BADGE = {
   open: 'bg-green-100 text-green-800 hover:bg-green-100',
-  on_hold: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  paused: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
   closed: 'bg-gray-100 text-gray-600 hover:bg-gray-100',
+  draft: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
 };
 
 /** Reads a scalar Setting out of the /settings payload, tolerating a missing row. */

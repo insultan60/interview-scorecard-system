@@ -8,6 +8,7 @@ require('../models/Candidate'); // registers the Candidate model for populate('c
 const logger = require('../utils/logger');
 const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
+const { assertCalendarMeetingCancelled } = require('../utils/meetingLifecycle');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
@@ -17,6 +18,12 @@ const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
 const { extractArtifactText } = require('../utils/textExtractor');
 const { recomputeAndPersist, getOrCreateNextInterview } = require('./scoringController');
+
+/** Temporary diagnostic: remove after transcript parsing is verified. */
+function logParsedText(interviewId, source, text) {
+  const value = String(text || '');
+  logger.info(`[Interview] Parsed ${source} text for ${interviewId} (${value.length} chars):\n${value}`);
+}
 
 /**
  * Emails the candidate their current meeting link. Never throws — a missing
@@ -74,6 +81,8 @@ async function assertPriorStagesApproved(requisition, applicationId, stageKey) {
       err.statusCode = 409;
       throw err;
     }
+    const label = ordered.find((s) => s.key === key)?.label || key;
+    assertCalendarMeetingCancelled(interview, `start the ${label} stage`);
   }
 }
 
@@ -168,12 +177,46 @@ const createMeeting = asyncHandler(async (req, res) => {
   await assertInterviewMutable(interview, 'create or change a meeting');
 
   if (req.body?.meetingUri) {
+    if (interview.calendarEventId) await transcriptProvider.cancelMeeting(interview);
     interview.meetingUri = req.body.meetingUri;
     interview.provider = 'manual';
+    interview.conferenceId = undefined;
+    interview.calendarEventId = undefined;
+    interview.meetingStart = undefined;
+    interview.meetingEnd = undefined;
   } else {
-    const { meetingUri, conferenceId } = await transcriptProvider.createMeeting(interview);
+    // Replacing a Google-created meeting must close its Calendar event first.
+    // If Google cannot cancel it, do not create another event and leave two
+    // active invitations for the candidate. Persist the cleared metadata
+    // before creating the replacement so a later retry never targets a
+    // Calendar event that has already been cancelled.
+    if (interview.calendarEventId) {
+      await transcriptProvider.cancelMeeting(interview);
+      interview.meetingUri = undefined;
+      interview.conferenceId = undefined;
+      interview.calendarEventId = undefined;
+      interview.meetingStart = undefined;
+      interview.meetingEnd = undefined;
+      await interview.save();
+      logger.info(`[Interview] Previous Calendar meeting cancelled before replacement for ${interview._id}.`);
+    }
+
+    const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
+    const requisition = await Requisition.findById(interview.requisitionId);
+    const stage = requisition?.stages?.find((item) => item.key === interview.stageKey);
+    const { meetingUri, conferenceId, calendarEventId, meetingStart, meetingEnd } = await transcriptProvider.createMeeting(interview, {
+      startTime: req.body?.meetingStart,
+      endTime: req.body?.meetingEnd,
+      candidateEmail: application?.candidateId?.email,
+      candidateName: application?.candidateId?.name,
+      requisitionTitle: requisition?.title,
+      stageLabel: stage?.label || interview.stageKey,
+    });
     interview.meetingUri = meetingUri;
     interview.conferenceId = conferenceId;
+    interview.calendarEventId = calendarEventId;
+    interview.meetingStart = meetingStart;
+    interview.meetingEnd = meetingEnd;
     // Only google_meet actually reaches this line in Phase 1 — zoom/fathom throw
     // "not enabled" inside createMeeting() before ever returning.
     interview.provider = 'google_meet';
@@ -181,7 +224,11 @@ const createMeeting = asyncHandler(async (req, res) => {
   interview.status = 'scheduled';
   await interview.save();
 
-  const emailResult = await emailMeetingLinkToCandidate(interview);
+  // Calendar sends the candidate the official invitation itself. Keep the
+  // existing email fallback only for manually pasted meeting links.
+  const emailResult = interview.calendarEventId
+    ? { sent: true, reason: 'Google Calendar invitation sent.' }
+    : await emailMeetingLinkToCandidate(interview);
 
   logger.info(`[Interview] Meeting set for ${interview._id}: ${interview.meetingUri}`);
   res.json({ interview, emailSent: emailResult.sent, emailReason: emailResult.reason });
@@ -216,8 +263,15 @@ const cancelMeeting = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
   await assertInterviewMutable(interview, 'cancel a meeting');
 
+  if (interview.calendarEventId) {
+    await transcriptProvider.cancelMeeting(interview);
+  }
+
   interview.meetingUri = undefined;
   interview.conferenceId = undefined;
+  interview.calendarEventId = undefined;
+  interview.meetingStart = undefined;
+  interview.meetingEnd = undefined;
 
   if (!interview.scores?.length) {
     interview.status = 'pending';
@@ -274,16 +328,16 @@ const fetchTranscript = asyncHandler(async (req, res) => {
   interview.transcriptStatus = 'ready';
   await interview.save();
 
+  logParsedText(interview._id, 'Google Meet transcript', result.text);
   logger.info(`[Interview] Transcript ready for ${interview._id}.`);
   res.json({ interview });
 });
 
 /**
  * POST /api/interviews/:id/upload-transcript
- * Manual transcript upload (in-person / fallback). The uploaded file's text
- * is read straight from the in-memory buffer into transcriptText — the
- * Interview schema has no separate field to track a raw transcript file, so
- * the raw upload itself is never persisted anywhere, just its text content.
+ * Manual transcript upload (in-person / fallback). Extracts clean text from
+ * .txt/.md/.pdf/.docx into transcriptText. The raw transcript file itself is
+ * not persisted; only the extracted text is retained for scoring.
  */
 const uploadTranscript = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
@@ -291,13 +345,22 @@ const uploadTranscript = asyncHandler(async (req, res) => {
   await assertInterviewMutable(interview, 'upload a transcript');
   if (!req.file) throw new ValidationError(['transcript'], 'A transcript file is required (field name "transcript").');
 
-  const text = req.file.buffer.toString('utf8');
+  let text;
+  try {
+    text = await extractArtifactText(req.file.buffer, req.file.originalname);
+  } catch (err) {
+    throw new ValidationError(['transcript'], err.message);
+  }
 
   interview.transcriptText = text;
   interview.transcriptStatus = 'ready';
-  if (interview.provider !== 'manual') interview.provider = 'manual';
+  // A manually uploaded transcript can be a fallback for a Google-scheduled
+  // interview. Keep its provider when a Calendar event exists so cancelling
+  // the interview still deletes that event and notifies attendees.
+  if (!interview.calendarEventId) interview.provider = 'manual';
   await interview.save();
 
+  logParsedText(interview._id, 'uploaded transcript', text);
   await AuditLog.create({
     action: 'transcript_upload', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
     targetType: 'interview', targetId: interview._id.toString(), newValue: { transcriptStatus: 'ready', wordCount: text.split(/\s+/).length },
@@ -338,6 +401,7 @@ const uploadArtifact = asyncHandler(async (req, res) => {
   }
 
   await interview.save();
+  logParsedText(interview._id, 'extracted artifact', interview.transcriptText);
   if (oldArtifactPublicId) {
     destroyFileIfUnreferenced(oldArtifactPublicId)
       .catch((err) => logger.warn(`[Interview] Could not clean up replaced artifact ${oldArtifactPublicId}: ${err.message}`));
@@ -456,6 +520,7 @@ const googleOAuthCallback = asyncHandler(async (req, res) => {
 const sendOffer = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+  assertCalendarMeetingCancelled(interview, 'complete this stage');
 
   if (!req.file) {
     throw new ValidationError(['offerLetter'], 'An offer letter PDF document is required.');

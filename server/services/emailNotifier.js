@@ -128,4 +128,23 @@ async function sendApplicationConfirmationEmail({ candidateEmail, candidateName,
   return sendEmail({ to: candidateEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail };
+/** Sends an internal user a one-time link for changing their password. */
+async function sendPasswordResetEmail({ userEmail, userName, resetUrl, expiresInMinutes }) {
+  const subject = 'Reset your Interview Scorecard password';
+  const text = [
+    `Hi ${userName || 'there'},`,
+    '',
+    'We received a request to reset your Interview Scorecard password.',
+    '',
+    `Choose a new password here (this link expires in ${expiresInMinutes} minutes):`,
+    resetUrl,
+    '',
+    'If you did not request this, you can safely ignore this email.',
+    '',
+    'Red Star Technologies',
+  ].join('\n');
+
+  return sendEmail({ to: userEmail, subject, text });
+}
+
+module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail };

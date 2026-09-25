@@ -23,15 +23,22 @@ import {
 } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate } from '../utils/formatters';
+import screeningCriteriaConfig from '../constants/screeningCriteria.json';
 
 const PAGE_SIZE = 10;
+const JOB_TITLE_MIN_LENGTH = 5;
+
+const normalizeJobTitle = (title) => title.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').trim();
+const isBlankField = (value) => typeof value !== 'string' || !value.trim();
 
 const STATUS_BADGE = {
   open: 'bg-green-100 text-green-800 hover:bg-green-100',
-  on_hold: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  paused: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  on_hold: 'bg-amber-100 text-amber-800 hover:bg-amber-100', // legacy records
   closed: 'bg-gray-100 text-gray-600 hover:bg-gray-100',
+  draft: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
 };
-const STATUS_LABEL = { open: 'Open', on_hold: 'On Hold', closed: 'Closed' };
+const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
 const EMPLOYMENT_TYPE_LABEL = {
   full_time: 'Full-Time',
   part_time: 'Part-Time',
@@ -43,13 +50,24 @@ const EMPLOYMENT_TYPE_LABEL = {
 const EMPTY_FORM = {
   title: '',
   employmentType: 'full_time',
-  location: '',
+  fullTimeDetails: { workingHours: '' },
+  partTimeDetails: { weeklyHours: '', workingHours: '' },
+  contractDetails: { duration: '', workingHours: '', paymentRate: '' },
+  internshipDetails: { duration: '', paidStatus: 'paid', workingHours: '' },
+  temporaryDetails: { startDate: '', endDate: '', workingHours: '' },
+  workplaceType: 'remote',
+  officeLocation: '',
+  remoteRegion: '',
   jobDescription: '',
-  initialScreeningCriteria: [{ criteria: '', requirement: '' }],
+  initialScreeningCriteria: [
+    { criteria: screeningCriteriaConfig.education.label, minimumValue: '', maximumValue: '', relevantField: '' },
+    { criteria: screeningCriteriaConfig.experience.label, minimumValue: '', maximumValue: '' },
+  ],
   questionnaire: [{ question: '', idealAnswer: '' }],
   applicationDeadline: '',
   aiScreeningEnabled: true,
   pipelineTemplateId: '',
+  status: 'open',
 };
 
 export default function Requisitions() {
@@ -57,6 +75,7 @@ export default function Requisitions() {
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [requisitions, setRequisitions] = useState([]);
+  const [officeLocations, setOfficeLocations] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -70,6 +89,7 @@ export default function Requisitions() {
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [jobOpeningFilter, setJobOpeningFilter] = useState('all');
   const [page, setPage] = useState(1);
 
   function togglePromptBox(fieldType) {
@@ -202,6 +222,7 @@ export default function Requisitions() {
     try {
       const res = await api.get('/requisitions', { params: statusFilter ? { status: statusFilter } : {} });
       setRequisitions(res.data.requisitions);
+      setOfficeLocations(res.data.registeredOfficeLocations || []);
     } finally {
       setLoading(false);
     }
@@ -218,17 +239,47 @@ export default function Requisitions() {
 
   async function handleCreate(e) {
     e.preventDefault();
+    const normalizedTitle = normalizeJobTitle(form.title);
 
-    if (!form.title.trim()) {
+    if (!normalizedTitle) {
       toast.error('Job Opening Title is required.');
+      return;
+    }
+    if (normalizedTitle.length < JOB_TITLE_MIN_LENGTH) {
+      toast.error(`Job Opening Title must be at least ${JOB_TITLE_MIN_LENGTH} characters.`);
       return;
     }
     if (!form.employmentType) {
       toast.error('Employment Type is required.');
       return;
     }
-    if (!form.location.trim()) {
-      toast.error('Location is required.');
+    const employmentValidation = {
+      full_time: [['fullTimeDetails', 'workingHours', 'Full-Time working hours']],
+      part_time: [['partTimeDetails', 'weeklyHours', 'Part-Time weekly hours'], ['partTimeDetails', 'workingHours', 'Part-Time working hours']],
+      contract: [['contractDetails', 'duration', 'Contract duration'], ['contractDetails', 'workingHours', 'Contract working hours'], ['contractDetails', 'paymentRate', 'Contract payment/rate']],
+      internship: [['internshipDetails', 'duration', 'Internship duration'], ['internshipDetails', 'workingHours', 'Internship working hours']],
+      temporary: [['temporaryDetails', 'startDate', 'Temporary role start date'], ['temporaryDetails', 'endDate', 'Temporary role end date'], ['temporaryDetails', 'workingHours', 'Temporary role working hours']],
+    };
+    for (const [group, field, label] of employmentValidation[form.employmentType] || []) {
+      if (isBlankField(form[group]?.[field])) {
+        toast.error(`${label} is required.`);
+        return;
+      }
+    }
+    if (form.employmentType === 'temporary' && form.temporaryDetails.endDate < form.temporaryDetails.startDate) {
+      toast.error('Temporary role end date must be after the start date.');
+      return;
+    }
+    if (!form.workplaceType) {
+      toast.error('Work arrangement is required.');
+      return;
+    }
+    if (form.workplaceType === 'onsite' && !officeLocations[0]) {
+      toast.error('Add a registered office location before creating an onsite job opening.');
+      return;
+    }
+    if (form.workplaceType === 'hybrid' && !form.officeLocation) {
+      toast.error('Select an office location for a hybrid job opening.');
       return;
     }
     if (!form.jobDescription.trim()) {
@@ -238,20 +289,29 @@ export default function Requisitions() {
 
     // Validate Criteria items
     const criteriaItems = Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria : [];
-    if (criteriaItems.length === 0) {
-      toast.error('At least one Initial Screening Criteria item is required.');
+    const educationCriteria = criteriaItems.find((item) => item?.criteria === screeningCriteriaConfig.education.label);
+    if (isBlankField(educationCriteria?.relevantField)) {
+      toast.error('Education relevant field or major is required.');
       return;
     }
-    for (let i = 0; i < criteriaItems.length; i++) {
-      const item = typeof criteriaItems[i] === 'string' ? { criteria: criteriaItems[i], requirement: '' } : criteriaItems[i];
-      if (!item || !item.criteria || !item.criteria.trim()) {
-        toast.error(`Criteria #${i + 1} name cannot be empty.`);
-        return;
-      }
-      if (!item.requirement || !item.requirement.trim()) {
-        toast.error(`Criteria #${i + 1} requirement details cannot be empty.`);
-        return;
-      }
+    if (!educationCriteria?.minimumValue || !educationCriteria?.maximumValue) {
+      toast.error('Select both minimum and maximum education qualifications.');
+      return;
+    }
+    const educationOptions = screeningCriteriaConfig.education.options;
+    if (educationOptions.indexOf(educationCriteria.minimumValue) > educationOptions.indexOf(educationCriteria.maximumValue)) {
+      toast.error('Maximum education qualification must be equal to or higher than minimum qualification.');
+      return;
+    }
+    const experienceCriteria = criteriaItems.find((item) => item?.criteria === screeningCriteriaConfig.experience.label);
+    if (!experienceCriteria?.minimumValue || !experienceCriteria?.maximumValue) {
+      toast.error('Select both minimum and maximum experience values.');
+      return;
+    }
+    const options = screeningCriteriaConfig.experience.options;
+    if (options.indexOf(experienceCriteria.minimumValue) > options.indexOf(experienceCriteria.maximumValue)) {
+      toast.error('Maximum experience must be equal to or greater than minimum experience.');
+      return;
     }
 
     // Validate Questionnaire items
@@ -284,11 +344,16 @@ export default function Requisitions() {
 
     setCreating(true);
     try {
-      const createRes = await api.post('/requisitions', form);
+      const createRes = await api.post('/requisitions', { ...form, title: normalizedTitle });
       const requisition = createRes.data.requisition;
-      toast.success('Job Opening created. Generating scorecard from the JD…');
-      await api.post(`/requisitions/${requisition._id}/generate-scorecard`);
-      toast.success('Scorecard generated — review and edit below.');
+      if (createRes.data.warning) toast(createRes.data.warning, { icon: '⚠️' });
+      if (requisition.status !== 'closed') {
+        toast.success('Job Opening created. Generating scorecard from the JD…');
+        await api.post(`/requisitions/${requisition._id}/generate-scorecard`);
+        toast.success('Scorecard generated — review and edit below.');
+      } else {
+        toast.success('Closed job opening created. Reopen it before generating a scorecard.');
+      }
       setCreateOpen(false);
       setForm(EMPTY_FORM);
       loadRequisitions();
@@ -306,15 +371,21 @@ export default function Requisitions() {
   }
 
   const query = search.trim().toLowerCase();
-  const filtered = useMemo(() => (
-    query ? requisitions.filter((r) => (r.title || '').toLowerCase().includes(query)) : requisitions
-  ), [requisitions, query]);
+  const filtered = useMemo(() => requisitions.filter((r) => {
+    const matchesSearch = !query || (r.title || '').toLowerCase().includes(query);
+    const matchesJobOpening = jobOpeningFilter === 'all' || r._id === jobOpeningFilter;
+    return matchesSearch && matchesJobOpening;
+  }), [requisitions, query, jobOpeningFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const selectedTemplate = templates.find((t) => t._id === form.pipelineTemplateId);
+  const normalizedFormTitle = normalizeJobTitle(form.title);
+  const duplicateActiveOpening = form.status === 'open' && normalizedFormTitle && requisitions.some((r) => (
+    r.status === 'open' && normalizeJobTitle(r.title || '').toLowerCase() === normalizedFormTitle.toLowerCase()
+  ));
 
   return (
     <div>
@@ -367,8 +438,16 @@ export default function Requisitions() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="open">Open</SelectItem>
-            <SelectItem value="on_hold">On Hold</SelectItem>
+            <SelectItem value="paused">Paused</SelectItem>
             <SelectItem value="closed">Closed</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={jobOpeningFilter} onValueChange={(value) => { setJobOpeningFilter(value); setPage(1); }}>
+          <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="All job openings" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All job openings</SelectItem>
+            {requisitions.map((requisition) => <SelectItem key={requisition._id} value={requisition._id}>{requisition.title}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -442,7 +521,7 @@ export default function Requisitions() {
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <div className="text-sm font-medium text-foreground">{r.title}</div>
-                            <div className="text-xs text-muted-foreground">
+                            <div className="hidden">
                               {EMPLOYMENT_TYPE_LABEL[r.employmentType] || 'Full-Time'}
                               {r.location ? ` · ${r.location}` : ''}
                               {` · ${enabledStages} stage${enabledStages === 1 ? '' : 's'}`}
@@ -472,7 +551,14 @@ export default function Requisitions() {
                         {stats.total === 0 ? (
                           <span className="text-xs text-muted-foreground">None yet</span>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div
+                            className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted"
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/requisitions/${r._id}/candidates`); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); navigate(`/candidates?requisitionId=${r._id}`); } }}
+                            title="View candidates for this job opening"
+                          >
                             <span className="inline-flex items-center gap-1.5 text-sm text-foreground">
                               <Users className="h-3.5 w-3.5 text-muted-foreground" />
                               {stats.total}
@@ -534,48 +620,202 @@ export default function Requisitions() {
             <DialogTitle>New job opening</DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleCreate} className="space-y-4 pt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <form noValidate onSubmit={handleCreate} className="space-y-4 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
                 <Input
                   id="req-title" value={form.title} autoFocus
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="e.g. Sales Executive"
-                  required
+                  placeholder="e.g. Sales Executive (at least 5 characters)"
                 />
+                {duplicateActiveOpening && (
+                  <p className="text-xs text-amber-700">
+                    An active job opening with this title already exists.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="req-employment-type">Employment Type <span className="text-red-500">*</span></Label>
-                <Select
-                  value={form.employmentType || 'full_time'}
-                  onValueChange={(val) => setForm({ ...form, employmentType: val })}
-                >
-                  <SelectTrigger id="req-employment-type" className="w-full">
-                    <SelectValue placeholder="Select type..." />
-                  </SelectTrigger>
+                <Label htmlFor="req-status">Status</Label>
+                <Select value={form.status || 'open'} onValueChange={(val) => setForm({ ...form, status: val })}>
+                  <SelectTrigger id="req-status" className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="full_time">Full-Time</SelectItem>
-                    <SelectItem value="part_time">Part-Time</SelectItem>
-                    <SelectItem value="contract">Contract</SelectItem>
-                    <SelectItem value="internship">Internship</SelectItem>
-                    <SelectItem value="temporary">Temporary</SelectItem>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
+            <div className="space-y-1.5">
+              <Label htmlFor="req-employment-type">Employment Type <span className="text-red-500">*</span></Label>
+              <Select
+                value={form.employmentType || 'full_time'}
+                onValueChange={(val) => setForm({ ...form, employmentType: val })}
+              >
+                <SelectTrigger id="req-employment-type" className="w-full">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full_time">Full-Time</SelectItem>
+                  <SelectItem value="part_time">Part-Time</SelectItem>
+                  <SelectItem value="contract">Contract</SelectItem>
+                  <SelectItem value="internship">Internship</SelectItem>
+                  <SelectItem value="temporary">Temporary</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {form.employmentType === 'full_time' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Full-Time details</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="full-time-working-hours">Working hours / shift <span className="text-red-500">*</span></Label>
+                  <Input id="full-time-working-hours" value={form.fullTimeDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, fullTimeDetails: { ...form.fullTimeDetails, workingHours: e.target.value } })} placeholder="e.g. 9 AM–6 PM, Monday–Friday" />
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'part_time' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Part-Time details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5"><Label htmlFor="part-time-weekly-hours">Weekly hours <span className="text-red-500">*</span></Label><Input id="part-time-weekly-hours" value={form.partTimeDetails?.weeklyHours || ''} onChange={(e) => setForm({ ...form, partTimeDetails: { ...form.partTimeDetails, weeklyHours: e.target.value } })} placeholder="e.g. 20 hours per week" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="part-time-working-hours">Working hours / shift <span className="text-red-500">*</span></Label><Input id="part-time-working-hours" value={form.partTimeDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, partTimeDetails: { ...form.partTimeDetails, workingHours: e.target.value } })} placeholder="e.g. 1 PM–5 PM, Mon–Fri" /></div>
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'contract' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Contract details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5"><Label htmlFor="contract-duration">Duration <span className="text-red-500">*</span></Label><Input id="contract-duration" value={form.contractDetails?.duration || ''} onChange={(e) => setForm({ ...form, contractDetails: { ...form.contractDetails, duration: e.target.value } })} placeholder="e.g. 6 months" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="contract-working-hours">Working hours <span className="text-red-500">*</span></Label><Input id="contract-working-hours" value={form.contractDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, contractDetails: { ...form.contractDetails, workingHours: e.target.value } })} placeholder="e.g. 9 AM–6 PM" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="contract-payment-rate">Payment / rate <span className="text-red-500">*</span></Label><Input id="contract-payment-rate" value={form.contractDetails?.paymentRate || ''} onChange={(e) => setForm({ ...form, contractDetails: { ...form.contractDetails, paymentRate: e.target.value } })} placeholder="e.g. PKR 150,000/month" /></div>
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'internship' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Internship details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="internship-duration">Duration <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="internship-duration"
+                      value={form.internshipDetails?.duration || ''}
+                      onChange={(e) => setForm({ ...form, internshipDetails: { ...form.internshipDetails, duration: e.target.value } })}
+                      placeholder="e.g. 3 months"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="internship-paid-status">Paid status</Label>
+                    <Select
+                      value={form.internshipDetails?.paidStatus || 'paid'}
+                      onValueChange={(val) => setForm({ ...form, internshipDetails: { ...form.internshipDetails, paidStatus: val } })}
+                    >
+                      <SelectTrigger id="internship-paid-status"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="internship-working-hours">Working hours <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="internship-working-hours"
+                      value={form.internshipDetails?.workingHours || ''}
+                      onChange={(e) => setForm({ ...form, internshipDetails: { ...form.internshipDetails, workingHours: e.target.value } })}
+                      placeholder="e.g. 9 AM–5 PM, Mon–Fri"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {form.employmentType === 'temporary' && (
+              <div className="rounded-md border p-3 space-y-3">
+                <p className="text-sm font-medium">Temporary role details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5"><Label htmlFor="temporary-start-date">Start date <span className="text-red-500">*</span></Label><Input id="temporary-start-date" type="date" value={form.temporaryDetails?.startDate || ''} onChange={(e) => setForm({ ...form, temporaryDetails: { ...form.temporaryDetails, startDate: e.target.value } })} /></div>
+                  <div className="space-y-1.5"><Label htmlFor="temporary-end-date">End date <span className="text-red-500">*</span></Label><Input id="temporary-end-date" type="date" value={form.temporaryDetails?.endDate || ''} onChange={(e) => setForm({ ...form, temporaryDetails: { ...form.temporaryDetails, endDate: e.target.value } })} /></div>
+                  <div className="space-y-1.5"><Label htmlFor="temporary-working-hours">Working hours <span className="text-red-500">*</span></Label><Input id="temporary-working-hours" value={form.temporaryDetails?.workingHours || ''} onChange={(e) => setForm({ ...form, temporaryDetails: { ...form.temporaryDetails, workingHours: e.target.value } })} placeholder="e.g. 9 AM–6 PM, Mon–Fri" /></div>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-workplace-type">Work arrangement <span className="text-red-500">*</span></Label>
+              <Select
+                value={form.workplaceType || 'remote'}
+                onValueChange={(val) => setForm((current) => ({
+                  ...current,
+                  workplaceType: val,
+                  officeLocation: val === 'onsite' ? (officeLocations[0] || '') : (val === 'remote' ? '' : current.officeLocation),
+                  remoteRegion: val === 'remote' ? current.remoteRegion : '',
+                }))}
+              >
+                <SelectTrigger id="req-workplace-type" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="onsite">Onsite</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                  <SelectItem value="remote">Remote</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {form.workplaceType === 'onsite' && (
               <div className="space-y-1.5">
-                <Label htmlFor="req-location">Location <span className="text-red-500">*</span></Label>
+                <Label htmlFor="req-onsite-location">Office location</Label>
                 <Input
-                  id="req-location"
-                  value={form.location || ''}
-                  onChange={(e) => setForm({ ...form, location: e.target.value })}
-                  placeholder="e.g. Remote, NY, Hybrid..."
-                  required
+                  id="req-onsite-location"
+                  value={officeLocations[0] || 'No registered office location configured'}
+                  disabled
+                />
+                {!officeLocations[0] && (
+                  <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable onsite roles.</p>
+                )}
+              </div>
+            )}
+
+            {form.workplaceType === 'hybrid' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="req-hybrid-location">Office location <span className="text-red-500">*</span></Label>
+                <Select
+                  value={form.officeLocation || undefined}
+                  onValueChange={(val) => setForm({ ...form, officeLocation: val })}
+                  disabled={officeLocations.length === 0}
+                >
+                  <SelectTrigger id="req-hybrid-location" className="w-full">
+                    <SelectValue placeholder={officeLocations.length ? 'Select an office...' : 'No registered office location configured'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {officeLocations.map((office) => <SelectItem key={office} value={office}>{office}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {officeLocations.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Set REGISTERED_OFFICE_LOCATIONS in the server .env file to enable hybrid roles.</p>
+                )}
+              </div>
+            )}
+
+            {form.workplaceType === 'remote' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="req-remote-region">Remote region or time zone <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  id="req-remote-region"
+                  value={form.remoteRegion || ''}
+                  onChange={(e) => setForm({ ...form, remoteRegion: e.target.value })}
+                  placeholder="e.g. Pakistan (PKT), EMEA, US Eastern"
                 />
               </div>
-            </div>
+            )}
 
             {/* Job Description with Generate AI button on right */}
             <div className="space-y-1.5">
@@ -639,12 +879,11 @@ export default function Requisitions() {
                 id="req-jd" rows={5} value={form.jobDescription}
                 onChange={(e) => setForm({ ...form, jobDescription: e.target.value })}
                 placeholder="Paste or generate the full job description here…"
-                required
               />
             </div>
 
             {/* Initial Screening Criteria */}
-            <div className="space-y-3 border-t pt-4">
+            <div className="hidden">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-1.5">
@@ -774,6 +1013,40 @@ export default function Requisitions() {
                 <Plus className="h-3.5 w-3.5" />
                 Add Screening Criteria
               </Button>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <div>
+                <Label className="text-sm font-semibold text-slate-900">Initial Screening Criteria</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Fixed education and experience requirements used for AI resume screening.</p>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3">
+                <p className="text-sm font-medium text-slate-800">Education</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1"><Label className="text-xs">Minimum qualification <span className="text-red-500">*</span></Label><Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.minimumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, minimumValue: value } : item) }))}><SelectTrigger><SelectValue placeholder="Select minimum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.education.options.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-1"><Label className="text-xs">Maximum qualification <span className="text-red-500">*</span></Label><Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.maximumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, maximumValue: value } : item) }))}><SelectTrigger><SelectValue placeholder="Select maximum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.education.options.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+                </div>
+                <div className="space-y-1"><Label className="text-xs">Relevant field / major <span className="text-red-500">*</span></Label><Input placeholder="e.g. Computer Science, Software Engineering, HRM" value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.relevantField || ''} onChange={(e) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, relevantField: e.target.value } : item) }))} /></div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3">
+                <p className="text-sm font-medium text-slate-800">Experience</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Minimum experience <span className="text-red-500">*</span></Label>
+                    <Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.experience.label)?.minimumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.experience.label ? { ...item, minimumValue: value } : item) }))}>
+                      <SelectTrigger><SelectValue placeholder="Select minimum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.experience.options.map((value) => <SelectItem key={value} value={value}>{value} years</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Maximum experience <span className="text-red-500">*</span></Label>
+                    <Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.experience.label)?.maximumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.experience.label ? { ...item, maximumValue: value } : item) }))}>
+                      <SelectTrigger><SelectValue placeholder="Select maximum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.experience.options.map((value) => <SelectItem key={value} value={value}>{value} years</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Application Questionnaire */}

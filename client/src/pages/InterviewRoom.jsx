@@ -22,8 +22,9 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
+  const [meetingStartInput, setMeetingStartInput] = useState('');
+  const [meetingEndInput, setMeetingEndInput] = useState('');
   const [creatingMeeting, setCreatingMeeting] = useState(false);
-  const [changingMeeting, setChangingMeeting] = useState(false);
   const [confirmingConsent, setConfirmingConsent] = useState(false);
   const [fetchingTranscript, setFetchingTranscript] = useState(false);
   const [uploadingTranscript, setUploadingTranscript] = useState(false);
@@ -33,6 +34,7 @@ export default function InterviewRoom() {
   const [recomputed, setRecomputed] = useState(null);
   const [openAttrs, setOpenAttrs] = useState(new Set());
   const [guideOpen, setGuideOpen] = useState(false);
+  const [screeningInfoOpen, setScreeningInfoOpen] = useState(false);
   const [startingStage, setStartingStage] = useState(false);
   const [sendingMeetingEmail, setSendingMeetingEmail] = useState(false);
   const [sendingOffer, setSendingOffer] = useState(false);
@@ -118,15 +120,33 @@ export default function InterviewRoom() {
   async function handleCreateMeeting(useProvider) {
     setCreatingMeeting(true);
     try {
-      const body = useProvider ? {} : { meetingUri: meetingLinkInput.trim() };
+      const body = useProvider
+        ? {
+          meetingStart: meetingStartInput ? new Date(meetingStartInput).toISOString() : '',
+          meetingEnd: meetingEndInput ? new Date(meetingEndInput).toISOString() : '',
+        }
+        : { meetingUri: meetingLinkInput.trim() };
       if (!useProvider && !body.meetingUri) {
         toast.error('Paste a meeting link first.');
         return;
       }
+      if (useProvider && (!meetingStartInput || !meetingEndInput)) {
+        toast.error('Choose the meeting start and end time first.');
+        return;
+      }
+      if (useProvider && new Date(meetingStartInput) <= new Date()) {
+        toast.error('Meeting start time must be in the future.');
+        return;
+      }
+      if (useProvider && new Date(meetingEndInput) - new Date(meetingStartInput) > 60 * 60 * 1000) {
+        toast.error('Interview duration cannot be longer than 1 hour.');
+        return;
+      }
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
-      setChangingMeeting(false);
       setMeetingLinkInput('');
+      setMeetingStartInput('');
+      setMeetingEndInput('');
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
         toast.success('Meeting set and emailed to candidate.');
@@ -313,6 +333,10 @@ export default function InterviewRoom() {
 
   async function handleSavePassFail() {
     if (!passFailResult) return;
+    if (interview?.calendarEventId) {
+      toast.error('Cancel the active Google Calendar meeting before saving this decision.');
+      return;
+    }
 
     const wasAlreadyApproved = interview?.status === 'approved';
     setPassFailSaving(true);
@@ -351,6 +375,11 @@ export default function InterviewRoom() {
 
   async function handleSendOffer(e) {
     if (e) e.preventDefault();
+
+    if (interview?.calendarEventId) {
+      toast.error('Cancel the active Google Calendar meeting before completing this stage.');
+      return;
+    }
 
     if (!offerFile) {
       toast.error('Please select an offer letter PDF document before sending.');
@@ -438,6 +467,7 @@ export default function InterviewRoom() {
   const canScore = (showConsentCard ? interview?.consentObtained : true)
     && (stageConfig?.inputType === 'artifact' ? !!interview.artifactFileUrl : interview?.transcriptStatus === 'ready')
     && interview?.status !== 'approved';
+  const hasActiveCalendarMeeting = Boolean(interview?.calendarEventId);
 
   if (loading) return <div className="text-muted-foreground">Loading...</div>;
   if (!interview || !requisition) return <div className="text-muted-foreground">Interview not found.</div>;
@@ -462,6 +492,7 @@ export default function InterviewRoom() {
         <CardContent className="pt-6">
           <PipelineStepper
             stages={requisition.stages}
+            disabled={requisition.status !== 'open'}
             progress={Object.fromEntries(
               (requisition?.stages || []).map((stage) => {
                 const p = (application?.stageProgress || []).find((pr) => pr.stageKey === stage.key);
@@ -503,18 +534,15 @@ export default function InterviewRoom() {
       {/* Requisition criteria shown only for the résumé screen. */}
       {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
         (requisition?.jobDescription || requisition?.initialScreeningCriteria) && (
-        <Card className="mt-4 border-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/10">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-semibold text-foreground flex items-center justify-between">
-              <span>Job Description & Initial Screening Criteria</span>
-              {application?.source && (
-                <span className="text-xs font-normal text-muted-foreground capitalize">
-                  Source: {application.source.replace('_', ' ')}
-                </span>
-              )}
-            </CardTitle>
+        <Card className="mt-4 overflow-hidden border-slate-200 bg-white shadow-sm">
+          <CardHeader
+            onClick={() => setScreeningInfoOpen((open) => !open)}
+            className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
+          >
+            <CardTitle>Job Description & Initial Screening Criteria</CardTitle>
+            <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${screeningInfoOpen ? 'rotate-180' : ''}`} />
           </CardHeader>
-          <CardContent className="space-y-4 pt-0 pb-4 text-xs">
+          {screeningInfoOpen && <CardContent className="space-y-4 border-t pt-4 text-sm">
             {requisition.jobDescription && (
               <div>
                 <span className="font-semibold text-foreground">Job Description:</span>
@@ -546,7 +574,7 @@ export default function InterviewRoom() {
                 )}
               </div>
             )}
-          </CardContent>
+          </CardContent>}
         </Card>
       )}
 
@@ -601,7 +629,7 @@ export default function InterviewRoom() {
               <CardTitle>Meeting</CardTitle>
             </CardHeader>
             <CardContent>
-              {interview.meetingUri && !changingMeeting ? (
+              {interview.meetingUri ? (
                 <div className="space-y-2.5">
                   <div>
                     <a href={interview.meetingUri} target="_blank" rel="noreferrer" className="break-all text-sm text-blue-600 hover:underline">
@@ -610,12 +638,6 @@ export default function InterviewRoom() {
                     <span className="ml-2 text-xs text-muted-foreground">({interview.provider === 'manual' ? 'pasted link' : 'created via Google Meet'})</span>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      type="button" onClick={() => setChangingMeeting(true)}
-                      className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
-                    >
-                      Change
-                    </button>
                     <button
                       type="button" onClick={handleResendMeetingEmail} disabled={sendingMeetingEmail}
                       className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
@@ -632,14 +654,6 @@ export default function InterviewRoom() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {interview.meetingUri && (
-                    <button
-                      type="button" onClick={() => setChangingMeeting(false)}
-                      className="text-xs text-muted-foreground underline hover:text-foreground"
-                    >
-                      Cancel
-                    </button>
-                  )}
                   <div className="flex gap-2">
                     <input
                       type="text" value={meetingLinkInput} onChange={(e) => setMeetingLinkInput(e.target.value)}
@@ -653,11 +667,23 @@ export default function InterviewRoom() {
                       Use Link
                     </button>
                   </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      type="datetime-local" value={meetingStartInput} onChange={(e) => setMeetingStartInput(e.target.value)}
+                      aria-label="Meeting start time"
+                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                    />
+                    <input
+                      type="datetime-local" value={meetingEndInput} onChange={(e) => setMeetingEndInput(e.target.value)}
+                      aria-label="Meeting end time"
+                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                    />
+                  </div>
                   <button
                     type="button" onClick={() => handleCreateMeeting(true)} disabled={creatingMeeting}
                     className="rounded-md bg-[#d21e2b] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {creatingMeeting ? 'Creating...' : 'Create Google Meet Link'}
+                    {creatingMeeting ? 'Creating...' : 'Create & Invite via Google Calendar'}
                   </button>
                 </div>
               )}
@@ -742,12 +768,16 @@ export default function InterviewRoom() {
               <button
                 type="button"
                 onClick={handleSavePassFail}
-                disabled={!passFailResult || passFailSaving}
+                disabled={!passFailResult || hasActiveCalendarMeeting || passFailSaving}
                 className="ml-2 rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {passFailSaving ? 'Saving...' : 'Save Decision'}
               </button>
             </div>
+
+            {hasActiveCalendarMeeting && (
+              <p className="mt-3 text-xs text-amber-700">Cancel the active Google Calendar meeting before saving this decision.</p>
+            )}
 
             {interview.status === 'approved' && stageConfig?.inputType === 'pass_fail' && (
               <p className="mt-3 text-xs text-muted-foreground">
@@ -879,7 +909,7 @@ export default function InterviewRoom() {
                   <button
                     type="button"
                     onClick={handleSendOffer}
-                    disabled={sendingOffer || !offerFile}
+                    disabled={sendingOffer || !offerFile || hasActiveCalendarMeeting}
                     className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {sendingOffer
@@ -901,6 +931,9 @@ export default function InterviewRoom() {
                     </button>
                   )}
                 </div>
+                {hasActiveCalendarMeeting && (
+                  <p className="text-xs text-amber-700">Cancel the active Google Calendar meeting before completing this stage.</p>
+                )}
               </div>
             )}
           </CardContent>
@@ -939,6 +972,7 @@ export default function InterviewRoom() {
             interview={interview}
             attributes={stageAttributes}
             passThreshold={stageConfig?.passThreshold}
+            meetingActive={hasActiveCalendarMeeting}
             onUpdated={(updatedInterview, stageAverage, passed, nextInterviewId, wasAlreadyApproved, updatedApplication) => {
               console.log('[DEBUG - FRONTEND ONUPDATED]', { status: updatedInterview.status, passed, nextInterviewId, wasAlreadyApproved, updatedApplication });
               setInterview(updatedInterview);

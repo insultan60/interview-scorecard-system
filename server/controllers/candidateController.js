@@ -9,6 +9,7 @@ const { ValidationError } = require('../utils/errors');
 const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
+const transcriptProvider = require('../services/transcriptProvider');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -249,6 +250,59 @@ const apply = asyncHandler(async (req, res) => {
 });
 
 /**
+ * DELETE /api/candidates/:id/requisitions/:requisitionId
+ * Removes one candidate from one requisition without touching their profile
+ * or applications to other roles. All interview evidence and audit records
+ * for that application are removed so no further in-app work can occur.
+ */
+const removeFromRequisition = asyncHandler(async (req, res) => {
+  const candidate = await Candidate.findById(req.params.id);
+  if (!candidate) return res.status(404).json({ error: 'NOT_FOUND', message: 'Candidate not found.' });
+
+  const application = await Application.findOne({
+    candidateId: candidate._id,
+    requisitionId: req.params.requisitionId,
+  });
+  if (!application) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'This candidate is not attached to that requisition.' });
+  }
+
+  const interviews = await Interview.find({ applicationId: application._id })
+    .select('artifactFilePublicId calendarEventId provider')
+    .lean();
+  const artifactIds = [...new Set(interviews.map((interview) => interview.artifactFilePublicId).filter(Boolean))];
+
+  // Calendar-based Meet invitations must be cancelled before their database
+  // records are removed, so candidates receive Google's cancellation notice.
+  const cancellations = await Promise.allSettled(
+    interviews.filter((interview) => interview.calendarEventId).map((interview) => transcriptProvider.cancelMeeting(interview))
+  );
+  if (cancellations.some((result) => result.status === 'rejected')) {
+    const error = new Error('Could not cancel all scheduled Calendar meetings. The candidate was not removed. Please try again.');
+    error.statusCode = 502;
+    throw error;
+  }
+
+  // Delete database references first. File cleanup then preserves anything
+  // still referenced by the candidate profile or another interview.
+  await AuditLog.deleteMany({ applicationId: application._id });
+  const interviewResult = await Interview.deleteMany({ applicationId: application._id });
+  await application.deleteOne();
+
+  const cleanupResults = await Promise.allSettled(artifactIds.map(destroyFileIfUnreferenced));
+  const deletedFiles = cleanupResults.filter((result) => result.status === 'fulfilled' && result.value).length;
+  cleanupResults
+    .filter((result) => result.status === 'rejected')
+    .forEach((result) => logger.warn(`[Candidate] Could not clean up removed application artifact: ${result.reason?.message || result.reason}`));
+
+  logger.info(`[Candidate] Removed ${candidate._id} from requisition ${req.params.requisitionId}: application=${application._id}, interviews=${interviewResult.deletedCount}, files=${deletedFiles}.`);
+  res.json({
+    message: 'Candidate removed from this requisition.',
+    deleted: { applications: 1, interviews: interviewResult.deletedCount, files: deletedFiles },
+  });
+});
+
+/**
  * DELETE /api/candidates/:id
  * Permanently removes the candidate and every record/evidence file owned by
  * their applications. Cloudinary files are deleted first so a storage failure
@@ -282,4 +336,4 @@ const remove = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, bulkCreate, getOne, update, apply, remove };
+module.exports = { list, create, bulkCreate, getOne, update, apply, removeFromRequisition, remove };

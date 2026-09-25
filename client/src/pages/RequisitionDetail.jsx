@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2 } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -28,12 +28,15 @@ const DISPOSITION_BADGE = {
   NO_HIRE: 'bg-red-100 text-red-800 hover:bg-red-100',
 };
 
-const STATUS_LABEL = { open: 'Open', on_hold: 'On Hold', closed: 'Closed' };
+const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
 const CANDIDATE_PAGE_SIZE = 5;
+const EMPLOYMENT_LABEL = { full_time: 'Full-Time', part_time: 'Part-Time', contract: 'Contract', internship: 'Internship', temporary: 'Temporary' };
 
 export default function RequisitionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const candidateIdFromUrl = searchParams.get('candidateId');
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +49,9 @@ export default function RequisitionDetail() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [dispositionFilter, setDispositionFilter] = useState('all');
   const [pendingClose, setPendingClose] = useState(false);
+  const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
+  const [removingCandidate, setRemovingCandidate] = useState(false);
+  const [jobInfoOpen, setJobInfoOpen] = useState(false);
 
   const [overrideModalApp, setOverrideModalApp] = useState(null);
   const [overrideReason, setOverrideReason] = useState('');
@@ -122,9 +128,12 @@ export default function RequisitionDetail() {
 
   async function handleGoToInterview(app) {
     if (data?.requisition?.status !== 'open') {
-      toast.error(data?.requisition?.status === 'on_hold'
-        ? 'This job opening is on hold. Reopen it before starting a new interview stage.'
-        : 'This job opening is closed and cannot start new interview stages.');
+      const status = data?.requisition?.status;
+      toast.error(status === 'paused' || status === 'on_hold'
+        ? 'This job opening is paused. Reopen it before starting a new interview stage.'
+        : status === 'draft'
+          ? 'This job opening is a draft. Open it before starting a new interview stage.'
+          : 'This job opening is closed and cannot start new interview stages.');
       return;
     }
     const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
@@ -185,6 +194,19 @@ export default function RequisitionDetail() {
     applyStatus(newStatus);
   }
 
+  async function handleRemoveCandidate() {
+    if (!removeCandidateApp?.candidateId?._id) return;
+    setRemovingCandidate(true);
+    try {
+      const res = await api.delete(`/candidates/${removeCandidateApp.candidateId._id}/requisitions/${id}`);
+      toast.success(res.data.message || 'Candidate removed from this requisition.');
+      setRemoveCandidateApp(null);
+      load();
+    } finally {
+      setRemovingCandidate(false);
+    }
+  }
+
   if (loading) {
     return (
       <div>
@@ -212,6 +234,7 @@ export default function RequisitionDetail() {
   const stageLabels = Object.fromEntries(requisition.stages.map((s) => [s.key, s.label]));
   const candidateQuery = candidateSearch.trim().toLowerCase();
   const filteredApplications = applications.filter((app) => {
+    if (candidateIdFromUrl && String(app.candidateId?._id || app.candidateId) !== candidateIdFromUrl) return false;
     if (dispositionFilter === 'in_progress' && app.disposition) return false;
     if (dispositionFilter !== 'all' && dispositionFilter !== 'in_progress' && app.disposition !== dispositionFilter) return false;
     if (candidateQuery) {
@@ -228,6 +251,14 @@ export default function RequisitionDetail() {
     safeCandidatePage * CANDIDATE_PAGE_SIZE
   );
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
+  const employmentDetails = {
+    full_time: [['Working hours / shift', requisition.fullTimeDetails?.workingHours]],
+    part_time: [['Weekly hours', requisition.partTimeDetails?.weeklyHours], ['Working hours / shift', requisition.partTimeDetails?.workingHours]],
+    contract: [['Duration', requisition.contractDetails?.duration], ['Working hours', requisition.contractDetails?.workingHours], ['Payment / rate', requisition.contractDetails?.paymentRate]],
+    internship: [['Duration', requisition.internshipDetails?.duration], ['Paid status', requisition.internshipDetails?.paidStatus === 'paid' ? 'Paid' : requisition.internshipDetails?.paidStatus === 'unpaid' ? 'Unpaid' : ''], ['Working hours', requisition.internshipDetails?.workingHours]],
+    temporary: [['Start date', requisition.temporaryDetails?.startDate ? new Date(requisition.temporaryDetails.startDate).toLocaleDateString() : ''], ['End date', requisition.temporaryDetails?.endDate ? new Date(requisition.temporaryDetails.endDate).toLocaleDateString() : ''], ['Working hours', requisition.temporaryDetails?.workingHours]],
+  }[requisition.employmentType] || [];
+  const screeningCriteria = Array.isArray(requisition.initialScreeningCriteria) ? requisition.initialScreeningCriteria : [];
 
   return (
     <div>
@@ -251,8 +282,9 @@ export default function RequisitionDetail() {
             <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="on_hold">On Hold</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
               <SelectItem value="closed">Closed</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -274,13 +306,69 @@ export default function RequisitionDetail() {
         </Button>
       </div>
 
-      {!canStartNewWork && (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {requisition.status === 'on_hold'
-            ? 'This job opening is on hold. New candidate attachments and interview stages are paused; existing interviews can still be completed.'
-            : 'This job opening is closed and read-only. Reopen it to make changes or start new interview stages.'}
-        </div>
-      )}
+      <Card className="mt-6 overflow-hidden border-slate-200 bg-white shadow-sm">
+        <CardHeader className="flex-row items-center justify-between py-4">
+          <CardTitle>Job Opening Information</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={() => setJobInfoOpen((open) => !open)} className="gap-1.5">
+            {jobInfoOpen ? 'Hide details' : 'View details'}
+            <ChevronDown className={`h-4 w-4 transition-transform ${jobInfoOpen ? 'rotate-180' : ''}`} />
+          </Button>
+        </CardHeader>
+        {jobInfoOpen && <CardContent className="space-y-7 pt-6">
+          <section>
+            <h3 className="text-sm font-semibold">Employment details</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Employment type</p><p className="mt-1 text-sm font-medium">{EMPLOYMENT_LABEL[requisition.employmentType] || requisition.employmentType}</p></div>
+              {employmentDetails.filter(([, value]) => value).map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>)}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Work arrangement</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Arrangement</p><p className="mt-1 text-sm font-medium">{requisition.workplaceType ? `${requisition.workplaceType.charAt(0).toUpperCase()}${requisition.workplaceType.slice(1)}` : requisition.location || '—'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{requisition.workplaceType === 'remote' ? 'Remote region / time zone' : 'Office location'}</p><p className="mt-1 text-sm font-medium">{requisition.workplaceType === 'remote' ? requisition.remoteRegion || 'Not specified' : requisition.officeLocation || requisition.location || 'Not specified'}</p></div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Job description</h3>
+            <div className="mt-3 whitespace-pre-wrap rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">{requisition.jobDescription || 'Not specified'}</div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Initial screening criteria</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {screeningCriteria.length ? screeningCriteria.map((criterion, index) => (
+                <div key={`${criterion.criteria}-${index}`} className="rounded-lg border p-3">
+                  <p className="text-sm font-medium">{criterion.criteria}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{criterion.requirement || `${criterion.minimumValue || '—'} to ${criterion.maximumValue || '—'}`}</p>
+                </div>
+              )) : <p className="text-sm text-muted-foreground">No screening criteria configured.</p>}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Application questionnaire</h3>
+            <div className="mt-3 space-y-3">
+              {(requisition.questionnaire || []).length ? requisition.questionnaire.map((item, index) => {
+                const question = typeof item === 'string' ? item : item.question;
+                const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+                return <div key={`${question}-${index}`} className="rounded-lg border p-3"><p className="text-sm font-medium">{index + 1}. {question}</p>{idealAnswer && <p className="mt-1 text-sm text-muted-foreground"><span className="font-medium">Ideal answer:</span> {idealAnswer}</p>}</div>;
+              }) : <p className="text-sm text-muted-foreground">No questionnaire configured.</p>}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Application settings</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Application deadline</p><p className="mt-1 text-sm font-medium">{requisition.applicationDeadline ? new Date(requisition.applicationDeadline).toLocaleDateString() : 'Not specified'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">AI screening</p><p className="mt-1 text-sm font-medium">{requisition.aiScreeningEnabled ? 'Enabled' : 'Disabled'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Pipeline template</p><p className="mt-1 text-sm font-medium">{requisition.pipelineTemplateName || 'Not specified'}</p></div>
+            </div>
+          </section>
+        </CardContent>}
+      </Card>
 
       {/* ---------- candidates ---------- */}
       <Card className="mt-6">
@@ -378,6 +466,7 @@ export default function RequisitionDetail() {
                         currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
                         onStartStage={() => handleGoToInterview(app)}
                         startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
+                        disabled={!canStartNewWork}
                       />
                     </div>
 
@@ -396,6 +485,13 @@ export default function RequisitionDetail() {
                         disabled={isGoDisabled}
                       >
                         {goingToInterview === app._id ? 'Opening…' : 'Go to Interview'}
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        onClick={() => setRemoveCandidateApp(app)}
+                      >
+                        Remove
                       </Button>
                     </div>
                   </li>
@@ -481,6 +577,27 @@ export default function RequisitionDetail() {
               className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
             >
               {savingStatus ? 'Closing…' : 'Close job'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!removeCandidateApp} onOpenChange={(open) => !open && setRemoveCandidateApp(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeCandidateApp?.candidateId?.name || 'candidate'} from this job opening?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes their application, interviews, interview documents, scores, and audit records for this job opening. Their profile and applications to other job openings will remain. Calendar invitations created by this app will be cancelled first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingCandidate}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removingCandidate}
+              onClick={(event) => { event.preventDefault(); handleRemoveCandidate(); }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {removingCandidate ? 'Removing…' : 'Remove candidate'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
