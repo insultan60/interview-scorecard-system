@@ -521,7 +521,7 @@ export default function Requisitions() {
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <div className="text-sm font-medium text-foreground">{r.title}</div>
-                            <div className="text-xs text-muted-foreground">
+                            <div className="hidden">
                               {EMPLOYMENT_TYPE_LABEL[r.employmentType] || 'Full-Time'}
                               {r.location ? ` · ${r.location}` : ''}
                               {` · ${enabledStages} stage${enabledStages === 1 ? '' : 's'}`}
