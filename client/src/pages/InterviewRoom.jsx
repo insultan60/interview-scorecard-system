@@ -34,6 +34,7 @@ export default function InterviewRoom() {
   const [recomputed, setRecomputed] = useState(null);
   const [openAttrs, setOpenAttrs] = useState(new Set());
   const [guideOpen, setGuideOpen] = useState(false);
+  const [screeningInfoOpen, setScreeningInfoOpen] = useState(false);
   const [startingStage, setStartingStage] = useState(false);
   const [sendingMeetingEmail, setSendingMeetingEmail] = useState(false);
   const [sendingOffer, setSendingOffer] = useState(false);
@@ -533,18 +534,15 @@ export default function InterviewRoom() {
       {/* Requisition criteria shown only for the résumé screen. */}
       {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
         (requisition?.jobDescription || requisition?.initialScreeningCriteria) && (
-        <Card className="mt-4 border-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/10">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-semibold text-foreground flex items-center justify-between">
-              <span>Job Description & Initial Screening Criteria</span>
-              {application?.source && (
-                <span className="text-xs font-normal text-muted-foreground capitalize">
-                  Source: {application.source.replace('_', ' ')}
-                </span>
-              )}
-            </CardTitle>
+        <Card className="mt-4 overflow-hidden border-slate-200 bg-white shadow-sm">
+          <CardHeader
+            onClick={() => setScreeningInfoOpen((open) => !open)}
+            className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
+          >
+            <CardTitle>Job Description & Initial Screening Criteria</CardTitle>
+            <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${screeningInfoOpen ? 'rotate-180' : ''}`} />
           </CardHeader>
-          <CardContent className="space-y-4 pt-0 pb-4 text-xs">
+          {screeningInfoOpen && <CardContent className="space-y-4 border-t pt-4 text-sm">
             {requisition.jobDescription && (
               <div>
                 <span className="font-semibold text-foreground">Job Description:</span>
@@ -576,7 +574,7 @@ export default function InterviewRoom() {
                 )}
               </div>
             )}
-          </CardContent>
+          </CardContent>}
         </Card>
       )}
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2 } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -30,6 +30,7 @@ const DISPOSITION_BADGE = {
 
 const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
 const CANDIDATE_PAGE_SIZE = 5;
+const EMPLOYMENT_LABEL = { full_time: 'Full-Time', part_time: 'Part-Time', contract: 'Contract', internship: 'Internship', temporary: 'Temporary' };
 
 export default function RequisitionDetail() {
   const { id } = useParams();
@@ -50,6 +51,7 @@ export default function RequisitionDetail() {
   const [pendingClose, setPendingClose] = useState(false);
   const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
   const [removingCandidate, setRemovingCandidate] = useState(false);
+  const [jobInfoOpen, setJobInfoOpen] = useState(false);
 
   const [overrideModalApp, setOverrideModalApp] = useState(null);
   const [overrideReason, setOverrideReason] = useState('');
@@ -249,6 +251,14 @@ export default function RequisitionDetail() {
     safeCandidatePage * CANDIDATE_PAGE_SIZE
   );
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
+  const employmentDetails = {
+    full_time: [['Working hours / shift', requisition.fullTimeDetails?.workingHours]],
+    part_time: [['Weekly hours', requisition.partTimeDetails?.weeklyHours], ['Working hours / shift', requisition.partTimeDetails?.workingHours]],
+    contract: [['Duration', requisition.contractDetails?.duration], ['Working hours', requisition.contractDetails?.workingHours], ['Payment / rate', requisition.contractDetails?.paymentRate]],
+    internship: [['Duration', requisition.internshipDetails?.duration], ['Paid status', requisition.internshipDetails?.paidStatus === 'paid' ? 'Paid' : requisition.internshipDetails?.paidStatus === 'unpaid' ? 'Unpaid' : ''], ['Working hours', requisition.internshipDetails?.workingHours]],
+    temporary: [['Start date', requisition.temporaryDetails?.startDate ? new Date(requisition.temporaryDetails.startDate).toLocaleDateString() : ''], ['End date', requisition.temporaryDetails?.endDate ? new Date(requisition.temporaryDetails.endDate).toLocaleDateString() : ''], ['Working hours', requisition.temporaryDetails?.workingHours]],
+  }[requisition.employmentType] || [];
+  const screeningCriteria = Array.isArray(requisition.initialScreeningCriteria) ? requisition.initialScreeningCriteria : [];
 
   return (
     <div>
@@ -295,6 +305,70 @@ export default function RequisitionDetail() {
           Copy Candidate Apply Link
         </Button>
       </div>
+
+      <Card className="mt-6 overflow-hidden border-slate-200 bg-white shadow-sm">
+        <CardHeader className="flex-row items-center justify-between py-4">
+          <CardTitle>Job Opening Information</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={() => setJobInfoOpen((open) => !open)} className="gap-1.5">
+            {jobInfoOpen ? 'Hide details' : 'View details'}
+            <ChevronDown className={`h-4 w-4 transition-transform ${jobInfoOpen ? 'rotate-180' : ''}`} />
+          </Button>
+        </CardHeader>
+        {jobInfoOpen && <CardContent className="space-y-7 pt-6">
+          <section>
+            <h3 className="text-sm font-semibold">Employment details</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Employment type</p><p className="mt-1 text-sm font-medium">{EMPLOYMENT_LABEL[requisition.employmentType] || requisition.employmentType}</p></div>
+              {employmentDetails.filter(([, value]) => value).map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>)}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Work arrangement</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Arrangement</p><p className="mt-1 text-sm font-medium">{requisition.workplaceType ? `${requisition.workplaceType.charAt(0).toUpperCase()}${requisition.workplaceType.slice(1)}` : requisition.location || '—'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{requisition.workplaceType === 'remote' ? 'Remote region / time zone' : 'Office location'}</p><p className="mt-1 text-sm font-medium">{requisition.workplaceType === 'remote' ? requisition.remoteRegion || 'Not specified' : requisition.officeLocation || requisition.location || 'Not specified'}</p></div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Job description</h3>
+            <div className="mt-3 whitespace-pre-wrap rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">{requisition.jobDescription || 'Not specified'}</div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Initial screening criteria</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {screeningCriteria.length ? screeningCriteria.map((criterion, index) => (
+                <div key={`${criterion.criteria}-${index}`} className="rounded-lg border p-3">
+                  <p className="text-sm font-medium">{criterion.criteria}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{criterion.requirement || `${criterion.minimumValue || '—'} to ${criterion.maximumValue || '—'}`}</p>
+                </div>
+              )) : <p className="text-sm text-muted-foreground">No screening criteria configured.</p>}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Application questionnaire</h3>
+            <div className="mt-3 space-y-3">
+              {(requisition.questionnaire || []).length ? requisition.questionnaire.map((item, index) => {
+                const question = typeof item === 'string' ? item : item.question;
+                const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+                return <div key={`${question}-${index}`} className="rounded-lg border p-3"><p className="text-sm font-medium">{index + 1}. {question}</p>{idealAnswer && <p className="mt-1 text-sm text-muted-foreground"><span className="font-medium">Ideal answer:</span> {idealAnswer}</p>}</div>;
+              }) : <p className="text-sm text-muted-foreground">No questionnaire configured.</p>}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold">Application settings</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Application deadline</p><p className="mt-1 text-sm font-medium">{requisition.applicationDeadline ? new Date(requisition.applicationDeadline).toLocaleDateString() : 'Not specified'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">AI screening</p><p className="mt-1 text-sm font-medium">{requisition.aiScreeningEnabled ? 'Enabled' : 'Disabled'}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Pipeline template</p><p className="mt-1 text-sm font-medium">{requisition.pipelineTemplateName || 'Not specified'}</p></div>
+            </div>
+          </section>
+        </CardContent>}
+      </Card>
 
       {/* ---------- candidates ---------- */}
       <Card className="mt-6">
