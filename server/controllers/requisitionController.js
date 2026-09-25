@@ -19,6 +19,11 @@ const { callClaude, getModelIds } = require('../services/claudeClient');
 const emailNotifier = require('../services/emailNotifier');
 const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
+// Server-side validation mirror. The editable UI definition lives in client/src/constants.
+const screeningCriteriaConfig = {
+  education: { label: 'Education', options: ["Bachelor's degree", "Master's degree", 'PhD'] },
+  experience: { label: 'Experience', options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'] },
+};
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const WORKPLACE_TYPES = ['onsite', 'hybrid', 'remote'];
@@ -208,32 +213,61 @@ function normalizeQuestionnaire(raw) {
   return [];
 }
 
-/** Normalizes raw screening criteria inputs into objects { criteria, requirement }. */
+/** Normalizes the two supported, structured screening criteria. */
 function normalizeInitialScreeningCriteria(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) {
-    return raw.map((item) => {
-      if (typeof item === 'string') {
-        return { criteria: item.trim(), requirement: '' };
-      }
-      if (typeof item === 'object' && item !== null) {
-        return {
-          criteria: (item.criteria || '').trim(),
-          requirement: (item.requirement || '').trim(),
-        };
-      }
-      return null;
-    }).filter((item) => item && (item.criteria || item.requirement));
+  const items = Array.isArray(raw) ? raw : [];
+  const experience = items.find((item) => String(item?.criteria || '').toLowerCase() === 'experience') || {};
+  const educationInput = items.find((item) => String(item?.criteria || '').toLowerCase() === 'education') || {};
+  const education = screeningCriteriaConfig.education;
+  const educationMinimum = String(educationInput.minimumValue || '').trim();
+  const educationMaximum = String(educationInput.maximumValue || '').trim();
+  const relevantField = String(educationInput.relevantField || '').trim();
+  const minimumValue = String(experience.minimumValue || '').trim();
+  const maximumValue = String(experience.maximumValue || '').trim();
+
+  return [
+    {
+      criteria: education.label,
+      minimumValue: educationMinimum,
+      maximumValue: educationMaximum,
+      relevantField,
+      requirement: relevantField && educationMinimum && educationMaximum ? `${educationMinimum} to ${educationMaximum} in ${relevantField}` : '',
+    },
+    {
+      criteria: screeningCriteriaConfig.experience.label,
+      minimumValue,
+      maximumValue,
+      requirement: minimumValue && maximumValue ? `Minimum: ${minimumValue} years; Maximum: ${maximumValue} years` : '',
+    },
+  ];
+}
+
+function validateInitialScreeningCriteria(criteria, missingFields) {
+  const education = criteria.find((criterion) => criterion.criteria === screeningCriteriaConfig.education.label);
+  if (!education?.relevantField) missingFields.push('education relevant field or major');
+  if (!education?.minimumValue || !education?.maximumValue) {
+    missingFields.push('education minimum and maximum qualification');
+  } else {
+    const options = screeningCriteriaConfig.education.options;
+    if (!options.includes(education.minimumValue) || !options.includes(education.maximumValue)) {
+      missingFields.push('valid education minimum and maximum qualification');
+    } else if (options.indexOf(education.minimumValue) > options.indexOf(education.maximumValue)) {
+      missingFields.push('education maximum qualification must be equal to or higher than the minimum qualification');
+    }
   }
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (!trimmed) return [];
-    return trimmed.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => ({
-      criteria: line,
-      requirement: '',
-    }));
+  const experience = criteria.find((criterion) => criterion.criteria === screeningCriteriaConfig.experience.label);
+  if (!experience?.minimumValue || !experience?.maximumValue) {
+    missingFields.push('experience minimum and maximum values');
+    return;
   }
-  return [];
+  const options = screeningCriteriaConfig.experience.options;
+  if (!options.includes(experience.minimumValue) || !options.includes(experience.maximumValue)) {
+    missingFields.push('valid experience minimum and maximum values');
+    return;
+  }
+  const minimumIndex = options.indexOf(experience.minimumValue);
+  const maximumIndex = options.indexOf(experience.maximumValue);
+  if (minimumIndex > maximumIndex) missingFields.push('experience maximum value must be equal to or greater than the minimum value');
 }
 
 /** A date-only application deadline remains open through the whole UTC day. */
@@ -305,16 +339,7 @@ const create = asyncHandler(async (req, res) => {
   if (!jobDescription || !jobDescription.trim()) missingFields.push('jobDescription');
 
   const normalizedCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
-  if (normalizedCriteria.length === 0) {
-    missingFields.push('initialScreeningCriteria');
-  } else {
-    for (let i = 0; i < normalizedCriteria.length; i++) {
-      const c = normalizedCriteria[i];
-      if (!c.criteria || !c.requirement) {
-        missingFields.push(`initialScreeningCriteria item #${i + 1} (criteria & requirement details)`);
-      }
-    }
-  }
+  validateInitialScreeningCriteria(normalizedCriteria, missingFields);
 
   const normalizedQuestions = normalizeQuestionnaire(questionnaire);
   if (normalizedQuestions.length === 0) {
@@ -516,7 +541,11 @@ const update = asyncHandler(async (req, res) => {
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
   if (initialScreeningCriteria !== undefined) {
-    requisition.initialScreeningCriteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
+    const criteria = normalizeInitialScreeningCriteria(initialScreeningCriteria);
+    const missingFields = [];
+    validateInitialScreeningCriteria(criteria, missingFields);
+    if (missingFields.length) throw new ValidationError(missingFields, `Please correct: ${missingFields.join(', ')}.`);
+    requisition.initialScreeningCriteria = criteria;
   }
   if (questionnaire !== undefined) {
     requisition.questionnaire = normalizeQuestionnaire(questionnaire);
@@ -730,6 +759,9 @@ const generateField = asyncHandler(async (req, res) => {
   const { fieldType, title, jobDescription, prompt: userPromptText } = req.body;
   if (!fieldType || !title) {
     throw new ValidationError(['fieldType', 'title'], 'fieldType and title are required.');
+  }
+  if (fieldType === 'initialScreeningCriteria') {
+    throw new ValidationError(['fieldType'], 'Initial screening criteria are fixed and cannot be generated with AI.');
   }
 
   const modelIds = await getModelIds();

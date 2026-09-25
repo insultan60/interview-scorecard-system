@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDate } from '../utils/formatters';
+import screeningCriteriaConfig from '../constants/screeningCriteria.json';
 
 const PAGE_SIZE = 10;
 const JOB_TITLE_MIN_LENGTH = 5;
@@ -58,7 +59,10 @@ const EMPTY_FORM = {
   officeLocation: '',
   remoteRegion: '',
   jobDescription: '',
-  initialScreeningCriteria: [{ criteria: '', requirement: '' }],
+  initialScreeningCriteria: [
+    { criteria: screeningCriteriaConfig.education.label, minimumValue: '', maximumValue: '', relevantField: '' },
+    { criteria: screeningCriteriaConfig.experience.label, minimumValue: '', maximumValue: '' },
+  ],
   questionnaire: [{ question: '', idealAnswer: '' }],
   applicationDeadline: '',
   aiScreeningEnabled: true,
@@ -284,20 +288,29 @@ export default function Requisitions() {
 
     // Validate Criteria items
     const criteriaItems = Array.isArray(form.initialScreeningCriteria) ? form.initialScreeningCriteria : [];
-    if (criteriaItems.length === 0) {
-      toast.error('At least one Initial Screening Criteria item is required.');
+    const educationCriteria = criteriaItems.find((item) => item?.criteria === screeningCriteriaConfig.education.label);
+    if (isBlankField(educationCriteria?.relevantField)) {
+      toast.error('Education relevant field or major is required.');
       return;
     }
-    for (let i = 0; i < criteriaItems.length; i++) {
-      const item = typeof criteriaItems[i] === 'string' ? { criteria: criteriaItems[i], requirement: '' } : criteriaItems[i];
-      if (!item || !item.criteria || !item.criteria.trim()) {
-        toast.error(`Criteria #${i + 1} name cannot be empty.`);
-        return;
-      }
-      if (!item.requirement || !item.requirement.trim()) {
-        toast.error(`Criteria #${i + 1} requirement details cannot be empty.`);
-        return;
-      }
+    if (!educationCriteria?.minimumValue || !educationCriteria?.maximumValue) {
+      toast.error('Select both minimum and maximum education qualifications.');
+      return;
+    }
+    const educationOptions = screeningCriteriaConfig.education.options;
+    if (educationOptions.indexOf(educationCriteria.minimumValue) > educationOptions.indexOf(educationCriteria.maximumValue)) {
+      toast.error('Maximum education qualification must be equal to or higher than minimum qualification.');
+      return;
+    }
+    const experienceCriteria = criteriaItems.find((item) => item?.criteria === screeningCriteriaConfig.experience.label);
+    if (!experienceCriteria?.minimumValue || !experienceCriteria?.maximumValue) {
+      toast.error('Select both minimum and maximum experience values.');
+      return;
+    }
+    const options = screeningCriteriaConfig.experience.options;
+    if (options.indexOf(experienceCriteria.minimumValue) > options.indexOf(experienceCriteria.maximumValue)) {
+      toast.error('Maximum experience must be equal to or greater than minimum experience.');
+      return;
     }
 
     // Validate Questionnaire items
@@ -853,7 +866,7 @@ export default function Requisitions() {
             </div>
 
             {/* Initial Screening Criteria */}
-            <div className="space-y-3 border-t pt-4">
+            <div className="hidden">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-1.5">
@@ -983,6 +996,40 @@ export default function Requisitions() {
                 <Plus className="h-3.5 w-3.5" />
                 Add Screening Criteria
               </Button>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <div>
+                <Label className="text-sm font-semibold text-slate-900">Initial Screening Criteria</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Fixed education and experience requirements used for AI resume screening.</p>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3">
+                <p className="text-sm font-medium text-slate-800">Education</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1"><Label className="text-xs">Minimum qualification <span className="text-red-500">*</span></Label><Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.minimumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, minimumValue: value } : item) }))}><SelectTrigger><SelectValue placeholder="Select minimum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.education.options.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-1"><Label className="text-xs">Maximum qualification <span className="text-red-500">*</span></Label><Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.maximumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, maximumValue: value } : item) }))}><SelectTrigger><SelectValue placeholder="Select maximum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.education.options.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+                </div>
+                <div className="space-y-1"><Label className="text-xs">Relevant field / major <span className="text-red-500">*</span></Label><Input placeholder="e.g. Computer Science, Software Engineering, HRM" value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.relevantField || ''} onChange={(e) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, relevantField: e.target.value } : item) }))} /></div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3">
+                <p className="text-sm font-medium text-slate-800">Experience</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Minimum experience <span className="text-red-500">*</span></Label>
+                    <Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.experience.label)?.minimumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.experience.label ? { ...item, minimumValue: value } : item) }))}>
+                      <SelectTrigger><SelectValue placeholder="Select minimum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.experience.options.map((value) => <SelectItem key={value} value={value}>{value} years</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Maximum experience <span className="text-red-500">*</span></Label>
+                    <Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.experience.label)?.maximumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.experience.label ? { ...item, maximumValue: value } : item) }))}>
+                      <SelectTrigger><SelectValue placeholder="Select maximum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.experience.options.map((value) => <SelectItem key={value} value={value}>{value} years</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Application Questionnaire */}

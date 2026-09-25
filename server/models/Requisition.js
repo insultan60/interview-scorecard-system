@@ -28,6 +28,9 @@ const questionnaireItemSchema = new mongoose.Schema({
 const screeningCriteriaItemSchema = new mongoose.Schema({
   criteria: { type: String, required: true },
   requirement: { type: String, default: '' },
+  minimumValue: { type: String, default: '' },
+  maximumValue: { type: String, default: '' },
+  relevantField: { type: String, default: '' },
 }, { _id: false });
 
 const internshipDetailsSchema = new mongoose.Schema({
