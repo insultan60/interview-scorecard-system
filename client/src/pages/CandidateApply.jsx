@@ -1,3 +1,4 @@
+import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -360,8 +361,8 @@ export default function CandidateApply() {
                 <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
                   <FileText className="h-5 w-5 text-[#d21e2b]" /> Job Description & Overview
                 </h3>
-                <div className="prose prose-slate max-w-none text-slate-700 whitespace-pre-wrap leading-relaxed text-sm bg-slate-50/70 p-4 rounded-lg border border-slate-100">
-                  {requisition.jobDescription}
+                <div className="text-slate-700 leading-relaxed text-sm bg-slate-50/70 p-4 rounded-lg border border-slate-100">
+                  <RichTextViewer content={requisition.jobDescription} />
                 </div>
               </div>
 

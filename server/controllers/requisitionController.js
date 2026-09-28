@@ -772,8 +772,9 @@ const generateField = asyncHandler(async (req, res) => {
   let expectJson = false;
 
   if (fieldType === 'jobDescription') {
-    systemPrompt = 'You are an expert HR recruiter creating comprehensive, professional Job Descriptions.';
-    userPrompt = `Generate a detailed, professional Job Description for the position: "${title}". ${userPromptText ? `Additional instructions/context: ${userPromptText}` : ''}`;
+    systemPrompt = 'You are an expert HR recruiter creating comprehensive, professional Job Descriptions formatted cleanly using HTML (headings <h3>, bulleted lists <ul><li>, and paragraphs <p>).';
+    userPrompt = `Generate a detailed, professional Job Description for the position: "${title}". ${userPromptText ? `Additional instructions/context: ${userPromptText}` : ''}
+Output clean HTML content using <h3> sections (e.g. <h3>About the Role</h3>, <h3>Key Responsibilities</h3>, <h3>Qualifications & Requirements</h3>), <p> paragraphs, <ul> and <li> bullet points, and <strong> text. Do NOT wrap in markdown code fence.`;
   } else if (fieldType === 'initialScreeningCriteria') {
     expectJson = true;
     systemPrompt = 'You are an expert HR Screener defining clear, objective initial screening criteria categories and detailed requirements extracted directly from the Job Description.';

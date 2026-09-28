@@ -22,6 +22,8 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { formatDate } from '../utils/formatters';
 import screeningCriteriaConfig from '../constants/screeningCriteria.json';
 
@@ -30,6 +32,16 @@ const JOB_TITLE_MIN_LENGTH = 5;
 
 const normalizeJobTitle = (title) => title.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').trim();
 const isBlankField = (value) => typeof value !== 'string' || !value.trim();
+const stripHtml = (html) => (html || '').replace(/<[^>]*>/g, '').trim();
+
+const QUILL_MODULES = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link', 'clean'],
+  ],
+};
 
 const STATUS_BADGE = {
   open: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -99,7 +111,7 @@ export default function Requisitions() {
         return;
       }
     } else if (fieldType === 'initialScreeningCriteria' || fieldType === 'questionnaire') {
-      if (!form.jobDescription.trim()) {
+      if (!stripHtml(form.jobDescription)) {
         toast.error('Please enter or generate a Job Description first so AI has context.');
         return;
       }
@@ -114,7 +126,7 @@ export default function Requisitions() {
         return;
       }
     } else if (fieldType === 'initialScreeningCriteria' || fieldType === 'questionnaire') {
-      if (!form.jobDescription.trim()) {
+      if (!stripHtml(form.jobDescription)) {
         toast.error('Please enter or generate a Job Description first so AI has context.');
         return;
       }
@@ -138,7 +150,11 @@ export default function Requisitions() {
         const criteriaList = res.data.criteria || [];
         setForm((f) => ({ ...f, initialScreeningCriteria: criteriaList.length ? criteriaList : [{ criteria: '', requirement: '' }] }));
       } else {
-        setForm((f) => ({ ...f, [fieldType]: res.data.content || '' }));
+        let content = (res.data.content || '').replace(/^```html\s*|^```\s*|```$/gi, '').trim();
+        if (content && !/<[a-z][\s\S]*>/i.test(content)) {
+          content = content.split(/\n\n+/).map((p) => `<p>${p.trim().replace(/\n/g, '<br/>')}</p>`).join('');
+        }
+        setForm((f) => ({ ...f, [fieldType]: content }));
       }
       setPromptOpen((prev) => ({ ...prev, [fieldType]: false }));
       toast.success('Generated content with AI!');
@@ -282,7 +298,7 @@ export default function Requisitions() {
       toast.error('Select an office location for a hybrid job opening.');
       return;
     }
-    if (!form.jobDescription.trim()) {
+    if (!stripHtml(form.jobDescription)) {
       toast.error('Job Description is required.');
       return;
     }
@@ -881,11 +897,15 @@ export default function Requisitions() {
                 </div>
               )}
 
-              <Textarea
-                id="req-jd" rows={5} value={form.jobDescription}
-                onChange={(e) => setForm({ ...form, jobDescription: e.target.value })}
-                placeholder="Paste or generate the full job description here…"
-              />
+              <div className="bg-white rounded-md">
+                <ReactQuill
+                  theme="snow"
+                  value={form.jobDescription}
+                  onChange={(val) => setForm((f) => ({ ...f, jobDescription: val }))}
+                  modules={QUILL_MODULES}
+                  placeholder="Paste or generate the full job description here…"
+                />
+              </div>
             </div>
 
             {/* Initial Screening Criteria */}

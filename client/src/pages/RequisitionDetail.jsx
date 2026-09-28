@@ -1,3 +1,4 @@
+import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -333,7 +334,9 @@ export default function RequisitionDetail() {
 
           <section>
             <h3 className="text-sm font-semibold">Job description</h3>
-            <div className="mt-3 whitespace-pre-wrap rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">{requisition.jobDescription || 'Not specified'}</div>
+            <div className="mt-3 rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+              <RichTextViewer content={requisition.jobDescription} />
+            </div>
           </section>
 
           <section>

@@ -1,3 +1,4 @@
+import RichTextViewer from '../components/RichTextViewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -546,9 +547,9 @@ export default function InterviewRoom() {
             {requisition.jobDescription && (
               <div>
                 <span className="font-semibold text-foreground">Job Description:</span>
-                <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
-                  {requisition.jobDescription}
-                </p>
+                <div className="mt-1 text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
+                  <RichTextViewer content={requisition.jobDescription} />
+                </div>
               </div>
             )}
             {requisition.initialScreeningCriteria && (
