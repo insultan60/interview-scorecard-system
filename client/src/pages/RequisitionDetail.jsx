@@ -181,7 +181,7 @@ export default function RequisitionDetail() {
     setSavingStatus(true);
     try {
       await api.patch(`/requisitions/${id}`, { status: newStatus });
-      toast.success(`Requisition marked ${STATUS_LABEL[newStatus].toLowerCase()}.`);
+      toast.success(`Job Opening marked ${STATUS_LABEL[newStatus].toLowerCase()}.`);
       load();
     } finally {
       setSavingStatus(false);
