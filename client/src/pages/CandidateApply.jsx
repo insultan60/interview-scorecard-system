@@ -322,8 +322,14 @@ export default function CandidateApply() {
           <Card className="shadow-md border-slate-200">
             <CardHeader className="border-b bg-white pb-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                <Badge className="bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10">
-                  Open Position
+                <Badge
+                  className={
+                    isExpired
+                      ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-100'
+                      : 'bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10'
+                  }
+                >
+                  {isExpired ? 'Closed Position' : 'Open Position'}
                 </Badge>
               </div>
               <CardTitle className="text-3xl font-bold text-slate-900 tracking-tight">
