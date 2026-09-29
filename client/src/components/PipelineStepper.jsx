@@ -37,15 +37,16 @@ const STATUS_STYLES = {
  *   startingStageKey?: string|null,
  *   disabled?: boolean,
  *   compact?: boolean,
+ *   hideScrollbar?: boolean,
  * }} props
  */
-export default function PipelineStepper({ stages, progress, stageLinks, currentStageKey, onStartStage, startingStageKey, disabled = false, compact }) {
+export default function PipelineStepper({ stages, progress, stageLinks, currentStageKey, onStartStage, startingStageKey, disabled = false, compact, hideScrollbar = false }) {
   const enabledStages = stages.filter((s) => s.enabled);
   let priorStageFailed = false;
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+      <div className={`flex items-center gap-1 overflow-x-auto pb-1 ${hideScrollbar ? '[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden' : ''}`}>
         {enabledStages.map((stage, index) => {
           const rawProgress = progress?.[stage.key];
           let rawStatus = typeof rawProgress === 'string' ? rawProgress : rawProgress?.status || 'pending';

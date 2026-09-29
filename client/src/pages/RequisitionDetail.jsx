@@ -470,6 +470,7 @@ export default function RequisitionDetail() {
                         onStartStage={() => handleGoToInterview(app)}
                         startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
                         disabled={!canStartNewWork}
+                        hideScrollbar
                       />
                     </div>
 
