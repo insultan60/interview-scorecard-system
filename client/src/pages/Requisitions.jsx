@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2,
@@ -14,9 +14,6 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
@@ -84,6 +81,8 @@ const EMPTY_FORM = {
 
 export default function Requisitions() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isCreatePage = location.pathname === '/requisitions/new';
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [requisitions, setRequisitions] = useState([]);
@@ -92,7 +91,6 @@ export default function Requisitions() {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [generatingField, setGeneratingField] = useState({});
@@ -253,6 +251,12 @@ export default function Requisitions() {
     api.get('/pipelines').then((res) => setTemplates(res.data.templates));
   }, []);
 
+  // Layout owns the scrollable <main> element, so route navigation otherwise
+  // preserves the list's scroll position and can open this form at its footer.
+  useEffect(() => {
+    if (isCreatePage) document.querySelector('main')?.scrollTo({ top: 0 });
+  }, [isCreatePage]);
+
   async function handleCreate(e) {
     e.preventDefault();
     const normalizedTitle = normalizeJobTitle(form.title);
@@ -370,7 +374,6 @@ export default function Requisitions() {
       } else {
         toast.success('Closed job opening created. Reopen it before generating a scorecard.');
       }
-      setCreateOpen(false);
       setForm(EMPTY_FORM);
       loadRequisitions();
       navigate(`/requisitions/${requisition._id}`);
@@ -405,6 +408,8 @@ export default function Requisitions() {
 
   return (
     <div>
+      {!isCreatePage && (
+        <>
       {/* ---------- header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -418,7 +423,7 @@ export default function Requisitions() {
             </p>
           </div>
         </div>
-        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => navigate('/requisitions/new')}>
           <Plus />
           New Job Opening
         </Button>
@@ -500,7 +505,7 @@ export default function Requisitions() {
                 </p>
               </div>
               {!statusFilter && (
-                <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+                <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => navigate('/requisitions/new')}>
                   <Plus />
                   New Job Opening
                 </Button>
@@ -629,14 +634,25 @@ export default function Requisitions() {
         </div>
       )}
 
-      {/* ---------- create dialog ---------- */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>New job opening</DialogTitle>
-          </DialogHeader>
+        </>
+      )}
 
-          <form noValidate onSubmit={handleCreate} className="space-y-4 pt-2">
+      {isCreatePage && (
+        <div className="mx-auto max-w-5xl space-y-6 pb-8">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="icon" onClick={() => navigate('/requisitions')} aria-label="Back to job openings">
+              <ArrowLeft />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">New Job Opening</h1>
+              <p className="text-sm text-muted-foreground">Add the role details, screening requirements, and hiring process.</p>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="p-5 sm:p-7">
+
+          <form noValidate onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
@@ -1283,15 +1299,17 @@ export default function Requisitions() {
               )}
             </div>
 
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <div className="flex flex-col-reverse gap-2 border-t pt-5 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => navigate('/requisitions')}>Cancel</Button>
               <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
                 {creating ? 'Creating & generating…' : 'Create & generate scorecard'}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

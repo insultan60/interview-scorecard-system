@@ -32,6 +32,7 @@ export default function App() {
       <Route path="/apply/:id" element={<CandidateApply />} />
       <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
       <Route path="/requisitions" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
+      <Route path="/requisitions/new" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
       <Route path="/requisitions/:id" element={<ProtectedPage><RequisitionDetail /></ProtectedPage>} />
       <Route path="/requisitions/:id/candidates" element={<ProtectedPage><RequisitionCandidates /></ProtectedPage>} />
       <Route path="/pipelines" element={<ProtectedPage><Pipelines /></ProtectedPage>} />
