@@ -40,6 +40,7 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
     const bv = b.weightedTotal ?? -Infinity;
     return sortDesc ? bv - av : av - bv;
   });
+  const shouldScroll = ranking.length > 4;
 
   function openDecisionForm(app) {
     setOpenRowId(app._id);
@@ -146,7 +147,7 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
   return (
     <>
       {/* md: and up — real table, capped height so 100+ rows don't stretch the page; header stays pinned while rows scroll */}
-      <div className="hidden max-h-[32rem] overflow-x-auto overflow-y-auto md:block">
+      <div className={`hidden overflow-x-auto md:block ${shouldScroll ? 'max-h-[19rem] overflow-y-auto' : ''}`}>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-400">
@@ -187,7 +188,7 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
         >
           Sort by weighted total {sortDesc ? '↓' : '↑'}
         </button>
-        <div className="max-h-[32rem] space-y-3 overflow-y-auto">
+        <div className={`space-y-3 ${shouldScroll ? 'max-h-[38rem] overflow-y-auto pr-2' : ''}`}>
           {sorted.map((app) => (
             <div key={app._id} className="rounded-lg border border-gray-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">

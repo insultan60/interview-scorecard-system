@@ -30,7 +30,6 @@ const DISPOSITION_BADGE = {
 };
 
 const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
-const CANDIDATE_PAGE_SIZE = 5;
 const EMPLOYMENT_LABEL = { full_time: 'Full-Time', part_time: 'Part-Time', contract: 'Contract', internship: 'Internship', temporary: 'Temporary' };
 
 export default function RequisitionDetail() {
@@ -46,7 +45,6 @@ export default function RequisitionDetail() {
   const [stageLinksByApp, setStageLinksByApp] = useState({});
   const [ranking, setRanking] = useState([]);
   const [savingStatus, setSavingStatus] = useState(false);
-  const [candidatePage, setCandidatePage] = useState(1);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [dispositionFilter, setDispositionFilter] = useState('all');
   const [pendingClose, setPendingClose] = useState(false);
@@ -79,12 +77,10 @@ export default function RequisitionDetail() {
 
   function handleCandidateSearchChange(value) {
     setCandidateSearch(value);
-    setCandidatePage(1);
   }
 
   function handleDispositionFilterChange(value) {
     setDispositionFilter(value);
-    setCandidatePage(1);
   }
 
   async function load() {
@@ -245,12 +241,6 @@ export default function RequisitionDetail() {
     }
     return true;
   });
-  const totalCandidatePages = Math.max(1, Math.ceil(filteredApplications.length / CANDIDATE_PAGE_SIZE));
-  const safeCandidatePage = Math.min(candidatePage, totalCandidatePages);
-  const paginatedApplications = filteredApplications.slice(
-    (safeCandidatePage - 1) * CANDIDATE_PAGE_SIZE,
-    safeCandidatePage * CANDIDATE_PAGE_SIZE
-  );
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
   const employmentDetails = {
     full_time: [['Working hours / shift', requisition.fullTimeDetails?.workingHours]],
@@ -432,8 +422,8 @@ export default function RequisitionDetail() {
               {candidateQuery ? `No candidates match “${candidateSearch}”.` : 'No candidates match this filter.'}
             </p>
           ) : (
-            <ul className="divide-y divide-border">
-              {paginatedApplications.map((app) => {
+            <ul className={`divide-y divide-border ${filteredApplications.length > 4 ? 'max-h-[22rem] overflow-y-auto pr-2' : ''}`}>
+              {filteredApplications.map((app) => {
                 const appLinks = stageLinksByApp[app._id] || {};
                 const progressMap = Object.fromEntries(
                   (requisition?.stages || []).map((stage) => {
@@ -505,32 +495,6 @@ export default function RequisitionDetail() {
           )}
         </CardContent>
       </Card>
-
-      {filteredApplications.length > CANDIDATE_PAGE_SIZE && (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Showing {(safeCandidatePage - 1) * CANDIDATE_PAGE_SIZE + 1}
-            –{Math.min(safeCandidatePage * CANDIDATE_PAGE_SIZE, filteredApplications.length)} of {filteredApplications.length}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline" size="sm"
-              onClick={() => setCandidatePage((p) => Math.max(1, p - 1))}
-              disabled={safeCandidatePage === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-xs text-muted-foreground">Page {safeCandidatePage} of {totalCandidatePages}</span>
-            <Button
-              variant="outline" size="sm"
-              onClick={() => setCandidatePage((p) => Math.min(totalCandidatePages, p + 1))}
-              disabled={safeCandidatePage === totalCandidatePages}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* ---------- ranking ---------- */}
       <Card className="mt-6">
