@@ -1,4 +1,5 @@
 const Application = require('../models/Application');
+const Setting = require('../models/Setting');
 const logger = require('../utils/logger');
 const { callClaude, getModelIds } = require('./claudeClient');
 const { STAGE_MODEL_TIER } = require('../utils/constants');
@@ -17,13 +18,21 @@ Respond ONLY with a valid JSON array, no other text, no markdown fences, no prea
 
 /**
  * Resolves the actual Claude model id to use for a given stage type, via
- * the tier mapping in constants.js. Model ids come from an admin-editable
- * Setting (Settings page dropdown) falling back to .env — never hardcoded.
+ * the configurable stageModelTiers Setting falling back to constants.js.
  * @param {string} stageType
  * @returns {Promise<string>}
  */
 async function resolveModelForStage(stageType) {
-  const tier = STAGE_MODEL_TIER[stageType] || 'default';
+  let stageModelTiers = STAGE_MODEL_TIER;
+  try {
+    const doc = await Setting.findOne({ key: 'stageModelTiers' });
+    if (doc?.value && typeof doc.value === 'object') {
+      stageModelTiers = doc.value;
+    }
+  } catch (err) {
+    logger.warn(`[AIScorer] Failed to read stageModelTiers setting: ${err.message}`);
+  }
+  const tier = stageModelTiers[stageType] || STAGE_MODEL_TIER[stageType] || 'cheap';
   const models = await getModelIds();
   return models[tier];
 }

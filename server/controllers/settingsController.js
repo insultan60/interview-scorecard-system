@@ -170,11 +170,13 @@ const aiUsage = asyncHandler(async (req, res) => {
   const requisitionIds = [...new Set(grouped.map((g) => String(g._id.requisitionId)))];
   const requisitions = await Requisition.find({ _id: { $in: requisitionIds } }, 'title stages');
   const requisitionById = new Map(requisitions.map((r) => [String(r._id), r]));
+  const stageTiersSetting = await Setting.findOne({ key: 'stageModelTiers' });
+  const stageModelTiers = stageTiersSetting?.value || STAGE_MODEL_TIER;
 
   const rows = grouped.map((g) => {
     const requisition = requisitionById.get(String(g._id.requisitionId));
     const stageConfig = requisition?.stages.find((s) => s.key === g._id.stageKey);
-    const tier = stageConfig ? STAGE_MODEL_TIER[stageConfig.stageType] : undefined;
+    const tier = stageConfig ? (stageModelTiers[stageConfig.stageType] || STAGE_MODEL_TIER[stageConfig.stageType]) : undefined;
     const model = tier === 'cheap' ? process.env.CLAUDE_MODEL_CHEAP
       : tier === 'deep' ? process.env.CLAUDE_MODEL_DEEP
         : tier === 'default' ? process.env.CLAUDE_MODEL_DEFAULT : undefined;

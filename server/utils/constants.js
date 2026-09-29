@@ -63,13 +63,13 @@ const STAGE_MODEL_TIER = {
   resume_screen: 'cheap',
   reference: 'cheap',
   background: 'cheap',
-  hr_screen: 'default',
-  final: 'default',
-  client: 'default',
-  culture: 'default',
-  technical: 'deep',
-  simulation: 'deep',
-  task_performance: 'deep',
+  hr_screen: 'cheap',
+  final: 'cheap',
+  client: 'cheap',
+  culture: 'cheap',
+  technical: 'cheap',
+  simulation: 'cheap',
+  task_performance: 'cheap',
 };
 
 /**
@@ -205,6 +205,7 @@ const DEFAULT_SETTINGS = {
   monthlyAiSpendCapUsd: Number(process.env.MONTHLY_AI_SPEND_CAP_USD) || 200,
   aiSpendWarnPercent: Number(process.env.AI_SPEND_WARN_PERCENT) || 80,
   activeTranscriptProvider: process.env.ACTIVE_TRANSCRIPT_PROVIDER || 'google_meet',
+  stageModelTiers: STAGE_MODEL_TIER,
 };
 
 module.exports = {
