@@ -58,7 +58,11 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
       if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
         criteriaText = requisition.initialScreeningCriteria.map((c) => {
           if (typeof c === 'string') return `- ${c}`;
-          return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+          let text = `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+          if (c.allowVirtualUniversityOngoing) {
+            text += `\n  [SPECIAL POLICY FOR THIS JOB]: Candidates with an ongoing / in-progress degree from Virtual University (or online/distance learning) satisfy the education requirement for full-time work. Do NOT fail or penalize candidates solely because their Virtual University degree is in progress.`;
+          }
+          return text;
         }).join('\n');
       } else if (typeof requisition.initialScreeningCriteria === 'string' && requisition.initialScreeningCriteria.trim()) {
         criteriaText = requisition.initialScreeningCriteria;

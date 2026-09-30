@@ -222,8 +222,16 @@ function normalizeInitialScreeningCriteria(raw) {
   const educationMinimum = String(educationInput.minimumValue || '').trim();
   const educationMaximum = String(educationInput.maximumValue || '').trim();
   const relevantField = String(educationInput.relevantField || '').trim();
+  const allowVirtualUniversityOngoing = Boolean(
+    educationInput.allowVirtualUniversityOngoing || items.some((i) => i?.allowVirtualUniversityOngoing)
+  );
   const minimumValue = String(experience.minimumValue || '').trim();
   const maximumValue = String(experience.maximumValue || '').trim();
+
+  let educationReq = relevantField && educationMinimum && educationMaximum ? `${educationMinimum} to ${educationMaximum} in ${relevantField}` : '';
+  if (allowVirtualUniversityOngoing) {
+    educationReq += (educationReq ? ' | ' : '') + 'Allow ongoing/in-progress degree for Virtual University / Distance Learning';
+  }
 
   return [
     {
@@ -231,7 +239,8 @@ function normalizeInitialScreeningCriteria(raw) {
       minimumValue: educationMinimum,
       maximumValue: educationMaximum,
       relevantField,
-      requirement: relevantField && educationMinimum && educationMaximum ? `${educationMinimum} to ${educationMaximum} in ${relevantField}` : '',
+      allowVirtualUniversityOngoing,
+      requirement: educationReq,
     },
     {
       criteria: screeningCriteriaConfig.experience.label,
