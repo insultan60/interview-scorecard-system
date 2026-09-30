@@ -496,7 +496,7 @@ export default function Candidates() {
                   <TableRow key={c._id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar>
+                        <Avatar className="h-8 w-8 text-xs">
                           <AvatarFallback>{initials(c.name)}</AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">

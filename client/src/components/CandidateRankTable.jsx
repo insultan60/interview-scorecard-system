@@ -164,15 +164,15 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
           <tbody className="divide-y divide-gray-100">
             {sorted.map((app) => (
               <tr key={app._id}>
-                <td className="px-4 py-3 text-gray-500">{app.rank ?? '—'}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-2 text-gray-500">{app.rank ?? '—'}</td>
+                <td className="px-4 py-2">
                   <div className="font-medium text-gray-900">{app.candidateId?.name || 'Unknown'}</div>
                   <div className="text-xs text-gray-400">{app.candidateId?.email}</div>
                 </td>
-                <td className="px-4 py-3 font-medium">{formatScore(app.weightedTotal)}</td>
-                <td className="px-4 py-3"><GatesCell app={app} /></td>
-                <td className="px-4 py-3"><DispositionCell app={app} /></td>
-                <td className="px-4 py-3"><DecisionCell app={app} /></td>
+                <td className="px-4 py-2 font-medium">{formatScore(app.weightedTotal)}</td>
+                <td className="px-4 py-2"><GatesCell app={app} /></td>
+                <td className="px-4 py-2"><DispositionCell app={app} /></td>
+                <td className="px-4 py-2"><DecisionCell app={app} /></td>
               </tr>
             ))}
           </tbody>
