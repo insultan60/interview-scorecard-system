@@ -62,6 +62,9 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
           if (c.allowVirtualUniversityOngoing) {
             text += `\n  [SPECIAL POLICY FOR THIS JOB]: Candidates with an ongoing / in-progress degree from Virtual University (or online/distance learning) satisfy the education requirement for full-time work. Do NOT fail or penalize candidates solely because their Virtual University degree is in progress.`;
           }
+          if (c.criteria === 'Experience' && (c.minimumValue === '0' || String(c.requirement).includes('Minimum: 0'))) {
+            text += `\n  [EXPERIENCE SCORING RULE]: Minimum experience is set to 0 years. Candidates with 0 years of experience, fresh graduates, interns, or candidates with experience measured in months (e.g. 3 to 6 months) SATISFY the minimum experience requirement. Do NOT penalize or fail candidates for having less than 1 year of experience when minimum experience is 0.`;
+          }
           return text;
         }).join('\n');
       } else if (typeof requisition.initialScreeningCriteria === 'string' && requisition.initialScreeningCriteria.trim()) {

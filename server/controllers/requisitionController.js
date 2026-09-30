@@ -22,7 +22,7 @@ const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup'
 // Server-side validation mirror. The editable UI definition lives in client/src/constants.
 const screeningCriteriaConfig = {
   education: { label: 'Education', options: ["Bachelor's degree", "Master's degree", 'PhD'] },
-  experience: { label: 'Experience', options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'] },
+  experience: { label: 'Experience', options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'] },
 };
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
