@@ -338,7 +338,7 @@ export default function RequisitionDetail() {
                   <p className="mt-1 text-sm text-muted-foreground">{criterion.requirement || `${criterion.minimumValue || '—'} to ${criterion.maximumValue || '—'}`}</p>
                   {criterion.allowVirtualUniversityOngoing && (
                     <Badge variant="secondary" className="mt-2 text-[11px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                      ✓ Virtual University ongoing degree allowed
+                      Virtual University ongoing degree allowed
                     </Badge>
                   )}
                 </div>
