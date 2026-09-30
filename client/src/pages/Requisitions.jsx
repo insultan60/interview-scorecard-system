@@ -72,7 +72,7 @@ const EMPTY_FORM = {
     { criteria: screeningCriteriaConfig.education.label, minimumValue: '', maximumValue: '', relevantField: '' },
     { criteria: screeningCriteriaConfig.experience.label, minimumValue: '', maximumValue: '' },
   ],
-  questionnaire: [{ question: '', idealAnswer: '' }],
+  questionnaire: [{ question: '', idealAnswer: '', requireIdealAnswer: false }],
   applicationDeadline: '',
   aiScreeningEnabled: true,
   pipelineTemplateId: '',
@@ -212,7 +212,7 @@ export default function Requisitions() {
   function handleAddQuestion() {
     setForm((prev) => ({
       ...prev,
-      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), { question: '', idealAnswer: '' }],
+      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), { question: '', idealAnswer: '', requireIdealAnswer: false }],
     }));
   }
 
@@ -341,13 +341,13 @@ export default function Requisitions() {
       return;
     }
     for (let i = 0; i < questionnaireItems.length; i++) {
-      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '' } : questionnaireItems[i];
+      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '', requireIdealAnswer: false } : questionnaireItems[i];
       if (!item || !item.question || !item.question.trim()) {
         toast.error(`Question #${i + 1} text cannot be empty.`);
         return;
       }
-      if (!item.idealAnswer || !item.idealAnswer.trim()) {
-        toast.error(`Question #${i + 1} ideal answer benchmark cannot be empty.`);
+      if (item.requireIdealAnswer && (!item.idealAnswer || !item.idealAnswer.trim())) {
+        toast.error(`Question #${i + 1} ideal answer benchmark is required when checkbox is checked.`);
         return;
       }
     }
@@ -1210,17 +1210,38 @@ export default function Requisitions() {
                           />
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs font-medium text-slate-700">
-                            Ideal Answer <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            placeholder="e.g. 3+ yrs experience building production apps with React/Next.js..."
-                            value={qObj.idealAnswer || ''}
-                            onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
-                            className="bg-white text-xs"
+                        <div className="flex items-center gap-2 pt-0.5 pb-0.5">
+                          <Checkbox
+                            id={`require-ideal-${idx}`}
+                            checked={Boolean(qObj.requireIdealAnswer)}
+                            onCheckedChange={(checked) => {
+                              const isChecked = Boolean(checked);
+                              handleQuestionChange(idx, 'requireIdealAnswer', isChecked);
+                              if (!isChecked) handleQuestionChange(idx, 'idealAnswer', '');
+                            }}
                           />
+                          <Label htmlFor={`require-ideal-${idx}`} className="text-xs text-slate-700 font-normal cursor-pointer">
+                            Provide a custom Ideal Answer benchmark for this question
+                          </Label>
                         </div>
+
+                        {qObj.requireIdealAnswer ? (
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-slate-700">
+                              Ideal Answer Benchmark <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              placeholder="e.g. 3+ yrs experience building production apps with React/Next.js..."
+                              value={qObj.idealAnswer || ''}
+                              onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
+                              className="bg-white text-xs"
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-500 italic pl-6">
+                            AI will score candidates' responses for this question using the Job Description context.
+                          </p>
+                        )}
                       </div>
                     </div>
                   );

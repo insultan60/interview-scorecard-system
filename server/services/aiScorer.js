@@ -75,7 +75,10 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
     }
   } else if (stageType === 'hr_screen' && requisition) {
     contextHeader = isManual ? 'HR INTERVIEW TRANSCRIPT:' : 'APPLICATION QUESTIONNAIRE RESPONSES:';
-    requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\nUse the Job Description as supporting role context. Score each candidate response primarily against its corresponding scorecard question and ideal-answer benchmark. Do not use the candidate CV or Initial Screening Criteria for this stage.\n\n---\n`;
+    requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\nEVALUATION GUIDELINES FOR QUESTIONNAIRE RESPONSES:
+- For questions with a required Ideal Answer benchmark: Score candidate's response primarily against that provided Ideal Answer benchmark.
+- For questions without a required Ideal Answer (or where Ideal Answer is empty): Score candidate's response against the Job Description context and position requirements (evaluating if the candidate's response is clear, professional, and meets what the role requires).
+Do not use the candidate CV or Initial Screening Criteria for this stage.\n\n---\n`;
   }
 
   return `${requisitionContext}${contextHeader}\n${transcriptText}\n\n---\nRUBRIC (score every attribute below):\n\n${rubric}`;

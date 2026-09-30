@@ -352,7 +352,17 @@ export default function RequisitionDetail() {
               {(requisition.questionnaire || []).length ? requisition.questionnaire.map((item, index) => {
                 const question = typeof item === 'string' ? item : item.question;
                 const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
-                return <div key={`${question}-${index}`} className="rounded-lg border p-3"><p className="text-sm font-medium">{index + 1}. {question}</p>{idealAnswer && <p className="mt-1 text-sm text-muted-foreground"><span className="font-medium">Ideal answer:</span> {idealAnswer}</p>}</div>;
+                const requireIdeal = typeof item === 'object' ? Boolean(item.requireIdealAnswer) : false;
+                return (
+                  <div key={`${question}-${index}`} className="rounded-lg border p-3">
+                    <p className="text-sm font-medium">{index + 1}. {question}</p>
+                    {requireIdeal && idealAnswer ? (
+                      <p className="mt-1 text-sm text-muted-foreground"><span className="font-medium text-slate-700">Ideal answer benchmark:</span> {idealAnswer}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500 italic">Evaluated by AI against Job Description context</p>
+                    )}
+                  </div>
+                );
               }) : <p className="text-sm text-muted-foreground">No questionnaire configured.</p>}
             </div>
           </section>
