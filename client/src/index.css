@@ -107,6 +107,16 @@
 }
 
 /* Rich Text Display Styling */
+.rich-text-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.rich-text-content * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .rich-text-content p {
   margin-bottom: 0.5rem;
 }
@@ -144,6 +154,18 @@
 .rich-text-content a {
   color: #d21e2b;
   text-decoration: underline;
+}
+.rich-text-content pre {
+  white-space: pre-wrap;
+}
+.rich-text-content img,
+.rich-text-content video,
+.rich-text-content iframe {
+  height: auto;
+}
+.rich-text-content table {
+  display: block;
+  overflow-x: auto;
 }
 .rich-text-content strong, .rich-text-content b {
   font-weight: 600;
