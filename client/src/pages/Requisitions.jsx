@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2,
@@ -14,14 +14,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { formatDate } from '../utils/formatters';
 import screeningCriteriaConfig from '../constants/screeningCriteria.json';
 
@@ -30,6 +29,16 @@ const JOB_TITLE_MIN_LENGTH = 5;
 
 const normalizeJobTitle = (title) => title.replace(/[\s\u200B-\u200D\uFEFF]+/g, ' ').trim();
 const isBlankField = (value) => typeof value !== 'string' || !value.trim();
+const stripHtml = (html) => (html || '').replace(/<[^>]*>/g, '').trim();
+
+const QUILL_MODULES = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link', 'clean'],
+  ],
+};
 
 const STATUS_BADGE = {
   open: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -63,7 +72,7 @@ const EMPTY_FORM = {
     { criteria: screeningCriteriaConfig.education.label, minimumValue: '', maximumValue: '', relevantField: '' },
     { criteria: screeningCriteriaConfig.experience.label, minimumValue: '', maximumValue: '' },
   ],
-  questionnaire: [{ question: '', idealAnswer: '' }],
+  questionnaire: [{ question: '', idealAnswer: '', requireIdealAnswer: false }],
   applicationDeadline: '',
   aiScreeningEnabled: true,
   pipelineTemplateId: '',
@@ -72,6 +81,8 @@ const EMPTY_FORM = {
 
 export default function Requisitions() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isCreatePage = location.pathname === '/requisitions/new';
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [requisitions, setRequisitions] = useState([]);
@@ -80,7 +91,6 @@ export default function Requisitions() {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [generatingField, setGeneratingField] = useState({});
@@ -99,7 +109,7 @@ export default function Requisitions() {
         return;
       }
     } else if (fieldType === 'initialScreeningCriteria' || fieldType === 'questionnaire') {
-      if (!form.jobDescription.trim()) {
+      if (!stripHtml(form.jobDescription)) {
         toast.error('Please enter or generate a Job Description first so AI has context.');
         return;
       }
@@ -114,7 +124,7 @@ export default function Requisitions() {
         return;
       }
     } else if (fieldType === 'initialScreeningCriteria' || fieldType === 'questionnaire') {
-      if (!form.jobDescription.trim()) {
+      if (!stripHtml(form.jobDescription)) {
         toast.error('Please enter or generate a Job Description first so AI has context.');
         return;
       }
@@ -138,7 +148,11 @@ export default function Requisitions() {
         const criteriaList = res.data.criteria || [];
         setForm((f) => ({ ...f, initialScreeningCriteria: criteriaList.length ? criteriaList : [{ criteria: '', requirement: '' }] }));
       } else {
-        setForm((f) => ({ ...f, [fieldType]: res.data.content || '' }));
+        let content = (res.data.content || '').replace(/^```html\s*|^```\s*|```$/gi, '').trim();
+        if (content && !/<[a-z][\s\S]*>/i.test(content)) {
+          content = content.split(/\n\n+/).map((p) => `<p>${p.trim().replace(/\n/g, '<br/>')}</p>`).join('');
+        }
+        setForm((f) => ({ ...f, [fieldType]: content }));
       }
       setPromptOpen((prev) => ({ ...prev, [fieldType]: false }));
       toast.success('Generated content with AI!');
@@ -198,7 +212,7 @@ export default function Requisitions() {
   function handleAddQuestion() {
     setForm((prev) => ({
       ...prev,
-      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), { question: '', idealAnswer: '' }],
+      questionnaire: [...(Array.isArray(prev.questionnaire) ? prev.questionnaire : []), { question: '', idealAnswer: '', requireIdealAnswer: false }],
     }));
   }
 
@@ -236,6 +250,12 @@ export default function Requisitions() {
   useEffect(() => {
     api.get('/pipelines').then((res) => setTemplates(res.data.templates));
   }, []);
+
+  // Layout owns the scrollable <main> element, so route navigation otherwise
+  // preserves the list's scroll position and can open this form at its footer.
+  useEffect(() => {
+    if (isCreatePage) document.querySelector('main')?.scrollTo({ top: 0 });
+  }, [isCreatePage]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -282,7 +302,7 @@ export default function Requisitions() {
       toast.error('Select an office location for a hybrid job opening.');
       return;
     }
-    if (!form.jobDescription.trim()) {
+    if (!stripHtml(form.jobDescription)) {
       toast.error('Job Description is required.');
       return;
     }
@@ -321,13 +341,13 @@ export default function Requisitions() {
       return;
     }
     for (let i = 0; i < questionnaireItems.length; i++) {
-      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '' } : questionnaireItems[i];
+      const item = typeof questionnaireItems[i] === 'string' ? { question: questionnaireItems[i], idealAnswer: '', requireIdealAnswer: false } : questionnaireItems[i];
       if (!item || !item.question || !item.question.trim()) {
         toast.error(`Question #${i + 1} text cannot be empty.`);
         return;
       }
-      if (!item.idealAnswer || !item.idealAnswer.trim()) {
-        toast.error(`Question #${i + 1} ideal answer benchmark cannot be empty.`);
+      if (item.requireIdealAnswer && (!item.idealAnswer || !item.idealAnswer.trim())) {
+        toast.error(`Question #${i + 1} ideal answer benchmark is required when checkbox is checked.`);
         return;
       }
     }
@@ -354,7 +374,6 @@ export default function Requisitions() {
       } else {
         toast.success('Closed job opening created. Reopen it before generating a scorecard.');
       }
-      setCreateOpen(false);
       setForm(EMPTY_FORM);
       loadRequisitions();
       navigate(`/requisitions/${requisition._id}`);
@@ -389,6 +408,8 @@ export default function Requisitions() {
 
   return (
     <div>
+      {!isCreatePage && (
+        <>
       {/* ---------- header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -402,7 +423,7 @@ export default function Requisitions() {
             </p>
           </div>
         </div>
-        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => navigate('/requisitions/new')}>
           <Plus />
           New Job Opening
         </Button>
@@ -484,7 +505,7 @@ export default function Requisitions() {
                 </p>
               </div>
               {!statusFilter && (
-                <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+                <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => navigate('/requisitions/new')}>
                   <Plus />
                   New Job Opening
                 </Button>
@@ -613,14 +634,25 @@ export default function Requisitions() {
         </div>
       )}
 
-      {/* ---------- create dialog ---------- */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>New job opening</DialogTitle>
-          </DialogHeader>
+        </>
+      )}
 
-          <form noValidate onSubmit={handleCreate} className="space-y-4 pt-2">
+      {isCreatePage && (
+        <div className="mx-auto max-w-5xl space-y-6 pb-8">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="icon" onClick={() => navigate('/requisitions')} aria-label="Back to job openings">
+              <ArrowLeft />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">New Job Opening</h1>
+              <p className="text-sm text-muted-foreground">Add the role details, screening requirements, and hiring process.</p>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="p-5 sm:p-7">
+
+          <form noValidate onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="req-title">Title <span className="text-red-500">*</span></Label>
@@ -881,11 +913,15 @@ export default function Requisitions() {
                 </div>
               )}
 
-              <Textarea
-                id="req-jd" rows={5} value={form.jobDescription}
-                onChange={(e) => setForm({ ...form, jobDescription: e.target.value })}
-                placeholder="Paste or generate the full job description here…"
-              />
+              <div className="bg-white rounded-md">
+                <ReactQuill
+                  theme="snow"
+                  value={form.jobDescription}
+                  onChange={(val) => setForm((f) => ({ ...f, jobDescription: val }))}
+                  modules={QUILL_MODULES}
+                  placeholder="Paste or generate the full job description here…"
+                />
+              </div>
             </div>
 
             {/* Initial Screening Criteria */}
@@ -1034,6 +1070,21 @@ export default function Requisitions() {
                   <div className="space-y-1"><Label className="text-xs">Maximum qualification <span className="text-red-500">*</span></Label><Select value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.maximumValue || undefined} onValueChange={(value) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, maximumValue: value } : item) }))}><SelectTrigger><SelectValue placeholder="Select maximum" /></SelectTrigger><SelectContent>{screeningCriteriaConfig.education.options.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
                 </div>
                 <div className="space-y-1"><Label className="text-xs">Relevant field / major <span className="text-red-500">*</span></Label><Input placeholder="e.g. Computer Science, Software Engineering, HRM" value={form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.relevantField || ''} onChange={(e) => setForm((current) => ({ ...current, initialScreeningCriteria: current.initialScreeningCriteria.map((item) => item.criteria === screeningCriteriaConfig.education.label ? { ...item, relevantField: e.target.value } : item) }))} /></div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Checkbox
+                    id="allow-vu-ongoing"
+                    checked={Boolean(form.initialScreeningCriteria.find((item) => item.criteria === screeningCriteriaConfig.education.label)?.allowVirtualUniversityOngoing)}
+                    onCheckedChange={(checked) => setForm((current) => ({
+                      ...current,
+                      initialScreeningCriteria: current.initialScreeningCriteria.map((item) => (
+                        item.criteria === screeningCriteriaConfig.education.label ? { ...item, allowVirtualUniversityOngoing: Boolean(checked) } : item
+                      ))
+                    }))}
+                  />
+                  <Label htmlFor="allow-vu-ongoing" className="text-xs text-slate-700 font-normal cursor-pointer">
+                    Allow ongoing / in-progress degree for Virtual University (or distance learning) candidates
+                  </Label>
+                </div>
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-white p-3.5 space-y-3">
@@ -1159,17 +1210,38 @@ export default function Requisitions() {
                           />
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs font-medium text-slate-700">
-                            Ideal Answer <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            placeholder="e.g. 3+ yrs experience building production apps with React/Next.js..."
-                            value={qObj.idealAnswer || ''}
-                            onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
-                            className="bg-white text-xs"
+                        <div className="flex items-center gap-2 pt-0.5 pb-0.5">
+                          <Checkbox
+                            id={`require-ideal-${idx}`}
+                            checked={Boolean(qObj.requireIdealAnswer)}
+                            onCheckedChange={(checked) => {
+                              const isChecked = Boolean(checked);
+                              handleQuestionChange(idx, 'requireIdealAnswer', isChecked);
+                              if (!isChecked) handleQuestionChange(idx, 'idealAnswer', '');
+                            }}
                           />
+                          <Label htmlFor={`require-ideal-${idx}`} className="text-xs text-slate-700 font-normal cursor-pointer">
+                            Provide a custom Ideal Answer benchmark for this question
+                          </Label>
                         </div>
+
+                        {qObj.requireIdealAnswer ? (
+                          <div className="space-y-1">
+                            <Label className="text-xs font-medium text-slate-700">
+                              Ideal Answer Benchmark <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              placeholder="e.g. 3+ yrs experience building production apps with React/Next.js..."
+                              value={qObj.idealAnswer || ''}
+                              onChange={(e) => handleQuestionChange(idx, 'idealAnswer', e.target.value)}
+                              className="bg-white text-xs"
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-500 italic pl-6">
+                            AI will score candidates' responses for this question using the Job Description context.
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
@@ -1263,15 +1335,17 @@ export default function Requisitions() {
               )}
             </div>
 
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <div className="flex flex-col-reverse gap-2 border-t pt-5 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => navigate('/requisitions')}>Cancel</Button>
               <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
                 {creating ? 'Creating & generating…' : 'Create & generate scorecard'}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

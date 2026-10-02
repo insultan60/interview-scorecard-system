@@ -55,10 +55,36 @@ const KNOWN_MODELS = [
 ];
 
 const MODEL_TIERS = [
-  { key: 'claudeModelCheap', label: 'Cheap tier', hint: 'Résumé Screen, Reference Check, Background Check' },
-  { key: 'claudeModelDefault', label: 'Default tier', hint: 'HR Screen, Final/CEO, Client, Culture Fit' },
-  { key: 'claudeModelDeep', label: 'Deep tier', hint: 'Technical, Simulation, Task Performance' },
+  { key: 'claudeModelCheap', label: 'Cheap tier', hint: 'Fast, low-cost model for quick screening and lightweight evaluation tasks.' },
+  { key: 'claudeModelDefault', label: 'Default tier', hint: 'Balanced model for standard interview scoring and general candidate evaluations.' },
+  { key: 'claudeModelDeep', label: 'Deep tier', hint: 'High-intelligence model for complex technical rounds and in-depth candidate analysis.' },
 ];
+
+const ALL_STAGE_TYPES = [
+  { key: 'resume_screen', label: 'Résumé Screen' },
+  { key: 'hr_screen', label: 'HR Screen' },
+  { key: 'task_performance', label: 'Task Performance' },
+  { key: 'technical', label: 'Technical' },
+  { key: 'simulation', label: 'Simulation' },
+  { key: 'client', label: 'Client Interview' },
+  { key: 'culture', label: 'Culture Fit' },
+  { key: 'final', label: 'Final / Executive' },
+  { key: 'reference', label: 'Reference Check' },
+  { key: 'background', label: 'Background Check' },
+];
+
+const DEFAULT_STAGE_MODEL_TIERS = {
+  resume_screen: 'cheap',
+  reference: 'cheap',
+  background: 'cheap',
+  hr_screen: 'cheap',
+  final: 'cheap',
+  client: 'cheap',
+  culture: 'cheap',
+  technical: 'cheap',
+  simulation: 'cheap',
+  task_performance: 'cheap',
+};
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -298,6 +324,51 @@ export default function Settings() {
                     onSave={(v) => saveSetting(tier.key, v)}
                   />
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Stage Model Tier Assignments</CardTitle>
+              <CardDescription>
+                Select which AI model tier (Cheap, Default, or Deep) scores each interview stage.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {ALL_STAGE_TYPES.map((st) => {
+                  const currentTiers = settings.stageModelTiers || DEFAULT_STAGE_MODEL_TIERS;
+                  const currentTier = currentTiers[st.key] || DEFAULT_STAGE_MODEL_TIERS[st.key] || 'cheap';
+
+                  return (
+                    <div key={st.key} className="p-3 border rounded-lg bg-card space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-foreground">{st.label}</span>
+                        <Badge variant="outline" className="text-[10px] capitalize">
+                          {currentTier} tier
+                        </Badge>
+                      </div>
+                      <Select
+                        value={currentTier}
+                        onValueChange={(newTier) => {
+                          const updated = { ...currentTiers, [st.key]: newTier };
+                          saveSetting('stageModelTiers', updated);
+                        }}
+                        disabled={!isAdmin || savingKey === 'stageModelTiers'}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cheap">Cheap Tier</SelectItem>
+                          <SelectItem value="default">Default Tier</SelectItem>
+                          <SelectItem value="deep">Deep Tier</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

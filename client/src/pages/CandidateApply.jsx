@@ -1,3 +1,4 @@
+import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -321,8 +322,14 @@ export default function CandidateApply() {
           <Card className="shadow-md border-slate-200">
             <CardHeader className="border-b bg-white pb-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                <Badge className="bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10">
-                  Open Position
+                <Badge
+                  className={
+                    isExpired
+                      ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-100'
+                      : 'bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10'
+                  }
+                >
+                  {isExpired ? 'Closed Position' : 'Open Position'}
                 </Badge>
               </div>
               <CardTitle className="text-3xl font-bold text-slate-900 tracking-tight">
@@ -360,8 +367,8 @@ export default function CandidateApply() {
                 <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
                   <FileText className="h-5 w-5 text-[#d21e2b]" /> Job Description & Overview
                 </h3>
-                <div className="prose prose-slate max-w-none text-slate-700 whitespace-pre-wrap leading-relaxed text-sm bg-slate-50/70 p-4 rounded-lg border border-slate-100">
-                  {requisition.jobDescription}
+                <div className="min-w-0 overflow-hidden text-slate-700 leading-relaxed text-sm bg-slate-50/70 p-4 rounded-lg border border-slate-100">
+                  <RichTextViewer content={requisition.jobDescription} />
                 </div>
               </div>
 

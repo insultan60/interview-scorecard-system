@@ -135,6 +135,11 @@ async function seedSettings() {
     "USD per 1M tokens (input/output) per model tier (cheap/default/deep). Confirm at console.anthropic.com.",
   );
   await upsertSetting(
+    "stageModelTiers",
+    DEFAULT_SETTINGS.stageModelTiers,
+    "Mapping of each interview stage type to AI model tier (cheap, default, deep).",
+  );
+  await upsertSetting(
     "aiMonthlySpend",
     {},
     'Running AI spend total per calendar month, keyed "YYYY-MM" -> totalUsd. Written by claudeClient.js.',

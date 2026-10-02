@@ -54,7 +54,7 @@ export default function Login() {
             </p>
           </div>
 
-          <p className="relative z-10 text-xs text-white/60">Internal HR tool · Not for external distribution</p>
+          {/* <p className="relative z-10 text-xs text-white/60">Internal HR tool · Not for external distribution</p> */}
         </div>
 
         {/* Banner strip — mobile */}

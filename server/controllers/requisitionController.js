@@ -22,7 +22,7 @@ const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup'
 // Server-side validation mirror. The editable UI definition lives in client/src/constants.
 const screeningCriteriaConfig = {
   education: { label: 'Education', options: ["Bachelor's degree", "Master's degree", 'PhD'] },
-  experience: { label: 'Experience', options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'] },
+  experience: { label: 'Experience', options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10+'] },
 };
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
@@ -187,18 +187,19 @@ async function getSettingValue(key, fallback) {
   return setting?.value ?? fallback;
 }
 
-/** Normalizes raw questionnaire inputs into objects { question, idealAnswer }. */
+/** Normalizes raw questionnaire inputs into objects { question, idealAnswer, requireIdealAnswer }. */
 function normalizeQuestionnaire(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) {
     return raw.map((item) => {
       if (typeof item === 'string') {
-        return { question: item.trim(), idealAnswer: '' };
+        return { question: item.trim(), idealAnswer: '', requireIdealAnswer: false };
       }
       if (typeof item === 'object' && item !== null) {
         return {
           question: (item.question || '').trim(),
           idealAnswer: (item.idealAnswer || '').trim(),
+          requireIdealAnswer: Boolean(item.requireIdealAnswer),
         };
       }
       return null;
@@ -208,6 +209,7 @@ function normalizeQuestionnaire(raw) {
     return raw.split('\n').map((q) => q.trim()).filter(Boolean).map((q) => ({
       question: q,
       idealAnswer: '',
+      requireIdealAnswer: false,
     }));
   }
   return [];
@@ -222,8 +224,16 @@ function normalizeInitialScreeningCriteria(raw) {
   const educationMinimum = String(educationInput.minimumValue || '').trim();
   const educationMaximum = String(educationInput.maximumValue || '').trim();
   const relevantField = String(educationInput.relevantField || '').trim();
+  const allowVirtualUniversityOngoing = Boolean(
+    educationInput.allowVirtualUniversityOngoing || items.some((i) => i?.allowVirtualUniversityOngoing)
+  );
   const minimumValue = String(experience.minimumValue || '').trim();
   const maximumValue = String(experience.maximumValue || '').trim();
+
+  let educationReq = relevantField && educationMinimum && educationMaximum ? `${educationMinimum} to ${educationMaximum} in ${relevantField}` : '';
+  if (allowVirtualUniversityOngoing) {
+    educationReq += (educationReq ? ' | ' : '') + 'Allow ongoing/in-progress degree for Virtual University / Distance Learning';
+  }
 
   return [
     {
@@ -231,7 +241,8 @@ function normalizeInitialScreeningCriteria(raw) {
       minimumValue: educationMinimum,
       maximumValue: educationMaximum,
       relevantField,
-      requirement: relevantField && educationMinimum && educationMaximum ? `${educationMinimum} to ${educationMaximum} in ${relevantField}` : '',
+      allowVirtualUniversityOngoing,
+      requirement: educationReq,
     },
     {
       criteria: screeningCriteriaConfig.experience.label,
@@ -282,7 +293,7 @@ function hasApplicationDeadlinePassed(deadline) {
   return Date.now() >= nextDayStartUtc;
 }
 
-/** Uses each application question and its ideal answer as the HR-screen rubric. */
+/** Uses each application question and its ideal answer / JD context as the HR-screen rubric. */
 function syncHrQuestionnaireRubric(scorecard, requisition) {
   const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === 'hr_screen');
   if (!hrStage) return false;
@@ -290,12 +301,24 @@ function syncHrQuestionnaireRubric(scorecard, requisition) {
   const attributes = (requisition.questionnaire || []).map((item, index) => {
     const question = typeof item === 'string' ? item : item.question;
     const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+    const requireIdealAnswer = typeof item === 'object' ? Boolean(item.requireIdealAnswer) : false;
+
+    let anchor5 = 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.';
+    let redFlags = 'Does not answer the question, or provides an unclear or irrelevant response.';
+
+    if (requireIdealAnswer && idealAnswer) {
+      anchor5 = `Ideal answer benchmark: ${idealAnswer}`;
+      redFlags = `Does not address or match the required ideal answer benchmark: "${idealAnswer}".`;
+    }
+
     return {
       attributeId: `hr_screen_question_${index + 1}`,
       name: `Question ${index + 1}`,
       question,
-      anchor5: idealAnswer || 'Fully addresses the question with a relevant, specific answer.',
-      redFlags: 'Does not answer the question, or provides an unclear or irrelevant response.',
+      anchor5,
+      redFlags,
+      requireIdealAnswer,
+      idealAnswer,
     };
   });
 
@@ -347,8 +370,10 @@ const create = asyncHandler(async (req, res) => {
   } else {
     for (let i = 0; i < normalizedQuestions.length; i++) {
       const q = normalizedQuestions[i];
-      if (!q.question || !q.idealAnswer) {
-        missingFields.push(`questionnaire item #${i + 1} (question & ideal answer benchmark)`);
+      if (!q.question) {
+        missingFields.push(`questionnaire item #${i + 1} (question text)`);
+      } else if (q.requireIdealAnswer && !q.idealAnswer) {
+        missingFields.push(`questionnaire item #${i + 1} ideal answer benchmark`);
       }
     }
   }
@@ -772,8 +797,9 @@ const generateField = asyncHandler(async (req, res) => {
   let expectJson = false;
 
   if (fieldType === 'jobDescription') {
-    systemPrompt = 'You are an expert HR recruiter creating comprehensive, professional Job Descriptions.';
-    userPrompt = `Generate a detailed, professional Job Description for the position: "${title}". ${userPromptText ? `Additional instructions/context: ${userPromptText}` : ''}`;
+    systemPrompt = 'You are an expert HR recruiter creating comprehensive, professional Job Descriptions formatted cleanly using HTML (headings <h3>, bulleted lists <ul><li>, and paragraphs <p>).';
+    userPrompt = `Generate a detailed, professional Job Description for the position: "${title}". ${userPromptText ? `Additional instructions/context: ${userPromptText}` : ''}
+Output clean HTML content using <h3> sections (e.g. <h3>About the Role</h3>, <h3>Key Responsibilities</h3>, <h3>Qualifications & Requirements</h3>), <p> paragraphs, <ul> and <li> bullet points, and <strong> text. Do NOT wrap in markdown code fence.`;
   } else if (fieldType === 'initialScreeningCriteria') {
     expectJson = true;
     systemPrompt = 'You are an expert HR Screener defining clear, objective initial screening criteria categories and detailed requirements extracted directly from the Job Description.';

@@ -137,6 +137,14 @@ export default function Candidates() {
       toast.error('Name is required.');
       return;
     }
+    if (!form.email.trim()) {
+      toast.error('Email is required.');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(form.email.trim())) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
     if (form.phone && !PHONE_NUMBER_PATTERN.test(form.phone)) {
       toast.error('Phone number must contain exactly 11 digits.');
       return;
@@ -176,7 +184,11 @@ export default function Candidates() {
       toast.error('Name is required.');
       return;
     }
-    if (editForm.email && !EMAIL_PATTERN.test(editForm.email)) {
+    if (!editForm.email.trim()) {
+      toast.error('Email is required.');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(editForm.email.trim())) {
       toast.error('Please enter a valid email address.');
       return;
     }
@@ -237,7 +249,7 @@ export default function Candidates() {
   }
 
   function downloadBulkTemplate() {
-    const blob = new Blob(['name,email,phone,notes\nJane Cooper,jane@example.com,03001234567,Referral\n'], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob(['name,email,phone,notes\n'], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -259,7 +271,7 @@ export default function Candidates() {
         return;
       }
       const headers = parsed[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
-      const requiredHeaders = ['name', 'email', 'phone', 'notes'];
+      const requiredHeaders = ['name', 'email'];
       const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
       if (missingHeaders.length > 0) {
         toast.error(`Missing CSV column${missingHeaders.length > 1 ? 's' : ''}: ${missingHeaders.join(', ')}.`);
@@ -279,7 +291,8 @@ export default function Candidates() {
         };
         const errors = [];
         if (!candidate.name) errors.push('Name is required');
-        if (candidate.email && !EMAIL_PATTERN.test(candidate.email)) errors.push('Invalid email');
+        if (!candidate.email) errors.push('Email is required');
+        else if (!EMAIL_PATTERN.test(candidate.email)) errors.push('Invalid email');
         if (candidate.phone && !PHONE_NUMBER_PATTERN.test(candidate.phone)) errors.push('Phone must be exactly 11 digits');
         const emailKey = candidate.email.toLowerCase();
         if (emailKey && existingEmails.has(emailKey)) errors.push('Email already exists');
@@ -496,7 +509,7 @@ export default function Candidates() {
                   <TableRow key={c._id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar>
+                        <Avatar className="h-8 w-8 text-xs">
                           <AvatarFallback>{initials(c.name)}</AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
@@ -666,8 +679,8 @@ export default function Candidates() {
                 <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit-cand-email">Email</Label>
-                <Input id="edit-cand-email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                <Label htmlFor="edit-cand-email">Email <span className="text-red-500">*</span></Label>
+                <Input id="edit-cand-email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-cand-phone">Phone</Label>
@@ -697,78 +710,150 @@ export default function Candidates() {
         setBulkImportOpen(open);
         if (!open) setBulkRows([]);
       }}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Import candidates from CSV</DialogTitle>
-            <DialogDescription>
-              Use the columns <code>name</code>, <code>email</code>, <code>phone</code>, and <code>notes</code>. Name is required; email and phone are optional, but must be valid when included.
-            </DialogDescription>
-          </DialogHeader>
+       <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
+  <DialogHeader className="shrink-0">
+    <DialogTitle>Import candidates from CSV</DialogTitle>
+    <DialogDescription>
+      Your CSV should contain the columns <b>name</b>, <b>email</b>, <b>phone</b> and <b>notes</b>.
+      Name and email are required. Phone and notes are optional, must be valid if provided.
+    </DialogDescription>
+  </DialogHeader>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => handleBulkFile(event.target.files?.[0])}
-              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
-            />
-            <Button type="button" variant="link" className="px-0" onClick={downloadBulkTemplate}>
-              Download template
-            </Button>
-          </div>
+  {/* CSV upload */}
+  <div className="shrink-0 flex flex-wrap items-center gap-3">
+    <Input
+      type="file"
+      accept=".csv,text/csv"
+      onChange={(event) => handleBulkFile(event.target.files?.[0])}
+      className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+    />
 
-          {bulkRows.length > 0 && (() => {
-            const validCount = bulkRows.filter((row) => row.errors.length === 0).length;
-            const invalidCount = bulkRows.length - validCount;
-            return (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  {validCount} ready to import{invalidCount ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention` : ''}
-                </p>
-                <div className="max-h-72 overflow-auto rounded-md border">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background">
-                      <TableRow>
-                        <TableHead>Row</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Notes</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {bulkRows.map((row) => (
-                        <TableRow key={row.rowNumber} className={row.errors.length > 0 ? 'bg-red-50/60' : ''}>
-                          <TableCell>{row.rowNumber}</TableCell>
-                          <TableCell>{row.name || '—'}</TableCell>
-                          <TableCell>{row.email || '—'}</TableCell>
-                          <TableCell>{row.phone || '—'}</TableCell>
-                          <TableCell className="max-w-[10rem] truncate" title={row.notes}>{row.notes || '—'}</TableCell>
-                          <TableCell className={row.errors.length > 0 ? 'text-red-600' : 'text-green-700'}>
-                            {row.errors.length > 0 ? row.errors.join(', ') : 'Ready'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            );
-          })()}
+    <Button
+      type="button"
+      variant="link"
+      className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]"
+      onClick={downloadBulkTemplate}
+    >
+      Download CSV Template
+    </Button>
+  </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setBulkImportOpen(false)} disabled={importing}>Cancel</Button>
-            <Button
-              type="button"
-              onClick={handleBulkImport}
-              disabled={importing || bulkRows.filter((row) => row.errors.length === 0).length === 0}
-              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
-            >
-              {importing ? 'Importing…' : `Import ${bulkRows.filter((row) => row.errors.length === 0).length || ''} candidate${bulkRows.filter((row) => row.errors.length === 0).length === 1 ? '' : 's'}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+  {/* Preview */}
+  {bulkRows.length > 0 && (() => {
+    const validCount = bulkRows.filter(
+      (row) => row.errors.length === 0
+    ).length;
+
+    const invalidCount = bulkRows.length - validCount;
+
+    return (
+      <div className="flex flex-1 flex-col min-h-0 space-y-3">
+        {/* Summary */}
+        <p className="shrink-0 text-sm text-muted-foreground">
+          {validCount} ready to import
+          {invalidCount
+            ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention`
+            : ''}
+        </p>
+
+        {/* ONLY THE TABLE SCROLLS */}
+        <div className="flex-1 min-h-0 overflow-auto rounded-md border">
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              <TableRow>
+                <TableHead>Row</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {bulkRows.map((row) => (
+                <TableRow
+                  key={row.rowNumber}
+                  className={
+                    row.errors.length > 0
+                      ? 'bg-red-50/60'
+                      : ''
+                  }
+                >
+                  <TableCell>{row.rowNumber}</TableCell>
+
+                  <TableCell>
+                    {row.name || '—'}
+                  </TableCell>
+
+                  <TableCell>
+                    {row.email || '—'}
+                  </TableCell>
+
+                  <TableCell>
+                    {row.phone || '—'}
+                  </TableCell>
+
+                  <TableCell
+                    className="max-w-[10rem] truncate"
+                    title={row.notes}
+                  >
+                    {row.notes || '—'}
+                  </TableCell>
+
+                  <TableCell
+                    className={
+                      row.errors.length > 0
+                        ? 'text-red-600'
+                        : 'text-green-700'
+                    }
+                  >
+                    {row.errors.length > 0
+                      ? row.errors.join(', ')
+                      : 'Ready'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
+  })()}
+
+  {/* Buttons */}
+  <DialogFooter className="shrink-0 border-t pt-4 mt-auto">
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => setBulkImportOpen(false)}
+      disabled={importing}
+    >
+      Cancel
+    </Button>
+
+    <Button
+      type="button"
+      onClick={handleBulkImport}
+      disabled={
+        importing ||
+        bulkRows.filter((row) => row.errors.length === 0).length === 0
+      }
+      className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+    >
+      {importing
+        ? 'Importing…'
+        : `Import ${
+            bulkRows.filter((row) => row.errors.length === 0).length || ''
+          } candidate${
+            bulkRows.filter((row) => row.errors.length === 0).length === 1
+              ? ''
+              : 's'
+          }`}
+    </Button>
+  </DialogFooter>
+</DialogContent>
+
       </Dialog>
 
       {/* ---------- create dialog ---------- */}
@@ -792,11 +877,12 @@ export default function Candidates() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cand-email">Email</Label>
+                <Label htmlFor="cand-email">Email <span className="text-red-500">*</span></Label>
                 <Input
                   id="cand-email" type="email" value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="jane@example.com"
+                  required
                 />
               </div>
               <div className="space-y-1.5">

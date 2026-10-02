@@ -1,4 +1,5 @@
 const Application = require('../models/Application');
+const Setting = require('../models/Setting');
 const logger = require('../utils/logger');
 const { callClaude, getModelIds } = require('./claudeClient');
 const { STAGE_MODEL_TIER } = require('../utils/constants');
@@ -17,13 +18,21 @@ Respond ONLY with a valid JSON array, no other text, no markdown fences, no prea
 
 /**
  * Resolves the actual Claude model id to use for a given stage type, via
- * the tier mapping in constants.js. Model ids come from an admin-editable
- * Setting (Settings page dropdown) falling back to .env — never hardcoded.
+ * the configurable stageModelTiers Setting falling back to constants.js.
  * @param {string} stageType
  * @returns {Promise<string>}
  */
 async function resolveModelForStage(stageType) {
-  const tier = STAGE_MODEL_TIER[stageType] || 'default';
+  let stageModelTiers = STAGE_MODEL_TIER;
+  try {
+    const doc = await Setting.findOne({ key: 'stageModelTiers' });
+    if (doc?.value && typeof doc.value === 'object') {
+      stageModelTiers = doc.value;
+    }
+  } catch (err) {
+    logger.warn(`[AIScorer] Failed to read stageModelTiers setting: ${err.message}`);
+  }
+  const tier = stageModelTiers[stageType] || STAGE_MODEL_TIER[stageType] || 'cheap';
   const models = await getModelIds();
   return models[tier];
 }
@@ -49,7 +58,14 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
       if (Array.isArray(requisition.initialScreeningCriteria) && requisition.initialScreeningCriteria.length > 0) {
         criteriaText = requisition.initialScreeningCriteria.map((c) => {
           if (typeof c === 'string') return `- ${c}`;
-          return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+          let text = `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+          if (c.allowVirtualUniversityOngoing) {
+            text += `\n  [SPECIAL POLICY FOR THIS JOB]: Candidates with an ongoing / in-progress degree from Virtual University (or online/distance learning) satisfy the education requirement for full-time work. Do NOT fail or penalize candidates solely because their Virtual University degree is in progress.`;
+          }
+          if (c.criteria === 'Experience' && (c.minimumValue === '0' || String(c.requirement).includes('Minimum: 0'))) {
+            text += `\n  [EXPERIENCE SCORING RULE]: Minimum experience is set to 0 years. Candidates with 0 years of experience, fresh graduates, interns, or candidates with experience measured in months (e.g. 3 to 6 months) SATISFY the minimum experience requirement. Do NOT penalize or fail candidates for having less than 1 year of experience when minimum experience is 0.`;
+          }
+          return text;
         }).join('\n');
       } else if (typeof requisition.initialScreeningCriteria === 'string' && requisition.initialScreeningCriteria.trim()) {
         criteriaText = requisition.initialScreeningCriteria;
@@ -59,7 +75,10 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
     }
   } else if (stageType === 'hr_screen' && requisition) {
     contextHeader = isManual ? 'HR INTERVIEW TRANSCRIPT:' : 'APPLICATION QUESTIONNAIRE RESPONSES:';
-    requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\nUse the Job Description as supporting role context. Score each candidate response primarily against its corresponding scorecard question and ideal-answer benchmark. Do not use the candidate CV or Initial Screening Criteria for this stage.\n\n---\n`;
+    requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\nEVALUATION GUIDELINES FOR QUESTIONNAIRE RESPONSES:
+- For questions with a required Ideal Answer benchmark: Score candidate's response primarily against that provided Ideal Answer benchmark.
+- For questions without a required Ideal Answer (or where Ideal Answer is empty): Score candidate's response against the Job Description context and position requirements (evaluating if the candidate's response is clear, professional, and meets what the role requires).
+Do not use the candidate CV or Initial Screening Criteria for this stage.\n\n---\n`;
   }
 
   return `${requisitionContext}${contextHeader}\n${transcriptText}\n\n---\nRUBRIC (score every attribute below):\n\n${rubric}`;

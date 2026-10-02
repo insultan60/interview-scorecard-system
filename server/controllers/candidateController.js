@@ -15,6 +15,17 @@ const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_BULK_IMPORT_ROWS = 500;
 
+function validateEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value) {
+    throw new ValidationError(['email'], 'Email is required.');
+  }
+  if (!EMAIL_PATTERN.test(value)) {
+    throw new ValidationError(['email'], 'Please enter a valid email address.');
+  }
+  return value;
+}
+
 function validatePhone(phone, required = false) {
   const value = String(phone || '').trim();
   if ((required && !value) || (value && !PHONE_NUMBER_PATTERN.test(value))) {
@@ -69,6 +80,7 @@ const list = asyncHandler(async (req, res) => {
 const create = asyncHandler(async (req, res) => {
   const { name, email, phone, notes } = req.body;
   if (!name) throw new ValidationError(['name'], 'name is required.');
+  const validatedEmail = validateEmail(email);
   const validatedPhone = validatePhone(phone);
 
   let resumeFileUrl;
@@ -81,7 +93,7 @@ const create = asyncHandler(async (req, res) => {
 
   const candidate = await Candidate.create({
     name,
-    email,
+    email: validatedEmail,
     phone: validatedPhone,
     notes,
     resumeFileUrl,
@@ -123,7 +135,8 @@ const bulkCreate = asyncHandler(async (req, res) => {
     const errors = [];
 
     if (!name) errors.push('Name is required.');
-    if (email && !EMAIL_PATTERN.test(email)) errors.push('Email address is invalid.');
+    if (!email) errors.push('Email is required.');
+    else if (!EMAIL_PATTERN.test(email)) errors.push('Email address is invalid.');
     if (phone && !PHONE_NUMBER_PATTERN.test(phone)) errors.push('Phone number must contain exactly 11 digits.');
 
     const emailKey = email.toLowerCase();
@@ -170,12 +183,9 @@ const update = asyncHandler(async (req, res) => {
     candidate.name = String(name).trim();
   }
   if (email !== undefined) {
-    const cleanEmail = String(email).trim().toLowerCase();
-    if (cleanEmail && !EMAIL_PATTERN.test(cleanEmail)) throw new ValidationError(['email'], 'Please enter a valid email address.');
-    if (cleanEmail) {
-      const duplicate = await Candidate.findOne({ email: cleanEmail, _id: { $ne: candidate._id } });
-      if (duplicate) throw new ValidationError(['email'], 'Another candidate already uses this email address.');
-    }
+    const cleanEmail = validateEmail(email);
+    const duplicate = await Candidate.findOne({ email: cleanEmail, _id: { $ne: candidate._id } });
+    if (duplicate) throw new ValidationError(['email'], 'Another candidate already uses this email address.');
     candidate.email = cleanEmail;
   }
   if (phone !== undefined) candidate.phone = validatePhone(phone);

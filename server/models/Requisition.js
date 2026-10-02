@@ -23,6 +23,7 @@ const requisitionStageSchema = new mongoose.Schema({
 const questionnaireItemSchema = new mongoose.Schema({
   question: { type: String, required: true },
   idealAnswer: { type: String, default: '' },
+  requireIdealAnswer: { type: Boolean, default: false },
 }, { _id: false });
 
 const screeningCriteriaItemSchema = new mongoose.Schema({
@@ -31,6 +32,7 @@ const screeningCriteriaItemSchema = new mongoose.Schema({
   minimumValue: { type: String, default: '' },
   maximumValue: { type: String, default: '' },
   relevantField: { type: String, default: '' },
+  allowVirtualUniversityOngoing: { type: Boolean, default: false },
 }, { _id: false });
 
 const internshipDetailsSchema = new mongoose.Schema({

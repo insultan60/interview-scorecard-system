@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Briefcase, GitBranch, Users, ScrollText, Settings as SettingsIcon, LogOut, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import redstarIcon from '../assets/redstar-icon.png';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -25,10 +26,17 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
       className={`fixed inset-y-0 left-0 z-40 flex h-screen w-60 flex-shrink-0 flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
     >
-      <div className="flex items-center justify-between px-4 py-5">
-        <div>
-          <h1 className="text-lg font-semibold text-gray-900">Interview Scorecard</h1>
-          <p className="text-xs text-gray-400">Red Star Technologies</p>
+      <div className="flex items-center justify-between gap-3 px-4 py-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <img
+            src={redstarIcon}
+            alt="Red Star Technologies"
+            className="h-8 w-8 flex-shrink-0 object-contain"
+          />
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-gray-900">Interview Scorecard</h1>
+            <p className="text-[11px] text-gray-400">Red Star Technologies</p>
+          </div>
         </div>
         <button
           type="button"

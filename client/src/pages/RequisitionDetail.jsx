@@ -1,3 +1,4 @@
+import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -29,7 +30,6 @@ const DISPOSITION_BADGE = {
 };
 
 const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
-const CANDIDATE_PAGE_SIZE = 5;
 const EMPLOYMENT_LABEL = { full_time: 'Full-Time', part_time: 'Part-Time', contract: 'Contract', internship: 'Internship', temporary: 'Temporary' };
 
 export default function RequisitionDetail() {
@@ -45,7 +45,6 @@ export default function RequisitionDetail() {
   const [stageLinksByApp, setStageLinksByApp] = useState({});
   const [ranking, setRanking] = useState([]);
   const [savingStatus, setSavingStatus] = useState(false);
-  const [candidatePage, setCandidatePage] = useState(1);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [dispositionFilter, setDispositionFilter] = useState('all');
   const [pendingClose, setPendingClose] = useState(false);
@@ -78,12 +77,10 @@ export default function RequisitionDetail() {
 
   function handleCandidateSearchChange(value) {
     setCandidateSearch(value);
-    setCandidatePage(1);
   }
 
   function handleDispositionFilterChange(value) {
     setDispositionFilter(value);
-    setCandidatePage(1);
   }
 
   async function load() {
@@ -180,7 +177,7 @@ export default function RequisitionDetail() {
     setSavingStatus(true);
     try {
       await api.patch(`/requisitions/${id}`, { status: newStatus });
-      toast.success(`Requisition marked ${STATUS_LABEL[newStatus].toLowerCase()}.`);
+      toast.success(`Job Opening marked ${STATUS_LABEL[newStatus].toLowerCase()}.`);
       load();
     } finally {
       setSavingStatus(false);
@@ -244,12 +241,6 @@ export default function RequisitionDetail() {
     }
     return true;
   });
-  const totalCandidatePages = Math.max(1, Math.ceil(filteredApplications.length / CANDIDATE_PAGE_SIZE));
-  const safeCandidatePage = Math.min(candidatePage, totalCandidatePages);
-  const paginatedApplications = filteredApplications.slice(
-    (safeCandidatePage - 1) * CANDIDATE_PAGE_SIZE,
-    safeCandidatePage * CANDIDATE_PAGE_SIZE
-  );
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
   const employmentDetails = {
     full_time: [['Working hours / shift', requisition.fullTimeDetails?.workingHours]],
@@ -333,7 +324,9 @@ export default function RequisitionDetail() {
 
           <section>
             <h3 className="text-sm font-semibold">Job description</h3>
-            <div className="mt-3 whitespace-pre-wrap rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">{requisition.jobDescription || 'Not specified'}</div>
+            <div className="mt-3 rounded-lg border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+              <RichTextViewer content={requisition.jobDescription} />
+            </div>
           </section>
 
           <section>
@@ -343,6 +336,11 @@ export default function RequisitionDetail() {
                 <div key={`${criterion.criteria}-${index}`} className="rounded-lg border p-3">
                   <p className="text-sm font-medium">{criterion.criteria}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{criterion.requirement || `${criterion.minimumValue || '—'} to ${criterion.maximumValue || '—'}`}</p>
+                  {criterion.allowVirtualUniversityOngoing && (
+                    <Badge variant="secondary" className="mt-2 text-[11px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                      Virtual University ongoing degree allowed
+                    </Badge>
+                  )}
                 </div>
               )) : <p className="text-sm text-muted-foreground">No screening criteria configured.</p>}
             </div>
@@ -354,7 +352,17 @@ export default function RequisitionDetail() {
               {(requisition.questionnaire || []).length ? requisition.questionnaire.map((item, index) => {
                 const question = typeof item === 'string' ? item : item.question;
                 const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
-                return <div key={`${question}-${index}`} className="rounded-lg border p-3"><p className="text-sm font-medium">{index + 1}. {question}</p>{idealAnswer && <p className="mt-1 text-sm text-muted-foreground"><span className="font-medium">Ideal answer:</span> {idealAnswer}</p>}</div>;
+                const requireIdeal = typeof item === 'object' ? Boolean(item.requireIdealAnswer) : false;
+                return (
+                  <div key={`${question}-${index}`} className="rounded-lg border p-3">
+                    <p className="text-sm font-medium">{index + 1}. {question}</p>
+                    {requireIdeal && idealAnswer ? (
+                      <p className="mt-1 text-sm text-muted-foreground"><span className="font-medium text-slate-700">Ideal answer benchmark:</span> {idealAnswer}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500 italic">Evaluated by AI against Job Description context</p>
+                    )}
+                  </div>
+                );
               }) : <p className="text-sm text-muted-foreground">No questionnaire configured.</p>}
             </div>
           </section>
@@ -429,8 +437,8 @@ export default function RequisitionDetail() {
               {candidateQuery ? `No candidates match “${candidateSearch}”.` : 'No candidates match this filter.'}
             </p>
           ) : (
-            <ul className="divide-y divide-border">
-              {paginatedApplications.map((app) => {
+            <ul className={`divide-y divide-border ${filteredApplications.length > 4 ? 'max-h-[22rem] overflow-y-auto pr-2' : ''}`}>
+              {filteredApplications.map((app) => {
                 const appLinks = stageLinksByApp[app._id] || {};
                 const progressMap = Object.fromEntries(
                   (requisition?.stages || []).map((stage) => {
@@ -467,6 +475,7 @@ export default function RequisitionDetail() {
                         onStartStage={() => handleGoToInterview(app)}
                         startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
                         disabled={!canStartNewWork}
+                        hideScrollbar
                       />
                     </div>
 
@@ -501,32 +510,6 @@ export default function RequisitionDetail() {
           )}
         </CardContent>
       </Card>
-
-      {filteredApplications.length > CANDIDATE_PAGE_SIZE && (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Showing {(safeCandidatePage - 1) * CANDIDATE_PAGE_SIZE + 1}
-            –{Math.min(safeCandidatePage * CANDIDATE_PAGE_SIZE, filteredApplications.length)} of {filteredApplications.length}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline" size="sm"
-              onClick={() => setCandidatePage((p) => Math.max(1, p - 1))}
-              disabled={safeCandidatePage === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-xs text-muted-foreground">Page {safeCandidatePage} of {totalCandidatePages}</span>
-            <Button
-              variant="outline" size="sm"
-              onClick={() => setCandidatePage((p) => Math.min(totalCandidatePages, p + 1))}
-              disabled={safeCandidatePage === totalCandidatePages}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* ---------- ranking ---------- */}
       <Card className="mt-6">
