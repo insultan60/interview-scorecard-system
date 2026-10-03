@@ -237,7 +237,7 @@ export default function Candidates() {
   }
 
   function downloadBulkTemplate() {
-    const blob = new Blob(['name,email,phone,notes\nJane Cooper,jane@example.com,03001234567,Referral\n'], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob(['name,email,phone,notes\n'], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
