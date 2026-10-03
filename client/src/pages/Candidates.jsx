@@ -725,8 +725,8 @@ export default function Candidates() {
               onChange={(event) => handleBulkFile(event.target.files?.[0])}
               className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
             />
-            <Button type="button" variant="link" className="px-0" onClick={downloadBulkTemplate}>
-              Download template
+            <Button type="button" variant="link" className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]" onClick={downloadBulkTemplate}>
+              Download CSV Template
             </Button>
           </div>
 
