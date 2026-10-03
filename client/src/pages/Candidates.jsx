@@ -675,8 +675,8 @@ export default function Candidates() {
           <form onSubmit={handleEdit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="edit-cand-name">Name</Label>
-                <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                <Label htmlFor="edit-cand-name">Name <span className="text-red-500">*</span></Label>
+                <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-cand-email">Email <span className="text-red-500">*</span></Label>
@@ -862,18 +862,19 @@ export default function Candidates() {
           <DialogHeader>
             <DialogTitle>New candidate</DialogTitle>
             <DialogDescription>
-              Only a name is required — everything else can be added later.
+              Name and email are required — everything else can be added later.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="cand-name">Name</Label>
+                <Label htmlFor="cand-name">Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="cand-name" value={form.name} autoFocus
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="Jane Cooper"
+                  required
                 />
               </div>
               <div className="space-y-1.5">
