@@ -145,6 +145,11 @@ export default function Candidates() {
       toast.error('Please enter a valid email address.');
       return;
     }
+    const duplicate = candidates.some((c) => c.email?.trim().toLowerCase() === form.email.trim().toLowerCase());
+    if (duplicate) {
+      toast.error('A candidate with this email address already exists.');
+      return;
+    }
     if (form.phone && !PHONE_NUMBER_PATTERN.test(form.phone)) {
       toast.error('Phone number must contain exactly 11 digits.');
       return;
@@ -164,6 +169,8 @@ export default function Candidates() {
       setResumeFile(null);
       setCreateOpen(false);
       loadCandidates();
+    } catch {
+      // API interceptor handles toast error messaging
     } finally {
       setCreating(false);
     }
@@ -192,6 +199,11 @@ export default function Candidates() {
       toast.error('Please enter a valid email address.');
       return;
     }
+    const duplicate = candidates.some((c) => c._id !== editFor._id && c.email?.trim().toLowerCase() === editForm.email.trim().toLowerCase());
+    if (duplicate) {
+      toast.error('A candidate with this email address already exists.');
+      return;
+    }
     if (editForm.phone && !PHONE_NUMBER_PATTERN.test(editForm.phone)) {
       toast.error('Phone number must contain exactly 11 digits.');
       return;
@@ -210,6 +222,8 @@ export default function Candidates() {
       setEditFor(null);
       setEditResumeFile(null);
       loadCandidates();
+    } catch {
+      // API interceptor handles toast error messaging
     } finally {
       setEditing(false);
     }
@@ -270,7 +284,14 @@ export default function Candidates() {
         toast.error('The CSV must include a header row and at least one candidate.');
         return;
       }
-      const headers = parsed[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
+      const headers = parsed[0].map((header) => {
+        const h = header.replace(/^\uFEFF/, '').trim().toLowerCase();
+        if (['full name', 'candidate name', 'name'].includes(h)) return 'name';
+        if (['email address', 'email'].includes(h)) return 'email';
+        if (['phone number', 'mobile', 'cell', 'telephone', 'phone'].includes(h)) return 'phone';
+        if (['notes', 'comment', 'comments', 'remark', 'remarks'].includes(h)) return 'notes';
+        return h;
+      });
       const requiredHeaders = ['name', 'email'];
       const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
       if (missingHeaders.length > 0) {
@@ -489,9 +510,21 @@ export default function Candidates() {
               </Button>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="px-6 py-14 text-center">
-              <p className="text-sm font-medium text-foreground">No matches for “{search}”</p>
-              <p className="mt-1 text-sm text-muted-foreground">Try a different name, email or phone number.</p>
+            <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+              <p className="text-sm font-medium text-foreground">
+                {search ? `No matches for “${search}”` : 'No matching candidates'}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Try adjusting your search query or job opening filter.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => { setSearch(''); setRequisitionFilter('all'); setPage(1); }}
+              >
+                Clear filters
+              </Button>
             </div>
           ) : (
             <Table>
@@ -974,7 +1007,7 @@ export default function Candidates() {
                     <span className={attachTarget ? '' : 'text-muted-foreground'}>
                       {attachTarget
                         ? availableRequisitions.find((r) => r._id === attachTarget)?.title
-                        : `Search ${availableRequisitions.length} open jobs ${availableRequisitions.length === 1 ? '' : 's'}…`}
+                        : `Search ${availableRequisitions.length} open job${availableRequisitions.length === 1 ? '' : 's'}…`}
                     </span>
                     <ChevronsUpDown className="opacity-50" />
                   </Button>
