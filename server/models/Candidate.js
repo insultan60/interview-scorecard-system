@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const candidateSchema = new mongoose.Schema({
   name: { type: String, required: true, index: true },
-  email: { type: String, index: true },
+  email: { type: String, required: true, index: true },
   phone: {
     type: String,
     validate: {

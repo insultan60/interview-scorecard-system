@@ -137,6 +137,14 @@ export default function Candidates() {
       toast.error('Name is required.');
       return;
     }
+    if (!form.email.trim()) {
+      toast.error('Email is required.');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(form.email.trim())) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
     if (form.phone && !PHONE_NUMBER_PATTERN.test(form.phone)) {
       toast.error('Phone number must contain exactly 11 digits.');
       return;
@@ -176,7 +184,11 @@ export default function Candidates() {
       toast.error('Name is required.');
       return;
     }
-    if (editForm.email && !EMAIL_PATTERN.test(editForm.email)) {
+    if (!editForm.email.trim()) {
+      toast.error('Email is required.');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(editForm.email.trim())) {
       toast.error('Please enter a valid email address.');
       return;
     }
@@ -259,7 +271,7 @@ export default function Candidates() {
         return;
       }
       const headers = parsed[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
-      const requiredHeaders = ['name', 'email', 'phone', 'notes'];
+      const requiredHeaders = ['name', 'email'];
       const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
       if (missingHeaders.length > 0) {
         toast.error(`Missing CSV column${missingHeaders.length > 1 ? 's' : ''}: ${missingHeaders.join(', ')}.`);
@@ -279,7 +291,8 @@ export default function Candidates() {
         };
         const errors = [];
         if (!candidate.name) errors.push('Name is required');
-        if (candidate.email && !EMAIL_PATTERN.test(candidate.email)) errors.push('Invalid email');
+        if (!candidate.email) errors.push('Email is required');
+        else if (!EMAIL_PATTERN.test(candidate.email)) errors.push('Invalid email');
         if (candidate.phone && !PHONE_NUMBER_PATTERN.test(candidate.phone)) errors.push('Phone must be exactly 11 digits');
         const emailKey = candidate.email.toLowerCase();
         if (emailKey && existingEmails.has(emailKey)) errors.push('Email already exists');
@@ -666,8 +679,8 @@ export default function Candidates() {
                 <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit-cand-email">Email</Label>
-                <Input id="edit-cand-email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                <Label htmlFor="edit-cand-email">Email <span className="text-red-500">*</span></Label>
+                <Input id="edit-cand-email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-cand-phone">Phone</Label>
@@ -701,7 +714,7 @@ export default function Candidates() {
           <DialogHeader>
             <DialogTitle>Import candidates from CSV</DialogTitle>
             <DialogDescription>
-              Use the columns <code>name</code>, <code>email</code>, <code>phone</code>, and <code>notes</code>. Name is required; email and phone are optional, but must be valid when included.
+              Your CSV should contain the columns <b>name</b>, <b>email</b>, <b>phone</b> and <b>notes</b>. Name and email are required. Phone and notes are optional, must be valid if provided.
             </DialogDescription>
           </DialogHeader>
 
@@ -792,11 +805,12 @@ export default function Candidates() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cand-email">Email</Label>
+                <Label htmlFor="cand-email">Email <span className="text-red-500">*</span></Label>
                 <Input
                   id="cand-email" type="email" value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="jane@example.com"
+                  required
                 />
               </div>
               <div className="space-y-1.5">
