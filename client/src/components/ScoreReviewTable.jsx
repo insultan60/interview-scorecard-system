@@ -131,9 +131,12 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
       toast.error('No scores changed.');
       return;
     }
-    const missingReason = !isManualStage && changed.find((item) => !drafts[item.attributeId]?.reason?.trim());
-    if (missingReason) {
-      toast.error('Every changed score needs a reason.');
+    const invalidReason = !isManualStage && changed.find((item) => {
+      const reason = (drafts[item.attributeId]?.reason || '').trim();
+      return reason.length < 10;
+    });
+    if (invalidReason) {
+      toast.error('Every changed score requires an override reason of at least 10 characters.');
       return;
     }
 
@@ -236,7 +239,7 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
                   <td className="px-4 py-3">
                     <input
                       type="text"
-                      placeholder={changed ? 'Reason required...' : 'Optional notes...'}
+                      placeholder={changed ? 'Reason required (min 10 chars)...' : 'Optional notes...'}
                       value={draft.reason}
                       onChange={(e) => updateDraft(item.attributeId, 'reason', e.target.value)}
                       className="w-56 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
