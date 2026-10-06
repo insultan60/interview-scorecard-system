@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, GitBranch, Users, ScrollText,
-  Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight,
+  Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight, User,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import redstarIcon from '../assets/redstar-icon.png';
@@ -114,22 +114,32 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
         ))}
       </nav>
 
-      {/* Footer / User & Logout */}
-      <div className="border-t border-gray-200 p-3">
-        <div className={`mb-2 text-xs text-gray-500 ${isCollapsed ? 'md:hidden px-2' : 'px-3'}`}>
-          <div className="font-medium text-gray-800 truncate">{user?.name}</div>
-          <div className="text-gray-400 capitalize truncate">{user?.role}</div>
+      {/* Footer / User Profile & Logout */}
+      <div className="border-t border-gray-200 p-2.5">
+        <div
+          title={isCollapsed ? `${user?.name || 'User'} (${user?.role || 'Admin'})` : undefined}
+          className={`flex items-center gap-2.5 rounded-lg p-2 bg-white mb-2 ${
+            isCollapsed ? 'md:justify-center md:px-0' : ''
+          }`}
+        >
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#d21e2b]/10 text-[#d21e2b] font-bold text-xs shadow-xs">
+            {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-4 w-4" />}
+          </div>
+          <div className={`min-w-0 flex-1 ${isCollapsed ? 'md:hidden' : 'block'}`}>
+            <div className="truncate text-xs font-bold text-gray-900 leading-snug">{user?.name || 'User'}</div>
+            <div className="truncate text-[11px] text-gray-400 capitalize">{user?.role || 'Admin'}</div>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={logout}
           title={isCollapsed ? 'Log out' : undefined}
-          className={`flex w-full items-center gap-2 rounded-md py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors ${
-            isCollapsed ? 'md:justify-center md:px-0 px-3' : 'px-3'
+          className={`flex w-full items-center gap-2 rounded-md py-2 text-xs font-semibold text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors ${
+            isCollapsed ? 'md:justify-center md:px-0 px-2.5' : 'px-2.5'
           }`}
         >
-          <LogOut className="h-4 w-4 flex-shrink-0 text-gray-500" />
+          <LogOut className="h-4 w-4 flex-shrink-0 text-gray-500 hover:text-red-600" />
           <span className={isCollapsed ? 'md:hidden' : 'block'}>Log out</span>
         </button>
       </div>
