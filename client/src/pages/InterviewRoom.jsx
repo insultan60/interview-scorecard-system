@@ -2,12 +2,17 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import dayjs from 'dayjs';
+import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import api from '../hooks/useApi';
 import { sendMeetingEmailClient, sendOfferEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { TimePicker } from '@/components/ui/time-picker';
 import { formatDisposition } from '../utils/formatters';
 
 export default function InterviewRoom() {
@@ -23,8 +28,11 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
-  const [meetingStartInput, setMeetingStartInput] = useState('');
-  const [meetingEndInput, setMeetingEndInput] = useState('');
+  const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => new Date());
+  const [selectedStartTime, setSelectedStartTime] = useState('10:00');
+  const [selectedEndTime, setSelectedEndTime] = useState('10:30');
+  const [meetingStartInput, setMeetingStartInput] = useState(() => `${dayjs().format('YYYY-MM-DD')}T10:00`);
+  const [meetingEndInput, setMeetingEndInput] = useState(() => `${dayjs().format('YYYY-MM-DD')}T10:30`);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
   const [confirmingConsent, setConfirmingConsent] = useState(false);
   const [fetchingTranscript, setFetchingTranscript] = useState(false);
@@ -121,33 +129,38 @@ export default function InterviewRoom() {
   async function handleCreateMeeting(useProvider) {
     setCreatingMeeting(true);
     try {
+      const dateStr = dayjs(selectedMeetingDate || new Date()).format('YYYY-MM-DD');
+      const startStr = meetingStartInput || `${dateStr}T${selectedStartTime || '10:00'}`;
+      const endStr = meetingEndInput || `${dateStr}T${selectedEndTime || '10:30'}`;
+
       const body = useProvider
         ? {
-          meetingStart: meetingStartInput ? new Date(meetingStartInput).toISOString() : '',
-          meetingEnd: meetingEndInput ? new Date(meetingEndInput).toISOString() : '',
+          meetingStart: new Date(startStr).toISOString(),
+          meetingEnd: new Date(endStr).toISOString(),
         }
         : { meetingUri: meetingLinkInput.trim() };
+
       if (!useProvider && !body.meetingUri) {
         toast.error('Paste a meeting link first.');
         return;
       }
-      if (useProvider && (!meetingStartInput || !meetingEndInput)) {
+      if (useProvider && (!startStr || !endStr)) {
         toast.error('Choose the meeting start and end time first.');
         return;
       }
-      if (useProvider && new Date(meetingStartInput) <= new Date()) {
+      if (useProvider && new Date(startStr) <= new Date()) {
         toast.error('Meeting start time must be in the future.');
         return;
       }
-      if (useProvider && new Date(meetingEndInput) - new Date(meetingStartInput) > 60 * 60 * 1000) {
+      if (useProvider && new Date(endStr) - new Date(startStr) > 60 * 60 * 1000) {
         toast.error('Interview duration cannot be longer than 1 hour.');
         return;
       }
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
       setMeetingLinkInput('');
-      setMeetingStartInput('');
-      setMeetingEndInput('');
+      setMeetingStartInput(startStr);
+      setMeetingEndInput(endStr);
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
         toast.success('Meeting set and emailed to candidate.');
@@ -668,17 +681,68 @@ export default function InterviewRoom() {
                       Use Link
                     </button>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      type="datetime-local" value={meetingStartInput} onChange={(e) => setMeetingStartInput(e.target.value)}
-                      aria-label="Meeting start time"
-                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
-                    />
-                    <input
-                      type="datetime-local" value={meetingEndInput} onChange={(e) => setMeetingEndInput(e.target.value)}
-                      aria-label="Meeting end time"
-                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
-                    />
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                        Meeting Date
+                      </label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start font-normal text-left">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            {selectedMeetingDate ? dayjs(selectedMeetingDate).format('ddd, MMM D, YYYY') : 'Pick a date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={selectedMeetingDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                setSelectedMeetingDate(date);
+                                const dateStr = dayjs(date).format('YYYY-MM-DD');
+                                setMeetingStartInput(`${dateStr}T${selectedStartTime}`);
+                                setMeetingEndInput(`${dateStr}T${selectedEndTime}`);
+                              }
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" /> Start Time
+                        </label>
+                        <TimePicker
+                          value={selectedStartTime}
+                          onChange={(val) => {
+                            setSelectedStartTime(val);
+                            if (selectedMeetingDate) {
+                              const dateStr = dayjs(selectedMeetingDate).format('YYYY-MM-DD');
+                              setMeetingStartInput(`${dateStr}T${val}`);
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" /> End Time
+                        </label>
+                        <TimePicker
+                          value={selectedEndTime}
+                          onChange={(val) => {
+                            setSelectedEndTime(val);
+                            if (selectedMeetingDate) {
+                              const dateStr = dayjs(selectedMeetingDate).format('YYYY-MM-DD');
+                              setMeetingEndInput(`${dateStr}T${val}`);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <button
                     type="button" onClick={() => handleCreateMeeting(true)} disabled={creatingMeeting}
