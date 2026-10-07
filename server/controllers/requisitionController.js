@@ -656,55 +656,17 @@ const duplicate = asyncHandler(async (req, res) => {
     status: 'open',
   }).select('_id title').lean();
 
-  const stages = (sourceReq.stages || []).map((s) => ({
-    key: s.key,
-    label: s.label,
-    stageType: s.stageType,
-    inputType: s.inputType,
-    enabled: s.enabled,
-    order: s.order,
-    weight: s.weight,
-    passThreshold: s.passThreshold,
-  }));
-
-  const initialScreeningCriteria = (sourceReq.initialScreeningCriteria || []).map((c) => ({
-    criteria: c.criteria,
-    requirement: c.requirement,
-    minimumValue: c.minimumValue,
-    maximumValue: c.maximumValue,
-    relevantField: c.relevantField,
-    allowVirtualUniversityOngoing: c.allowVirtualUniversityOngoing,
-  }));
-
-  const questionnaire = (sourceReq.questionnaire || []).map((q) => ({
-    question: q.question,
-    idealAnswer: q.idealAnswer,
-    requireIdealAnswer: q.requireIdealAnswer,
-  }));
+  const sourceData = sourceReq.toObject();
+  delete sourceData._id;
+  delete sourceData.createdAt;
+  delete sourceData.updatedAt;
+  delete sourceData.closedAt;
+  delete sourceData.scorecardId;
 
   const newReqData = {
+    ...sourceData,
     title: newTitle,
-    employmentType: sourceReq.employmentType || 'full_time',
-    fullTimeDetails: sourceReq.fullTimeDetails ? { ...sourceReq.fullTimeDetails } : undefined,
-    partTimeDetails: sourceReq.partTimeDetails ? { ...sourceReq.partTimeDetails } : undefined,
-    contractDetails: sourceReq.contractDetails ? { ...sourceReq.contractDetails } : undefined,
-    internshipDetails: sourceReq.internshipDetails ? { ...sourceReq.internshipDetails } : undefined,
-    temporaryDetails: sourceReq.temporaryDetails ? { ...sourceReq.temporaryDetails } : undefined,
-    location: sourceReq.location,
-    workplaceType: sourceReq.workplaceType,
-    officeLocation: sourceReq.officeLocation,
-    remoteRegion: sourceReq.remoteRegion,
-    jobDescription: sourceReq.jobDescription,
     status: 'open',
-    pipelineTemplateId: sourceReq.pipelineTemplateId,
-    pipelineTemplateName: sourceReq.pipelineTemplateName,
-    stages,
-    hireThreshold: sourceReq.hireThreshold,
-    maybeThreshold: sourceReq.maybeThreshold,
-    initialScreeningCriteria,
-    questionnaire,
-    applicationDeadline: sourceReq.applicationDeadline,
-    aiScreeningEnabled: sourceReq.aiScreeningEnabled,
     createdBy: req.user._id,
   };
 
@@ -714,13 +676,17 @@ const duplicate = asyncHandler(async (req, res) => {
   if (sourceReq.scorecardId) {
     const sourceScorecard = await Scorecard.findById(sourceReq.scorecardId);
     if (sourceScorecard) {
-      const clonedStages = JSON.parse(JSON.stringify(sourceScorecard.stages || []));
-      assignMissingAttributeIds(clonedStages);
-      const newScorecard = await Scorecard.create({
-        requisitionId: newReq._id,
-        generatedByAI: sourceScorecard.generatedByAI,
-        stages: clonedStages,
-      });
+      const scorecardData = sourceScorecard.toObject();
+      delete scorecardData._id;
+      delete scorecardData.createdAt;
+      delete scorecardData.updatedAt;
+      scorecardData.requisitionId = newReq._id;
+
+      if (Array.isArray(scorecardData.stages)) {
+        assignMissingAttributeIds(scorecardData.stages);
+      }
+
+      const newScorecard = await Scorecard.create(scorecardData);
       newReq.scorecardId = newScorecard._id;
       await newReq.save();
     }
