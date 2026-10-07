@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
@@ -90,7 +90,9 @@ export default function Candidates() {
 
   const [candidates, setCandidates] = useState([]);
   const [requisitions, setRequisitions] = useState([]);
+  const [filterRequisitions, setFilterRequisitions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchingCandidates, setFetchingCandidates] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -112,24 +114,53 @@ export default function Candidates() {
   const [deleting, setDeleting] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [requisitionFilter, setRequisitionFilter] = useState('all');
   const [dateSort, setDateSort] = useState('newest');
   const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+  const latestLoadRef = useRef(0);
 
-  async function loadCandidates() {
-    setLoading(true);
+  async function loadCandidates(targetPage = page) {
+    const requestId = ++latestLoadRef.current;
+    const isInitialLoad = candidates.length === 0 && loading;
+    if (isInitialLoad) setLoading(true);
+    else setFetchingCandidates(true);
     try {
-      const res = await api.get('/candidates');
+      const res = await api.get('/candidates', {
+        params: {
+          page: targetPage,
+          limit: PAGE_SIZE,
+          search: debouncedSearch.trim() || undefined,
+          requisitionId: requisitionFilter !== 'all' ? requisitionFilter : undefined,
+          sort: dateSort,
+        },
+      });
+      if (requestId !== latestLoadRef.current) return;
       setCandidates(res.data.candidates);
+      setFilterRequisitions(res.data.requisitionOptions || []);
+      setPagination(res.data.pagination || { total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+      setPage(res.data.pagination?.page || 1);
     } finally {
-      setLoading(false);
+      if (requestId === latestLoadRef.current) {
+        setLoading(false);
+        setFetchingCandidates(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadCandidates();
     api.get('/requisitions', { params: { status: 'open' } }).then((res) => setRequisitions(res.data.requisitions));
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebouncedSearch(search), 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    loadCandidates(1);
+  }, [debouncedSearch, requisitionFilter, dateSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -367,38 +398,6 @@ export default function Candidates() {
       .catch(() => toast.error(`Could not copy the ${label.toLowerCase()}.`));
   }
 
-  const query = search.trim().toLowerCase();
-  const attachedRequisitions = useMemo(() => {
-    const unique = new Map();
-    candidates.forEach((candidate) => {
-      (candidate.applications || []).forEach((application) => {
-        if (application.requisitionId && application.title) {
-          unique.set(application.requisitionId, application.title);
-        }
-      });
-    });
-    return [...unique.entries()]
-      .map(([id, title]) => ({ id, title }))
-      .sort((a, b) => a.title.localeCompare(b.title));
-  }, [candidates]);
-
-  const filtered = useMemo(() => candidates
-    .filter((candidate) => {
-      const matchesSearch = !query
-        || `${candidate.name || ''} ${candidate.email || ''} ${candidate.phone || ''}`.toLowerCase().includes(query);
-      const matchesRequisition = requisitionFilter === 'all'
-        || (candidate.applications || []).some((application) => application.requisitionId === requisitionFilter);
-      return matchesSearch && matchesRequisition;
-    })
-    .sort((a, b) => {
-      const difference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return dateSort === 'oldest' ? difference : -difference;
-    }), [candidates, query, requisitionFilter, dateSort]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
   // Requisitions this candidate isn't on yet — attaching twice is a guaranteed 409.
   const availableRequisitions = attachFor
     ? requisitions.filter((r) => !(attachFor.applications || []).some((a) => a.requisitionId === r._id))
@@ -415,7 +414,7 @@ export default function Candidates() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Candidates</h1>
             <p className="text-sm text-muted-foreground">
-              {loading ? 'Loading…' : `${candidates.length} total`}
+              {loading ? 'Loading…' : `${pagination.total} ${search || requisitionFilter !== 'all' ? 'matching' : 'total'}`}
             </p>
           </div>
         </div>
@@ -432,7 +431,7 @@ export default function Candidates() {
       </div>
 
       {/* ---------- search ---------- */}
-      {(candidates.length > 0 || loading) && (
+      {(pagination.total > 0 || loading || search || requisitionFilter !== 'all') && (
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -459,7 +458,7 @@ export default function Candidates() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Job Openings</SelectItem>
-              {attachedRequisitions.map((requisition) => (
+              {filterRequisitions.map((requisition) => (
                 <SelectItem key={requisition.id} value={requisition.id}>{requisition.title}</SelectItem>
               ))}
             </SelectContent>
@@ -493,7 +492,7 @@ export default function Candidates() {
                 </div>
               ))}
             </div>
-          ) : candidates.length === 0 ? (
+          ) : pagination.total === 0 && !search && requisitionFilter === 'all' ? (
             <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
                 <Users className="h-5 w-5 text-muted-foreground" />
@@ -509,7 +508,7 @@ export default function Candidates() {
                 New Candidate
               </Button>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : candidates.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
               <p className="text-sm font-medium text-foreground">
                 {search ? `No matches for “${search}”` : 'No matching candidates'}
@@ -538,7 +537,7 @@ export default function Candidates() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginated.map((c) => (
+                {candidates.map((c) => (
                   <TableRow key={c._id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -654,20 +653,20 @@ export default function Candidates() {
       </Card>
 
       {/* ---------- pagination ---------- */}
-      {!loading && filtered.length > PAGE_SIZE && (
+       {!loading && pagination.total > PAGE_SIZE && (
         <div className="mt-3 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+             Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
+            <Button variant="outline" size="sm" onClick={() => loadCandidates(pagination.page - 1)} disabled={fetchingCandidates || pagination.page <= 1}>
               Previous
             </Button>
-            <span className="text-xs text-muted-foreground">Page {safePage} of {totalPages}</span>
+            <span className="text-xs text-muted-foreground">Page {pagination.page} of {pagination.totalPages}</span>
             <Button
               variant="outline" size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage === totalPages}
+              onClick={() => loadCandidates(pagination.page + 1)}
+              disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
             >
               Next
             </Button>

@@ -15,6 +15,7 @@ router.use(requireAuth);
 router.post('/generate-field', requisitionController.generateField);
 router.post('/', requisitionController.create);
 router.get('/', requisitionController.list);
+router.get('/:id/scorecard', requisitionController.getScorecard);
 router.get('/:id', requisitionController.getOne);
 router.patch('/:id', requisitionController.update);
 router.delete('/:id', requisitionController.remove);

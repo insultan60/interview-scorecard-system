@@ -19,7 +19,7 @@ const DISPOSITION_BADGE = {
   NO_HIRE: 'bg-red-100 text-red-800 border-red-200 hover:bg-red-100',
 };
 
-const PAGE_SIZE = 1;
+const PAGE_SIZE = 10;
 
 export default function RequisitionCandidates() {
   const { id } = useParams();

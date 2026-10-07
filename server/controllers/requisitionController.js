@@ -490,7 +490,8 @@ const getOne = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
 
-  const scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : null;
+  // The scorecard is loaded separately when its tab is opened.
+  const scorecard = null;
 
   const query = { requisitionId: requisition._id };
 
@@ -503,7 +504,11 @@ const getOne = asyncHandler(async (req, res) => {
   }
 
   if (req.query.candidateId) {
-    query.candidateId = req.query.candidateId;
+    // This query is later used in an aggregation pipeline, which unlike a
+    // Mongoose find() query does not cast URL strings to ObjectIds for us.
+    query.candidateId = mongoose.isValidObjectId(req.query.candidateId)
+      ? new mongoose.Types.ObjectId(req.query.candidateId)
+      : { $in: [] };
   }
 
   if (req.query.stageKey && req.query.stageKey !== 'all') {
@@ -921,6 +926,14 @@ const ranking = asyncHandler(async (req, res) => {
   });
 
   res.json({ ranking: ranked });
+});
+
+/** GET /api/requisitions/:id/scorecard — lazy scorecard data for the detail tab. */
+const getScorecard = asyncHandler(async (req, res) => {
+  const requisition = await Requisition.findById(req.params.id).select('scorecardId');
+  if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
+  const scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : null;
+  res.json({ scorecard });
 });
 
 /**
@@ -1420,7 +1433,7 @@ const applyPublic = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  create, list, getOne, update, remove, duplicate,
+  create, list, getOne, getScorecard, update, remove, duplicate,
   generateScorecard: generateScorecardHandler,
   cloneScorecard,
   updateScorecard,

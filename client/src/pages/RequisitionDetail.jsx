@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -48,6 +49,9 @@ export default function RequisitionDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingScorecard, setSavingScorecard] = useState(false);
+  const [activeTab, setActiveTab] = useState('job');
+  const [scorecardData, setScorecardData] = useState(null);
+  const [loadingScorecard, setLoadingScorecard] = useState(false);
   const [goingToInterview, setGoingToInterview] = useState(null);
   const [stageLinksByApp, setStageLinksByApp] = useState({});
   const [savingStatus, setSavingStatus] = useState(false);
@@ -190,6 +194,19 @@ export default function RequisitionDetail() {
     load(1);
   }, [id, debouncedCandidateSearch, dispositionFilter, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (activeTab !== 'scorecard' || scorecardData) return;
+    setLoadingScorecard(true);
+    api.get(`/requisitions/${id}/scorecard`)
+      .then((res) => setScorecardData(res.data.scorecard || null))
+      .finally(() => setLoadingScorecard(false));
+  }, [activeTab, id, scorecardData]);
+
+  useEffect(() => {
+    setScorecardData(null);
+    setActiveTab('job');
+  }, [id]);
+
   async function handleSaveScorecard(stages) {
     const hasEmptyStage = stages.some((s) => !s.attributes || s.attributes.length === 0);
     if (hasEmptyStage) {
@@ -308,7 +325,8 @@ export default function RequisitionDetail() {
   }
   if (!data) return <div className="text-muted-foreground">Job Opening not found.</div>;
 
-  const { requisition, scorecard, applications } = data;
+  const { requisition, applications } = data;
+  const scorecard = scorecardData;
   const canStartNewWork = requisition.status === 'open';
   const stageLabels = Object.fromEntries(requisition.stages.map((s) => [s.key, s.label]));
   // Applications are already filtered, ranked, and sliced by the server.
@@ -384,7 +402,16 @@ export default function RequisitionDetail() {
         </Button>
       </div>
 
-      <Card className="mt-6 overflow-hidden border-slate-200 bg-white shadow-sm">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+        <TabsList>
+          <TabsTrigger value="job">Job Opening</TabsTrigger>
+          <TabsTrigger value="scorecard">Scorecard</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <div className="flex flex-col">
+      {activeTab === 'job' && (
+      <Card className="order-2 mt-6 overflow-hidden border-slate-200 bg-white shadow-sm">
         <CardHeader className="flex-row items-center justify-between py-4">
           <CardTitle>Job Opening Information</CardTitle>
           <Button type="button" variant="outline" size="sm" onClick={() => setJobInfoOpen((open) => !open)} className="gap-1.5">
@@ -464,9 +491,10 @@ export default function RequisitionDetail() {
           </section>
         </CardContent>}
       </Card>
+      )}
 
       {/* ---------- candidates & ranking ---------- */}
-      <Card className="mt-6">
+      <Card className="order-1 mt-6">
         <CardHeader className="space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
           <div>
             <CardTitle>Candidates & Ranking</CardTitle>
@@ -736,15 +764,18 @@ export default function RequisitionDetail() {
                 )}
         </CardContent>
       </Card>
+      </div>
 
       {/* ---------- scorecard ---------- */}
-          {scorecard?.stages?.length > 0 && (
+          {activeTab === 'scorecard' && (
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle>Scorecard</CardTitle>
               </CardHeader>
               <CardContent>
-                {scorecard ? (
+                {loadingScorecard ? (
+                  <div className="space-y-3"><Skeleton className="h-5 w-40" /><Skeleton className="h-32 w-full" /></div>
+                ) : scorecard ? (
                   <ScorecardEditor
                     scorecard={scorecard}
                     stageLabels={stageLabels}
