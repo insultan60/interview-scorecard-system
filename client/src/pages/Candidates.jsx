@@ -435,22 +435,22 @@ export default function Candidates() {
       {(candidates.length > 0 || loading) && (
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search by name, email or phone…"
-            className="pl-9 pr-9"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => { setSearch(''); setPage(1); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Search by name, email or phone…"
+              className="pl-9 pr-9"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           <Select value={requisitionFilter} onValueChange={(value) => { setRequisitionFilter(value); setPage(1); }}>
@@ -743,149 +743,147 @@ export default function Candidates() {
         setBulkImportOpen(open);
         if (!open) setBulkRows([]);
       }}>
-       <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
-  <DialogHeader className="shrink-0">
-    <DialogTitle>Import candidates from CSV</DialogTitle>
-    <DialogDescription>
-      Your CSV should contain the columns <b>name</b>, <b>email</b>, <b>phone</b> and <b>notes</b>.
-      Name and email are required. Phone and notes are optional, must be valid if provided.
-    </DialogDescription>
-  </DialogHeader>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Import candidates from CSV</DialogTitle>
+            <DialogDescription>
+              Your CSV should contain the columns <b>name</b>, <b>email</b>, <b>phone</b> and <b>notes</b>.
+              Name and email are required. Phone and notes are optional, must be valid if provided.
+            </DialogDescription>
+          </DialogHeader>
 
-  {/* CSV upload */}
-  <div className="shrink-0 flex flex-wrap items-center gap-3">
-    <Input
-      type="file"
-      accept=".csv,text/csv"
-      onChange={(event) => handleBulkFile(event.target.files?.[0])}
-      className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
-    />
+          {/* CSV upload */}
+          <div className="shrink-0 flex flex-wrap items-center gap-3">
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => handleBulkFile(event.target.files?.[0])}
+              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+            />
 
-    <Button
-      type="button"
-      variant="link"
-      className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]"
-      onClick={downloadBulkTemplate}
-    >
-      Download CSV Template
-    </Button>
-  </div>
+            <Button
+              type="button"
+              variant="link"
+              className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]"
+              onClick={downloadBulkTemplate}
+            >
+              Download CSV Template
+            </Button>
+          </div>
 
-  {/* Preview */}
-  {bulkRows.length > 0 && (() => {
-    const validCount = bulkRows.filter(
-      (row) => row.errors.length === 0
-    ).length;
+          {/* Preview */}
+          {bulkRows.length > 0 && (() => {
+            const validCount = bulkRows.filter(
+              (row) => row.errors.length === 0
+            ).length;
 
-    const invalidCount = bulkRows.length - validCount;
+            const invalidCount = bulkRows.length - validCount;
 
-    return (
-      <div className="flex flex-1 flex-col min-h-0 space-y-3">
-        {/* Summary */}
-        <p className="shrink-0 text-sm text-muted-foreground">
-          {validCount} ready to import
-          {invalidCount
-            ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention`
-            : ''}
-        </p>
+            return (
+              <div className="flex flex-1 flex-col min-h-0 space-y-3">
+                {/* Summary */}
+                <p className="shrink-0 text-sm text-muted-foreground">
+                  {validCount} ready to import
+                  {invalidCount
+                    ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention`
+                    : ''}
+                </p>
 
-        {/* ONLY THE TABLE SCROLLS */}
-        <div className="flex-1 min-h-0 overflow-auto rounded-md border">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              <TableRow>
-                <TableHead>Row</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
+                {/* ONLY THE TABLE SCROLLS */}
+                <div className="flex-1 min-h-0 overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-10 bg-background">
+                      <TableRow>
+                        <TableHead>Row</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Notes</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
 
-            <TableBody>
-              {bulkRows.map((row) => (
-                <TableRow
-                  key={row.rowNumber}
-                  className={
-                    row.errors.length > 0
-                      ? 'bg-red-50/60'
-                      : ''
-                  }
-                >
-                  <TableCell>{row.rowNumber}</TableCell>
+                    <TableBody>
+                      {bulkRows.map((row) => (
+                        <TableRow
+                          key={row.rowNumber}
+                          className={
+                            row.errors.length > 0
+                              ? 'bg-red-50/60'
+                              : ''
+                          }
+                        >
+                          <TableCell>{row.rowNumber}</TableCell>
 
-                  <TableCell>
-                    {row.name || '—'}
-                  </TableCell>
+                          <TableCell>
+                            {row.name || '—'}
+                          </TableCell>
 
-                  <TableCell>
-                    {row.email || '—'}
-                  </TableCell>
+                          <TableCell>
+                            {row.email || '—'}
+                          </TableCell>
 
-                  <TableCell>
-                    {row.phone || '—'}
-                  </TableCell>
+                          <TableCell>
+                            {row.phone || '—'}
+                          </TableCell>
 
-                  <TableCell
-                    className="max-w-[10rem] truncate"
-                    title={row.notes}
-                  >
-                    {row.notes || '—'}
-                  </TableCell>
+                          <TableCell
+                            className="max-w-[10rem] truncate"
+                            title={row.notes}
+                          >
+                            {row.notes || '—'}
+                          </TableCell>
 
-                  <TableCell
-                    className={
-                      row.errors.length > 0
-                        ? 'text-red-600'
-                        : 'text-green-700'
-                    }
-                  >
-                    {row.errors.length > 0
-                      ? row.errors.join(', ')
-                      : 'Ready'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-    );
-  })()}
+                          <TableCell
+                            className={
+                              row.errors.length > 0
+                                ? 'text-red-600'
+                                : 'text-green-700'
+                            }
+                          >
+                            {row.errors.length > 0
+                              ? row.errors.join(', ')
+                              : 'Ready'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            );
+          })()}
 
-  {/* Buttons */}
-  <DialogFooter className="shrink-0 border-t pt-4 mt-auto">
-    <Button
-      type="button"
-      variant="outline"
-      onClick={() => setBulkImportOpen(false)}
-      disabled={importing}
-    >
-      Cancel
-    </Button>
+          {/* Buttons */}
+          <DialogFooter className="shrink-0 border-t pt-4 mt-auto">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBulkImportOpen(false)}
+              disabled={importing}
+            >
+              Cancel
+            </Button>
 
-    <Button
-      type="button"
-      onClick={handleBulkImport}
-      disabled={
-        importing ||
-        bulkRows.filter((row) => row.errors.length === 0).length === 0
-      }
-      className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
-    >
-      {importing
-        ? 'Importing…'
-        : `Import ${
-            bulkRows.filter((row) => row.errors.length === 0).length || ''
-          } candidate${
-            bulkRows.filter((row) => row.errors.length === 0).length === 1
-              ? ''
-              : 's'
-          }`}
-    </Button>
-  </DialogFooter>
-</DialogContent>
+            <Button
+              type="button"
+              onClick={handleBulkImport}
+              disabled={
+                importing ||
+                bulkRows.filter((row) => row.errors.length === 0).length === 0
+              }
+              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            >
+              {importing
+                ? 'Importing…'
+                : `Import ${bulkRows.filter((row) => row.errors.length === 0).length || ''
+                } candidate${bulkRows.filter((row) => row.errors.length === 0).length === 1
+                  ? ''
+                  : 's'
+                }`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
 
       </Dialog>
 

@@ -148,7 +148,7 @@ export default function RequisitionDetail() {
       return;
     }
     if (!app.currentStageKey) {
-      toast.error('This candidate has no remaining stage — check their hiring process status.');
+      toast.error('This candidate has no remaining stage — check their hiring stages status.');
       return;
     }
     setGoingToInterview(app._id);
