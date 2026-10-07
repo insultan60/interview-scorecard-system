@@ -14,6 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -57,7 +59,7 @@ export default function RequisitionDetail() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [debouncedCandidateSearch, setDebouncedCandidateSearch] = useState('');
-  const [dispositionFilter, setDispositionFilter] = useState('all');
+  const [dispositionFilters, setDispositionFilters] = useState(['in_progress', 'HIRE', 'MAYBE']);
   const [fetchingCandidates, setFetchingCandidates] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
@@ -138,8 +140,10 @@ export default function RequisitionDetail() {
     setPage(1);
   }
 
-  function handleDispositionFilterChange(value) {
-    setDispositionFilter(value);
+  function toggleDispositionFilter(value) {
+    setDispositionFilters((current) => (
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    ));
     setPage(1);
   }
 
@@ -154,7 +158,7 @@ export default function RequisitionDetail() {
         page: targetPage,
         limit: PAGE_SIZE,
         search: debouncedCandidateSearch.trim() || undefined,
-        disposition: dispositionFilter !== 'all' ? dispositionFilter : undefined,
+        disposition: dispositionFilters.length ? dispositionFilters.join(',') : 'none',
         candidateId: candidateIdFromUrl || undefined,
       };
 
@@ -192,7 +196,7 @@ export default function RequisitionDetail() {
 
   useEffect(() => {
     load(1);
-  }, [id, debouncedCandidateSearch, dispositionFilter, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, debouncedCandidateSearch, dispositionFilters, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab !== 'scorecard' || scorecardData) return;
@@ -332,7 +336,7 @@ export default function RequisitionDetail() {
   // Applications are already filtered, ranked, and sliced by the server.
   const displayApplications = applications || [];
   const hasActiveCandidateFilter = Boolean(candidateSearch.trim())
-    || dispositionFilter !== 'all'
+    || dispositionFilters.length !== 4
     || Boolean(candidateIdFromUrl);
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
   const employmentDetails = {
@@ -503,16 +507,27 @@ export default function RequisitionDetail() {
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Select value={dispositionFilter} onValueChange={handleDispositionFilterChange}>
-                <SelectTrigger className="h-8 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="HIRE">Hire</SelectItem>
-                  <SelectItem value="MAYBE">Maybe</SelectItem>
-                  <SelectItem value="NO_HIRE">No Hire</SelectItem>
-                </SelectContent>
-              </Select>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-40">
+                    Statuses ({dispositionFilters.length}/4)
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44 p-2">
+                  {[
+                    ['in_progress', 'In Progress'],
+                    ['HIRE', 'Hire'],
+                    ['MAYBE', 'Maybe'],
+                    ['NO_HIRE', 'No Hire'],
+                  ].map(([value, label]) => (
+                    <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted">
+                      <Checkbox checked={dispositionFilters.includes(value)} onCheckedChange={() => toggleDispositionFilter(value)} />
+                      {label}
+                    </label>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <div className="relative w-full sm:w-56">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input

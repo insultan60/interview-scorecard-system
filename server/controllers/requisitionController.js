@@ -496,10 +496,19 @@ const getOne = asyncHandler(async (req, res) => {
   const query = { requisitionId: requisition._id };
 
   if (req.query.disposition) {
-    if (req.query.disposition === 'in_progress') {
-      query.disposition = null;
-    } else if (req.query.disposition !== 'all') {
-      query.disposition = req.query.disposition;
+    const dispositions = String(req.query.disposition).split(',').filter(Boolean);
+    if (dispositions.includes('none')) {
+      query._id = { $in: [] };
+    } else if (!dispositions.includes('all')) {
+      const includeInProgress = dispositions.includes('in_progress');
+      const scoredDispositions = dispositions.filter((value) => ['HIRE', 'MAYBE', 'NO_HIRE'].includes(value));
+      if (includeInProgress && scoredDispositions.length) {
+        query.$or = [{ disposition: null }, { disposition: { $in: scoredDispositions } }];
+      } else if (includeInProgress) {
+        query.disposition = null;
+      } else {
+        query.disposition = { $in: scoredDispositions };
+      }
     }
   }
 
