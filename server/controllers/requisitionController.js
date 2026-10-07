@@ -483,25 +483,83 @@ const list = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/requisitions/:id
- * Returns one requisition with its scorecard and current (persisted) ranking.
+ * Returns one requisition with its scorecard and server-paginated applications.
+ * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&candidateId=...
  */
 const getOne = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
 
   const scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : null;
-  const applications = await Application.find({ requisitionId: requisition._id })
-    .populate('candidateId', 'name email');
 
-  applications.sort((a, b) => {
-    if (a.rank === null || a.rank === undefined) return 1;
-    if (b.rank === null || b.rank === undefined) return -1;
-    return a.rank - b.rank;
-  });
+  const query = { requisitionId: requisition._id };
+
+  if (req.query.disposition) {
+    if (req.query.disposition === 'in_progress') {
+      query.disposition = null;
+    } else if (req.query.disposition !== 'all') {
+      query.disposition = req.query.disposition;
+    }
+  }
+
+  if (req.query.candidateId) {
+    query.candidateId = req.query.candidateId;
+  }
+
+  if (req.query.search && req.query.search.trim()) {
+    const searchRegex = new RegExp(escapeRegex(req.query.search.trim()), 'i');
+    const matchingCandidates = await Candidate.find({
+      $or: [{ name: searchRegex }, { email: searchRegex }],
+    }).select('_id').lean();
+
+    const candidateIds = matchingCandidates.map((c) => c._id);
+    if (query.candidateId) {
+      const targetCid = String(query.candidateId);
+      query.candidateId = { $in: candidateIds.filter((cid) => String(cid) === targetCid) };
+    } else {
+      query.candidateId = { $in: candidateIds };
+    }
+  }
+
+  const totalApplications = await Application.countDocuments(query);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+  const totalPages = Math.max(1, Math.ceil(totalApplications / limit));
+  const requestedPage = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const page = Math.min(requestedPage, totalPages);
+  const skip = (page - 1) * limit;
+
+  // Put ranked applications first. A normal MongoDB ascending sort places
+  // null/missing ranks before rank 1, which is not the ranking shown in the UI.
+  const applications = await Application.aggregate([
+    { $match: query },
+    {
+      $addFields: {
+        _rankSort: {
+          $cond: [{ $ne: [{ $ifNull: ['$rank', null] }, null] }, 0, 1],
+        },
+      },
+    },
+    { $sort: { _rankSort: 1, rank: 1, weightedTotal: -1, createdAt: -1 } },
+    { $skip: skip },
+    { $limit: limit },
+    { $project: { _rankSort: 0 } },
+  ]);
+  await Application.populate(applications, { path: 'candidateId', select: 'name email' });
 
   const requisitionResponse = requisition.toObject();
   if (requisitionResponse.status === 'on_hold') requisitionResponse.status = 'paused';
-  res.json({ requisition: requisitionResponse, scorecard, applications });
+
+  res.json({
+    requisition: requisitionResponse,
+    scorecard,
+    applications,
+    pagination: {
+      total: totalApplications,
+      page,
+      limit,
+      totalPages,
+    },
+  });
 });
 
 /**

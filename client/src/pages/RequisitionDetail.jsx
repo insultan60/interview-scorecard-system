@@ -1,5 +1,5 @@
 import RichTextViewer from '../components/RichTextViewer';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy, Play, Trash2 } from 'lucide-react';
@@ -50,10 +50,11 @@ export default function RequisitionDetail() {
   const [savingScorecard, setSavingScorecard] = useState(false);
   const [goingToInterview, setGoingToInterview] = useState(null);
   const [stageLinksByApp, setStageLinksByApp] = useState({});
-  const [ranking, setRanking] = useState([]);
   const [savingStatus, setSavingStatus] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState('');
+  const [debouncedCandidateSearch, setDebouncedCandidateSearch] = useState('');
   const [dispositionFilter, setDispositionFilter] = useState('all');
+  const [fetchingCandidates, setFetchingCandidates] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
   const [removingCandidate, setRemovingCandidate] = useState(false);
@@ -63,6 +64,7 @@ export default function RequisitionDetail() {
   const [decisionDraft, setDecisionDraft] = useState('hired');
   const [decisionReasonDraft, setDecisionReasonDraft] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
+  const latestLoadRef = useRef(0);
 
   async function handleConfirmDecision(applicationId) {
     if (decisionDraft === 'rejected' && !decisionReasonDraft.trim()) {
@@ -123,23 +125,45 @@ export default function RequisitionDetail() {
     }
   }
 
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
+
   function handleCandidateSearchChange(value) {
     setCandidateSearch(value);
+    setPage(1);
   }
 
   function handleDispositionFilterChange(value) {
     setDispositionFilter(value);
+    setPage(1);
   }
 
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await api.get(`/requisitions/${id}`);
-      setData(res.data);
+  async function load(targetPage = page) {
+    const requestId = ++latestLoadRef.current;
+    const isInitialLoad = !data;
+    if (isInitialLoad) setLoading(true);
+    else setFetchingCandidates(true);
 
-      console.log(res.data);
+    try {
+      const params = {
+        page: targetPage,
+        limit: PAGE_SIZE,
+        search: debouncedCandidateSearch.trim() || undefined,
+        disposition: dispositionFilter !== 'all' ? dispositionFilter : undefined,
+        candidateId: candidateIdFromUrl || undefined,
+      };
+
+      const res = await api.get(`/requisitions/${id}`, { params });
+      if (requestId !== latestLoadRef.current) return;
+      setData(res.data);
+      if (res.data.pagination) {
+        setPagination(res.data.pagination);
+        setPage(res.data.pagination.page);
+      }
 
       const { data: interviewData } = await api.get('/interviews', { params: { requisitionId: id } });
+      if (requestId !== latestLoadRef.current) return;
       const byApp = {};
       interviewData.interviews.forEach((iv) => {
         if (!byApp[iv.applicationId]) byApp[iv.applicationId] = {};
@@ -147,14 +171,24 @@ export default function RequisitionDetail() {
       });
       setStageLinksByApp(byApp);
 
-      const { data: rankingData } = await api.get(`/requisitions/${id}/ranking`);
-      setRanking(rankingData.ranking);
     } finally {
-      setLoading(false);
+      if (requestId === latestLoadRef.current) {
+        setLoading(false);
+        setFetchingCandidates(false);
+      }
     }
   }
 
-  useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedCandidateSearch(candidateSearch);
+    }, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [candidateSearch]);
+
+  useEffect(() => {
+    load(1);
+  }, [id, debouncedCandidateSearch, dispositionFilter, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSaveScorecard(stages) {
     const hasEmptyStage = stages.some((s) => !s.attributes || s.attributes.length === 0);
@@ -277,34 +311,11 @@ export default function RequisitionDetail() {
   const { requisition, scorecard, applications } = data;
   const canStartNewWork = requisition.status === 'open';
   const stageLabels = Object.fromEntries(requisition.stages.map((s) => [s.key, s.label]));
-  const candidateQuery = candidateSearch.trim().toLowerCase();
-  const filteredApplications = applications.filter((app) => {
-    if (candidateIdFromUrl && String(app.candidateId?._id || app.candidateId) !== candidateIdFromUrl) return false;
-    if (dispositionFilter === 'in_progress' && app.disposition) return false;
-    if (dispositionFilter !== 'all' && dispositionFilter !== 'in_progress' && app.disposition !== dispositionFilter) return false;
-    if (candidateQuery) {
-      const name = (app.candidateId?.name || '').toLowerCase();
-      const email = (app.candidateId?.email || '').toLowerCase();
-      if (!name.includes(candidateQuery) && !email.includes(candidateQuery)) return false;
-    }
-    return true;
-  });
-
-  const rankingByAppId = {};
-  (ranking || []).forEach((r) => {
-    if (r && r._id) rankingByAppId[r._id] = r;
-  });
-
-  const sortedApplications = [...filteredApplications].sort((a, b) => {
-    const rA = rankingByAppId[a._id];
-    const rB = rankingByAppId[b._id];
-    const scoreA = rA?.weightedTotal ?? a.weightedTotal ?? -Infinity;
-    const scoreB = rB?.weightedTotal ?? b.weightedTotal ?? -Infinity;
-    if (scoreA !== scoreB) return scoreB - scoreA;
-    const rankA = rA?.rank ?? a.rank ?? Infinity;
-    const rankB = rB?.rank ?? b.rank ?? Infinity;
-    return rankA - rankB;
-  });
+  // Applications are already filtered, ranked, and sliced by the server.
+  const displayApplications = applications || [];
+  const hasActiveCandidateFilter = Boolean(candidateSearch.trim())
+    || dispositionFilter !== 'all'
+    || Boolean(candidateIdFromUrl);
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
   const employmentDetails = {
     full_time: [['Working hours / shift', requisition.fullTimeDetails?.workingHours]],
@@ -460,11 +471,10 @@ export default function RequisitionDetail() {
           <div>
             <CardTitle>Candidates & Ranking</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {applications.length} candidate{applications.length === 1 ? '' : 's'} attached to this job opening
+              {pagination.total} candidate{pagination.total === 1 ? '' : 's'} {hasActiveCandidateFilter ? 'match the current filters' : 'attached to this job opening'}
             </p>
           </div>
-          {applications.length > 0 && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select value={dispositionFilter} onValueChange={handleDispositionFilterChange}>
                 <SelectTrigger className="h-8 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -496,11 +506,10 @@ export default function RequisitionDetail() {
               <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => navigate('/candidates')}>
                 Go to Candidates
               </Button>
-            </div>
-          )}
+          </div>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
-          {applications.length === 0 ? (
+          {pagination.total === 0 && !hasActiveCandidateFilter ? (
             <div className="flex flex-col items-center gap-3 py-10 px-4 text-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
                 <Users className="h-5 w-5 text-muted-foreground" />
@@ -513,256 +522,285 @@ export default function RequisitionDetail() {
               </div>
               <Button variant="outline" size="sm" onClick={() => navigate('/candidates')}>Go to Candidates</Button>
             </div>
-          ) : sortedApplications.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              {candidateQuery ? `No candidates match “${candidateSearch}”.` : 'No candidates match this filter.'}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/50">
-                    <TableHead className="w-16 font-semibold">Rank</TableHead>
-                    <TableHead className="min-w-[160px] font-semibold">Candidate</TableHead>
-                    <TableHead className="min-w-[260px] font-semibold">Hiring Stages</TableHead>
-                    <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
-                    <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
-                    <TableHead className="min-w-[150px] font-semibold">Final Decision</TableHead>
-                    <TableHead className="w-24 text-right font-semibold">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedApplications.map((app) => {
-                    const rankInfo = rankingByAppId[app._id] || {};
-                    const rank = rankInfo.rank ?? app.rank ?? null;
-                    const weightedTotal = rankInfo.weightedTotal ?? app.weightedTotal ?? null;
-                    const disposition = app.disposition || rankInfo.disposition || null;
-                    const finalDecision = app.finalDecision || rankInfo.finalDecision || null;
-                    const finalDecisionReason = app.finalDecisionReason || rankInfo.finalDecisionReason || '';
+          ) : displayApplications.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                {candidateSearch.trim() ? `No candidates match “${candidateSearch}”.` : 'No candidates match this filter.'}
+              </p>
+              ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50/50">
+                      <TableHead className="w-16 font-semibold">Rank</TableHead>
+                      <TableHead className="min-w-[160px] font-semibold">Candidate</TableHead>
+                      <TableHead className="min-w-[260px] font-semibold">Hiring Stages</TableHead>
+                      <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
+                      <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
+                      <TableHead className="min-w-[150px] font-semibold">Final Decision</TableHead>
+                      <TableHead className="w-24 text-right font-semibold">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayApplications.map((app) => {
+                      const rank = app.rank ?? null;
+                      const weightedTotal = app.weightedTotal ?? null;
+                      const disposition = app.disposition || null;
+                      const finalDecision = app.finalDecision || null;
+                      const finalDecisionReason = app.finalDecisionReason || '';
 
-                    const appLinks = stageLinksByApp[app._id] || {};
-                    const progressMap = Object.fromEntries(
-                      (requisition?.stages || []).map((stage) => {
-                        const p = (app.stageProgress || []).find((pr) => pr.stageKey === stage.key);
-                        const interviewId = appLinks[stage.key];
-                        const isFailed = p?.passed === false || p?.status === 'failed';
-                        const isPassed = !isFailed && (p?.passed === true || p?.status === 'passed' || (p?.status === 'approved' && p?.passed !== false));
-                        let status = isFailed ? 'failed' : isPassed ? 'passed' : p?.status || (interviewId ? 'scheduled' : 'pending');
-                        return [stage.key, { stageKey: stage.key, status, passed: isFailed ? false : isPassed ? true : p?.passed }];
-                      })
-                    );
-                    const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
-                    const allStagesPassed = enabledList.length > 0 && enabledList.every((s) => {
-                      const p = (app.stageProgress || []).find((pr) => pr.stageKey === s.key);
-                      return p && (p.passed === true || p.status === 'passed' || p.status === 'approved');
-                    });
-                    const hasFailed = disposition === 'NO_HIRE' || (app.stageProgress || []).some((p) => p.status === 'failed');
-                    const isGoDisabled = !canStartNewWork || goingToInterview === app._id || !app.currentStageKey || hasFailed || allStagesPassed;
+                      const appLinks = stageLinksByApp[app._id] || {};
+                      const progressMap = Object.fromEntries(
+                        (requisition?.stages || []).map((stage) => {
+                          const p = (app.stageProgress || []).find((pr) => pr.stageKey === stage.key);
+                          const interviewId = appLinks[stage.key];
+                          const isFailed = p?.passed === false || p?.status === 'failed';
+                          const isPassed = !isFailed && (p?.passed === true || p?.status === 'passed' || (p?.status === 'approved' && p?.passed !== false));
+                          let status = isFailed ? 'failed' : isPassed ? 'passed' : p?.status || (interviewId ? 'scheduled' : 'pending');
+                          return [stage.key, { stageKey: stage.key, status, passed: isFailed ? false : isPassed ? true : p?.passed }];
+                        })
+                      );
+                      const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
+                      const allStagesPassed = enabledList.length > 0 && enabledList.every((s) => {
+                        const p = (app.stageProgress || []).find((pr) => pr.stageKey === s.key);
+                        return p && (p.passed === true || p.status === 'passed' || p.status === 'approved');
+                      });
+                      const hasFailed = disposition === 'NO_HIRE' || (app.stageProgress || []).some((p) => p.status === 'failed');
+                      const isGoDisabled = !canStartNewWork || goingToInterview === app._id || !app.currentStageKey || hasFailed || allStagesPassed;
 
-                    return (
-                      <TableRow key={app._id} className="hover:bg-slate-50/50">
-                        <TableCell className="font-semibold text-slate-600 align-middle">
-                          {rank ? `#${rank}` : '—'}
-                        </TableCell>
+                      return (
+                        <TableRow key={app._id} className="hover:bg-slate-50/50">
+                          <TableCell className="font-semibold text-slate-600 align-middle">
+                            {rank ? `#${rank}` : '—'}
+                          </TableCell>
 
-                        <TableCell className="align-middle">
-                          <div className="font-medium text-foreground">{app.candidateId?.name || 'Unknown'}</div>
-                          <div className="text-xs text-muted-foreground">{app.candidateId?.email}</div>
-                        </TableCell>
+                          <TableCell className="align-middle">
+                            <div className="font-medium text-foreground">{app.candidateId?.name || 'Unknown'}</div>
+                            <div className="text-xs text-muted-foreground">{app.candidateId?.email}</div>
+                          </TableCell>
 
-                        <TableCell className="align-middle">
-                          <PipelineStepper
-                            stages={requisition.stages}
-                            progress={progressMap}
-                            stageLinks={stageLinksByApp[app._id]}
-                            currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
-                            onStartStage={() => handleGoToInterview(app)}
-                            startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
-                            disabled={!canStartNewWork}
-                            hideScrollbar
-                          />
-                        </TableCell>
+                          <TableCell className="align-middle">
+                            <PipelineStepper
+                              stages={requisition.stages}
+                              progress={progressMap}
+                              stageLinks={stageLinksByApp[app._id]}
+                              currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
+                              onStartStage={() => handleGoToInterview(app)}
+                              startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
+                              disabled={!canStartNewWork}
+                              hideScrollbar
+                            />
+                          </TableCell>
 
-                        <TableCell className="text-center font-semibold text-slate-800 align-middle">
-                          {formatScore(weightedTotal)}
-                        </TableCell>
+                          <TableCell className="text-center font-semibold text-slate-800 align-middle">
+                            {formatScore(weightedTotal)}
+                          </TableCell>
 
-                        <TableCell className="text-center align-middle">
-                          {disposition ? (
-                            <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
-                              {formatDisposition(disposition)}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">In progress</span>
-                          )}
-                        </TableCell>
-
-                        <TableCell className="align-middle">
-                          {finalDecision ? (
-                            <div className="flex flex-col gap-0.5">
-                              <Badge variant="secondary" className={`font-normal w-fit ${DECISION_BADGE[finalDecision] || ''}`}>
-                                {DECISION_LABEL[finalDecision] || finalDecision}
+                          <TableCell className="text-center align-middle">
+                            {disposition ? (
+                              <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
+                                {formatDisposition(disposition)}
                               </Badge>
-                              {finalDecisionReason && (
-                                <span className="text-[11px] text-muted-foreground truncate max-w-[140px]" title={finalDecisionReason}>
-                                  {finalDecisionReason}
-                                </span>
-                              )}
-                            </div>
-                          ) : openDecisionRowId === app._id ? (
-                            <div className="flex flex-col gap-1.5 py-1 min-w-[140px]">
-                              <Select value={decisionDraft} onValueChange={setDecisionDraft}>
-                                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="hired">Hired</SelectItem>
-                                  <SelectItem value="rejected">Rejected</SelectItem>
-                                  <SelectItem value="withdrawn">Withdrawn</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Input
-                                value={decisionReasonDraft}
-                                onChange={(e) => setDecisionReasonDraft(e.target.value)}
-                                placeholder={decisionDraft === 'rejected' ? 'Reason (required)...' : 'Reason (optional)...'}
-                                className="h-7 text-xs"
-                              />
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => handleConfirmDecision(app._id)}
-                                  disabled={submittingDecision}
-                                  className="h-6 px-2 text-[11px] bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
-                                >
-                                  {submittingDecision ? 'Saving…' : 'Confirm'}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setOpenDecisionRowId(null)}
-                                  disabled={submittingDecision}
-                                  className="h-6 px-2 text-[11px]"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setOpenDecisionRowId(app._id);
-                                setDecisionDraft('hired');
-                                setDecisionReasonDraft('');
-                              }}
-                              className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5"
-                            >
-                              Record Decision
-                            </Button>
-                          )}
-                        </TableCell>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">In progress</span>
+                            )}
+                          </TableCell>
 
-                        <TableCell className="text-right align-middle">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              title={goingToInterview === app._id ? 'Opening interview…' : 'Go to Interview'}
-                              className="h-8 w-8 border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/10 hover:text-[#d21e2b]"
-                              onClick={() => handleGoToInterview(app)}
-                              disabled={isGoDisabled}
-                            >
-                              <Play className="h-4 w-4 fill-current" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              title="Remove candidate from job opening"
-                              className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                              onClick={() => setRemoveCandidateApp(app)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                          <TableCell className="align-middle">
+                            {finalDecision ? (
+                              <div className="flex flex-col gap-0.5">
+                                <Badge variant="secondary" className={`font-normal w-fit ${DECISION_BADGE[finalDecision] || ''}`}>
+                                  {DECISION_LABEL[finalDecision] || finalDecision}
+                                </Badge>
+                                {finalDecisionReason && (
+                                  <span className="text-[11px] text-muted-foreground truncate max-w-[140px]" title={finalDecisionReason}>
+                                    {finalDecisionReason}
+                                  </span>
+                                )}
+                              </div>
+                            ) : openDecisionRowId === app._id ? (
+                              <div className="flex flex-col gap-1.5 py-1 min-w-[140px]">
+                                <Select value={decisionDraft} onValueChange={setDecisionDraft}>
+                                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="hired">Hired</SelectItem>
+                                    <SelectItem value="rejected">Rejected</SelectItem>
+                                    <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  value={decisionReasonDraft}
+                                  onChange={(e) => setDecisionReasonDraft(e.target.value)}
+                                  placeholder={decisionDraft === 'rejected' ? 'Reason (required)...' : 'Reason (optional)...'}
+                                  className="h-7 text-xs"
+                                />
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => handleConfirmDecision(app._id)}
+                                    disabled={submittingDecision}
+                                    className="h-6 px-2 text-[11px] bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                                  >
+                                    {submittingDecision ? 'Saving…' : 'Confirm'}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setOpenDecisionRowId(null)}
+                                    disabled={submittingDecision}
+                                    className="h-6 px-2 text-[11px]"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setOpenDecisionRowId(app._id);
+                                  setDecisionDraft('hired');
+                                  setDecisionReasonDraft('');
+                                }}
+                                className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                              >
+                                Record Decision
+                              </Button>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-right align-middle">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                title={goingToInterview === app._id ? 'Opening interview…' : 'Go to Interview'}
+                                className="h-8 w-8 border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/10 hover:text-[#d21e2b]"
+                                onClick={() => handleGoToInterview(app)}
+                                disabled={isGoDisabled}
+                              >
+                                <Play className="h-4 w-4 fill-current" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                title="Remove candidate from job opening"
+                                className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => setRemoveCandidateApp(app)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
           )}
+              {!loading && pagination.total > PAGE_SIZE && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+                  <p className="text-xs text-muted-foreground">
+                    Showing {(pagination.page - 1) * PAGE_SIZE + 1}–{Math.min(pagination.page * PAGE_SIZE, pagination.total)} of {pagination.total} candidates
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => load(Math.max(1, pagination.page - 1))}
+                      disabled={fetchingCandidates || pagination.page <= 1}
+                      className="h-7 text-xs"
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-xs text-muted-foreground">Page {pagination.page} of {pagination.totalPages}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => load(Math.min(pagination.totalPages, pagination.page + 1))}
+                      disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
+                      className="h-7 text-xs"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+                )}
         </CardContent>
       </Card>
 
       {/* ---------- scorecard ---------- */}
-      {scorecard?.stages?.length > 0 && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Scorecard</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {scorecard ? (
-              <ScorecardEditor
-                scorecard={scorecard}
-                stageLabels={stageLabels}
-                onSave={handleSaveScorecard}
-                saving={savingScorecard}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">No scorecard generated yet.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+          {scorecard?.stages?.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Scorecard</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {scorecard ? (
+                  <ScorecardEditor
+                    scorecard={scorecard}
+                    stageLabels={stageLabels}
+                    onSave={handleSaveScorecard}
+                    saving={savingScorecard}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No scorecard generated yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-      {/* ---------- close confirmation ---------- */}
-      <AlertDialog open={pendingClose} onOpenChange={setPendingClose}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Close this job opening?</AlertDialogTitle>
-            <AlertDialogDescription>
-              New candidates will no longer be able to apply for this position using the public application link.
-              Existing candidates and their scores will remain available.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={savingStatus}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); setPendingClose(false); applyStatus('closed'); }}
-              disabled={savingStatus}
-              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
-            >
-              {savingStatus ? 'Closing…' : 'Close job'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          {/* ---------- close confirmation ---------- */}
+          <AlertDialog open={pendingClose} onOpenChange={setPendingClose}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Close this job opening?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  New candidates will no longer be able to apply for this position using the public application link.
+                  Existing candidates and their scores will remain available.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={savingStatus}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => { e.preventDefault(); setPendingClose(false); applyStatus('closed'); }}
+                  disabled={savingStatus}
+                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                >
+                  {savingStatus ? 'Closing…' : 'Close job'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-      <AlertDialog open={!!removeCandidateApp} onOpenChange={(open) => !open && setRemoveCandidateApp(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {removeCandidateApp?.candidateId?.name || 'candidate'} from this job opening?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently deletes their application, interviews, interview documents, scores, and audit records for this job opening. Their profile and applications to other job openings will remain. Calendar invitations created by this app will be cancelled first.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removingCandidate}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={removingCandidate}
-              onClick={(event) => { event.preventDefault(); handleRemoveCandidate(); }}
-              className="bg-red-600 text-white hover:bg-red-700"
-            >
-              {removingCandidate ? 'Removing…' : 'Remove candidate'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
+          <AlertDialog open={!!removeCandidateApp} onOpenChange={(open) => !open && setRemoveCandidateApp(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove {removeCandidateApp?.candidateId?.name || 'candidate'} from this job opening?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently deletes their application, interviews, interview documents, scores, and audit records for this job opening. Their profile and applications to other job openings will remain. Calendar invitations created by this app will be cancelled first.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={removingCandidate}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={removingCandidate}
+                  onClick={(event) => { event.preventDefault(); handleRemoveCandidate(); }}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                >
+                  {removingCandidate ? 'Removing…' : 'Remove candidate'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+        );
 }
