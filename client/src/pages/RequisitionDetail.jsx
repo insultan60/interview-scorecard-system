@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy, Play, Trash2 } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -528,7 +528,7 @@ export default function RequisitionDetail() {
                     <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
                     <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
                     <TableHead className="min-w-[150px] font-semibold">Final Decision</TableHead>
-                    <TableHead className="w-32 text-right font-semibold">Actions</TableHead>
+                    <TableHead className="w-24 text-right font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -667,19 +667,25 @@ export default function RequisitionDetail() {
                         <TableCell className="text-right align-middle">
                           <div className="flex items-center justify-end gap-1.5">
                             <Button
-                              variant="outline" size="sm"
-                              className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5 hover:text-[#d21e2b]"
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title={goingToInterview === app._id ? 'Opening interview…' : 'Go to Interview'}
+                              className="h-8 w-8 border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/10 hover:text-[#d21e2b]"
                               onClick={() => handleGoToInterview(app)}
                               disabled={isGoDisabled}
                             >
-                              {goingToInterview === app._id ? 'Opening…' : 'Go to Interview'}
+                              <Play className="h-4 w-4 fill-current" />
                             </Button>
                             <Button
-                              variant="outline" size="sm"
-                              className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title="Remove candidate from job opening"
+                              className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                               onClick={() => setRemoveCandidateApp(app)}
                             >
-                              Remove
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
