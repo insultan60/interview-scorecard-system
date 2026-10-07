@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy, Play, Trash2 } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy, Play, Trash2, UserRoundPlus } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -531,8 +531,27 @@ export default function RequisitionDetail() {
                   </button>
                 )}
               </div>
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => navigate('/candidates')}>
-                Go to Candidates
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => navigate('/candidates')}
+                title="Add candidate to this job opening"
+                aria-label="Add candidate to this job opening"
+              >
+                <UserRoundPlus className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => navigate(`/requisitions/${id}/candidates`)}
+                title="View candidates for this job opening"
+                aria-label="View candidates for this job opening"
+              >
+                <Users className="h-4 w-4" />
               </Button>
           </div>
         </CardHeader>
