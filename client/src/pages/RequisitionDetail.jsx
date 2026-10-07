@@ -6,13 +6,13 @@ import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy } from 'lucide-re
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
-import CandidateRankTable from '../components/CandidateRankTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -21,12 +21,19 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { formatDisposition } from '../utils/formatters';
+import { formatDisposition, formatScore } from '../utils/formatters';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
   MAYBE: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
   NO_HIRE: 'bg-red-100 text-red-800 hover:bg-red-100',
+};
+
+const DECISION_LABEL = { hired: 'Hired', rejected: 'Rejected', withdrawn: 'Withdrawn' };
+const DECISION_BADGE = {
+  hired: 'bg-green-100 text-green-800 hover:bg-green-100',
+  rejected: 'bg-red-100 text-red-800 hover:bg-red-100',
+  withdrawn: 'bg-gray-100 text-gray-700 hover:bg-gray-100',
 };
 
 const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
@@ -52,7 +59,31 @@ export default function RequisitionDetail() {
   const [removingCandidate, setRemovingCandidate] = useState(false);
   const [jobInfoOpen, setJobInfoOpen] = useState(false);
 
-  const [overrideModalApp, setOverrideModalApp] = useState(null);
+  const [openDecisionRowId, setOpenDecisionRowId] = useState(null);
+  const [decisionDraft, setDecisionDraft] = useState('hired');
+  const [decisionReasonDraft, setDecisionReasonDraft] = useState('');
+  const [submittingDecision, setSubmittingDecision] = useState(false);
+
+  async function handleConfirmDecision(applicationId) {
+    if (decisionDraft === 'rejected' && !decisionReasonDraft.trim()) {
+      toast.error('A reason is required when rejecting a candidate.');
+      return;
+    }
+    setSubmittingDecision(true);
+    try {
+      await api.patch(`/scoring/application/${applicationId}/decision`, {
+        decision: decisionDraft,
+        reason: decisionReasonDraft.trim() || undefined,
+      });
+      toast.success(`Decision recorded: ${DECISION_LABEL[decisionDraft]}.`);
+      setOpenDecisionRowId(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to record decision.');
+    } finally {
+      setSubmittingDecision(false);
+    }
+  }
   const [overrideReason, setOverrideReason] = useState('');
   const [savingOverride, setSavingOverride] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
@@ -258,6 +289,22 @@ export default function RequisitionDetail() {
     }
     return true;
   });
+
+  const rankingByAppId = {};
+  (ranking || []).forEach((r) => {
+    if (r && r._id) rankingByAppId[r._id] = r;
+  });
+
+  const sortedApplications = [...filteredApplications].sort((a, b) => {
+    const rA = rankingByAppId[a._id];
+    const rB = rankingByAppId[b._id];
+    const scoreA = rA?.weightedTotal ?? a.weightedTotal ?? -Infinity;
+    const scoreB = rB?.weightedTotal ?? b.weightedTotal ?? -Infinity;
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    const rankA = rA?.rank ?? a.rank ?? Infinity;
+    const rankB = rB?.rank ?? b.rank ?? Infinity;
+    return rankA - rankB;
+  });
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
   const employmentDetails = {
     full_time: [['Working hours / shift', requisition.fullTimeDetails?.workingHours]],
@@ -407,10 +454,15 @@ export default function RequisitionDetail() {
         </CardContent>}
       </Card>
 
-      {/* ---------- candidates ---------- */}
+      {/* ---------- candidates & ranking ---------- */}
       <Card className="mt-6">
         <CardHeader className="space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-          <CardTitle>Candidates</CardTitle>
+          <div>
+            <CardTitle>Candidates & Ranking</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {applications.length} candidate{applications.length === 1 ? '' : 's'} attached to this job opening
+            </p>
+          </div>
           {applications.length > 0 && (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select value={dispositionFilter} onValueChange={handleDispositionFilterChange}>
@@ -447,9 +499,9 @@ export default function RequisitionDetail() {
             </div>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 sm:p-6">
           {applications.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="flex flex-col items-center gap-3 py-10 px-4 text-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
                 <Users className="h-5 w-5 text-muted-foreground" />
               </div>
@@ -461,92 +513,183 @@ export default function RequisitionDetail() {
               </div>
               <Button variant="outline" size="sm" onClick={() => navigate('/candidates')}>Go to Candidates</Button>
             </div>
-          ) : filteredApplications.length === 0 ? (
+          ) : sortedApplications.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               {candidateQuery ? `No candidates match “${candidateSearch}”.` : 'No candidates match this filter.'}
             </p>
           ) : (
-            <ul className={`divide-y divide-border ${filteredApplications.length > 4 ? 'max-h-[22rem] overflow-y-auto pr-2' : ''}`}>
-              {filteredApplications.map((app) => {
-                const appLinks = stageLinksByApp[app._id] || {};
-                const progressMap = Object.fromEntries(
-                  (requisition?.stages || []).map((stage) => {
-                    const p = (app.stageProgress || []).find((pr) => pr.stageKey === stage.key);
-                    const interviewId = appLinks[stage.key];
-                    const threshold = stage.passThreshold ?? 3;
-                    const isFailed = p?.passed === false || p?.status === 'failed';
-                    const isPassed = !isFailed && (p?.passed === true || p?.status === 'passed' || (p?.status === 'approved' && p?.passed !== false));
-                    let status = isFailed ? 'failed' : isPassed ? 'passed' : p?.status || (interviewId ? 'scheduled' : 'pending');
-                    return [stage.key, { stageKey: stage.key, status, passed: isFailed ? false : isPassed ? true : p?.passed }];
-                  })
-                );
-                const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
-                const allStagesPassed = enabledList.length > 0 && enabledList.every((s) => {
-                  const p = (app.stageProgress || []).find((pr) => pr.stageKey === s.key);
-                  return p && (p.passed === true || p.status === 'passed' || p.status === 'approved');
-                });
-                const hasFailed = app.disposition === 'NO_HIRE' || (app.stageProgress || []).some((p) => p.status === 'failed');
-                const isGoDisabled = !canStartNewWork || goingToInterview === app._id || !app.currentStageKey || hasFailed || allStagesPassed;
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50/50">
+                    <TableHead className="w-16 font-semibold">Rank</TableHead>
+                    <TableHead className="min-w-[160px] font-semibold">Candidate</TableHead>
+                    <TableHead className="min-w-[260px] font-semibold">Hiring Stages</TableHead>
+                    <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
+                    <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
+                    <TableHead className="min-w-[150px] font-semibold">Final Decision</TableHead>
+                    <TableHead className="w-32 text-right font-semibold">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedApplications.map((app) => {
+                    const rankInfo = rankingByAppId[app._id] || {};
+                    const rank = rankInfo.rank ?? app.rank ?? null;
+                    const weightedTotal = rankInfo.weightedTotal ?? app.weightedTotal ?? null;
+                    const disposition = app.disposition || rankInfo.disposition || null;
+                    const finalDecision = app.finalDecision || rankInfo.finalDecision || null;
+                    const finalDecisionReason = app.finalDecisionReason || rankInfo.finalDecisionReason || '';
 
-                return (
-                  <li key={app._id} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:gap-4">
-                    <div className="min-w-0 lg:w-40 lg:flex-shrink-0">
-                      <div className="truncate text-sm font-medium text-foreground">{app.candidateId?.name || 'Unknown'}</div>
-                      <div className="truncate text-xs text-muted-foreground">{app.candidateId?.email}</div>
-                    </div>
+                    const appLinks = stageLinksByApp[app._id] || {};
+                    const progressMap = Object.fromEntries(
+                      (requisition?.stages || []).map((stage) => {
+                        const p = (app.stageProgress || []).find((pr) => pr.stageKey === stage.key);
+                        const interviewId = appLinks[stage.key];
+                        const isFailed = p?.passed === false || p?.status === 'failed';
+                        const isPassed = !isFailed && (p?.passed === true || p?.status === 'passed' || (p?.status === 'approved' && p?.passed !== false));
+                        let status = isFailed ? 'failed' : isPassed ? 'passed' : p?.status || (interviewId ? 'scheduled' : 'pending');
+                        return [stage.key, { stageKey: stage.key, status, passed: isFailed ? false : isPassed ? true : p?.passed }];
+                      })
+                    );
+                    const enabledList = (requisition?.stages || []).filter((s) => s.enabled);
+                    const allStagesPassed = enabledList.length > 0 && enabledList.every((s) => {
+                      const p = (app.stageProgress || []).find((pr) => pr.stageKey === s.key);
+                      return p && (p.passed === true || p.status === 'passed' || p.status === 'approved');
+                    });
+                    const hasFailed = disposition === 'NO_HIRE' || (app.stageProgress || []).some((p) => p.status === 'failed');
+                    const isGoDisabled = !canStartNewWork || goingToInterview === app._id || !app.currentStageKey || hasFailed || allStagesPassed;
 
-                    <div className="min-w-0 flex-1">
-                      <PipelineStepper
-                        stages={requisition.stages}
-                        progress={progressMap}
-                        stageLinks={stageLinksByApp[app._id]}
-                        currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
-                        onStartStage={() => handleGoToInterview(app)}
-                        startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
-                        disabled={!canStartNewWork}
-                        hideScrollbar
-                      />
-                    </div>
+                    return (
+                      <TableRow key={app._id} className="hover:bg-slate-50/50">
+                        <TableCell className="font-semibold text-slate-600 align-middle">
+                          {rank ? `#${rank}` : '—'}
+                        </TableCell>
 
-                    <div className="flex flex-shrink-0 items-center justify-between gap-3 lg:justify-end">
-                      {app.disposition ? (
-                        <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[app.disposition] || ''}`}>
-                          {formatDisposition(app.disposition)}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">In progress</span>
-                      )}
-                      <Button
-                        variant="outline" size="sm"
-                        className="border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5 hover:text-[#d21e2b]"
-                        onClick={() => handleGoToInterview(app)}
-                        disabled={isGoDisabled}
-                      >
-                        {goingToInterview === app._id ? 'Opening…' : 'Go to Interview'}
-                      </Button>
-                      <Button
-                        variant="outline" size="sm"
-                        className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                        onClick={() => setRemoveCandidateApp(app)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                        <TableCell className="align-middle">
+                          <div className="font-medium text-foreground">{app.candidateId?.name || 'Unknown'}</div>
+                          <div className="text-xs text-muted-foreground">{app.candidateId?.email}</div>
+                        </TableCell>
+
+                        <TableCell className="align-middle">
+                          <PipelineStepper
+                            stages={requisition.stages}
+                            progress={progressMap}
+                            stageLinks={stageLinksByApp[app._id]}
+                            currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
+                            onStartStage={() => handleGoToInterview(app)}
+                            startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
+                            disabled={!canStartNewWork}
+                            hideScrollbar
+                          />
+                        </TableCell>
+
+                        <TableCell className="text-center font-semibold text-slate-800 align-middle">
+                          {formatScore(weightedTotal)}
+                        </TableCell>
+
+                        <TableCell className="text-center align-middle">
+                          {disposition ? (
+                            <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
+                              {formatDisposition(disposition)}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">In progress</span>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="align-middle">
+                          {finalDecision ? (
+                            <div className="flex flex-col gap-0.5">
+                              <Badge variant="secondary" className={`font-normal w-fit ${DECISION_BADGE[finalDecision] || ''}`}>
+                                {DECISION_LABEL[finalDecision] || finalDecision}
+                              </Badge>
+                              {finalDecisionReason && (
+                                <span className="text-[11px] text-muted-foreground truncate max-w-[140px]" title={finalDecisionReason}>
+                                  {finalDecisionReason}
+                                </span>
+                              )}
+                            </div>
+                          ) : openDecisionRowId === app._id ? (
+                            <div className="flex flex-col gap-1.5 py-1 min-w-[140px]">
+                              <Select value={decisionDraft} onValueChange={setDecisionDraft}>
+                                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="hired">Hired</SelectItem>
+                                  <SelectItem value="rejected">Rejected</SelectItem>
+                                  <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                value={decisionReasonDraft}
+                                onChange={(e) => setDecisionReasonDraft(e.target.value)}
+                                placeholder={decisionDraft === 'rejected' ? 'Reason (required)...' : 'Reason (optional)...'}
+                                className="h-7 text-xs"
+                              />
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleConfirmDecision(app._id)}
+                                  disabled={submittingDecision}
+                                  className="h-6 px-2 text-[11px] bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                                >
+                                  {submittingDecision ? 'Saving…' : 'Confirm'}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setOpenDecisionRowId(null)}
+                                  disabled={submittingDecision}
+                                  className="h-6 px-2 text-[11px]"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setOpenDecisionRowId(app._id);
+                                setDecisionDraft('hired');
+                                setDecisionReasonDraft('');
+                              }}
+                              className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                            >
+                              Record Decision
+                            </Button>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="text-right align-middle">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5 hover:text-[#d21e2b]"
+                              onClick={() => handleGoToInterview(app)}
+                              disabled={isGoDisabled}
+                            >
+                              {goingToInterview === app._id ? 'Opening…' : 'Go to Interview'}
+                            </Button>
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              onClick={() => setRemoveCandidateApp(app)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* ---------- ranking ---------- */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Ranking</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CandidateRankTable ranking={ranking} onDecisionRecorded={load} />
         </CardContent>
       </Card>
 
