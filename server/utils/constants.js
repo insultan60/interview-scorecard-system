@@ -50,6 +50,7 @@ const AUDIT_ACTIONS = [
   'weight_change', 'disposition_change', 'final_decision',
   'provider_change', 'key_change', 'transcript_upload', 'consent_capture',
   'retention_purge', 'requisition_status_change', 'candidate_update',
+  'requisition_duplicated',
 ];
 
 /**

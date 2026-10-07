@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Copy } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -55,6 +55,23 @@ export default function RequisitionDetail() {
   const [overrideModalApp, setOverrideModalApp] = useState(null);
   const [overrideReason, setOverrideReason] = useState('');
   const [savingOverride, setSavingOverride] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+
+  async function handleDuplicate() {
+    setDuplicating(true);
+    try {
+      const res = await api.post(`/requisitions/${id}/duplicate`);
+      toast.success(`Duplicated "${requisition.title}" successfully!`);
+      if (res.data?.requisition?._id) {
+        navigate(`/requisitions/${res.data.requisition._id}`);
+      }
+    } catch (error) {
+      console.error('Failed to duplicate job opening:', error);
+      toast.error(error?.response?.data?.message || 'Failed to duplicate job opening.');
+    } finally {
+      setDuplicating(false);
+    }
+  }
 
   async function handleOverrideInitialScreening(passed) {
     if (!overrideModalApp) return;
@@ -294,6 +311,18 @@ export default function RequisitionDetail() {
         >
           <Link2 className="h-3.5 w-3.5 text-[#d21e2b]" />
           Copy Candidate Apply Link
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleDuplicate}
+          disabled={duplicating}
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
+        >
+          <Copy className="h-3.5 w-3.5 text-slate-600" />
+          {duplicating ? 'Duplicating…' : 'Duplicate Job Opening'}
         </Button>
       </div>
 

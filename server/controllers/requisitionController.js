@@ -638,6 +638,115 @@ const remove = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/requisitions/:id/duplicate
+ * Duplicates a job opening (requisition) without copying candidates or applications.
+ * Copies all metadata, employment details, job description, workplace, hiring process stages,
+ * screening criteria, questionnaire, and clones the scorecard if present.
+ */
+const duplicate = asyncHandler(async (req, res) => {
+  const sourceReq = await Requisition.findById(req.params.id);
+  if (!sourceReq) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
+  }
+
+  const newTitle = normalizeJobTitle(sourceReq.title);
+
+  const duplicateActiveOpening = await Requisition.findOne({
+    title: { $regex: `^${escapeRegex(newTitle)}$`, $options: 'i' },
+    status: 'open',
+  }).select('_id title').lean();
+
+  const stages = (sourceReq.stages || []).map((s) => ({
+    key: s.key,
+    label: s.label,
+    stageType: s.stageType,
+    inputType: s.inputType,
+    enabled: s.enabled,
+    order: s.order,
+    weight: s.weight,
+    passThreshold: s.passThreshold,
+  }));
+
+  const initialScreeningCriteria = (sourceReq.initialScreeningCriteria || []).map((c) => ({
+    criteria: c.criteria,
+    requirement: c.requirement,
+    minimumValue: c.minimumValue,
+    maximumValue: c.maximumValue,
+    relevantField: c.relevantField,
+    allowVirtualUniversityOngoing: c.allowVirtualUniversityOngoing,
+  }));
+
+  const questionnaire = (sourceReq.questionnaire || []).map((q) => ({
+    question: q.question,
+    idealAnswer: q.idealAnswer,
+    requireIdealAnswer: q.requireIdealAnswer,
+  }));
+
+  const newReqData = {
+    title: newTitle,
+    employmentType: sourceReq.employmentType || 'full_time',
+    fullTimeDetails: sourceReq.fullTimeDetails ? { ...sourceReq.fullTimeDetails } : undefined,
+    partTimeDetails: sourceReq.partTimeDetails ? { ...sourceReq.partTimeDetails } : undefined,
+    contractDetails: sourceReq.contractDetails ? { ...sourceReq.contractDetails } : undefined,
+    internshipDetails: sourceReq.internshipDetails ? { ...sourceReq.internshipDetails } : undefined,
+    temporaryDetails: sourceReq.temporaryDetails ? { ...sourceReq.temporaryDetails } : undefined,
+    location: sourceReq.location,
+    workplaceType: sourceReq.workplaceType,
+    officeLocation: sourceReq.officeLocation,
+    remoteRegion: sourceReq.remoteRegion,
+    jobDescription: sourceReq.jobDescription,
+    status: 'open',
+    pipelineTemplateId: sourceReq.pipelineTemplateId,
+    pipelineTemplateName: sourceReq.pipelineTemplateName,
+    stages,
+    hireThreshold: sourceReq.hireThreshold,
+    maybeThreshold: sourceReq.maybeThreshold,
+    initialScreeningCriteria,
+    questionnaire,
+    applicationDeadline: sourceReq.applicationDeadline,
+    aiScreeningEnabled: sourceReq.aiScreeningEnabled,
+    createdBy: req.user._id,
+  };
+
+  const newReq = await Requisition.create(newReqData);
+
+  // Clone scorecard if original had one
+  if (sourceReq.scorecardId) {
+    const sourceScorecard = await Scorecard.findById(sourceReq.scorecardId);
+    if (sourceScorecard) {
+      const clonedStages = JSON.parse(JSON.stringify(sourceScorecard.stages || []));
+      assignMissingAttributeIds(clonedStages);
+      const newScorecard = await Scorecard.create({
+        requisitionId: newReq._id,
+        generatedByAI: sourceScorecard.generatedByAI,
+        stages: clonedStages,
+      });
+      newReq.scorecardId = newScorecard._id;
+      await newReq.save();
+    }
+  }
+
+  await AuditLog.create({
+    action: 'requisition_duplicated',
+    userId: req.user._id,
+    requisitionId: newReq._id,
+    targetType: 'requisition',
+    targetId: newReq._id.toString(),
+    reason: `Duplicated from Job Opening "${sourceReq.title}" (${sourceReq._id}).`,
+  });
+
+  logger.info(`[Requisition] Duplicated "${sourceReq.title}" (${sourceReq._id}) -> "${newReq.title}" (${newReq._id}) by user=${req.user._id}`);
+
+  res.status(201).json({
+    requisition: newReq,
+    message: 'Job Opening duplicated successfully.',
+    warning: duplicateActiveOpening
+      ? `An active job opening named "${duplicateActiveOpening.title}" already exists.`
+      : undefined,
+  });
+});
+
+/**
  * POST /api/requisitions/:id/generate-scorecard
  * Calls questionGenerator to produce a role-specific rubric from the JD,
  * assigns a stable attributeId to each attribute, and saves/updates the
@@ -1272,7 +1381,7 @@ const applyPublic = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  create, list, getOne, update, remove,
+  create, list, getOne, update, remove, duplicate,
   generateScorecard: generateScorecardHandler,
   cloneScorecard,
   updateScorecard,

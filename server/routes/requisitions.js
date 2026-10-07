@@ -18,6 +18,7 @@ router.get('/', requisitionController.list);
 router.get('/:id', requisitionController.getOne);
 router.patch('/:id', requisitionController.update);
 router.delete('/:id', requisitionController.remove);
+router.post('/:id/duplicate', requisitionController.duplicate);
 router.post('/:id/generate-scorecard', requisitionController.generateScorecard);
 router.post('/:id/clone-scorecard', requisitionController.cloneScorecard);
 router.patch('/:id/scorecard', requisitionController.updateScorecard);
