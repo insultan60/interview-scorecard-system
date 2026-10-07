@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Search, Users, X } from 'lucide-react';
 import api from '../hooks/useApi';
@@ -19,50 +19,62 @@ const DISPOSITION_BADGE = {
   NO_HIRE: 'bg-red-100 text-red-800 border-red-200 hover:bg-red-100',
 };
 
+const PAGE_SIZE = 1;
+
 export default function RequisitionCandidates() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [fetchingCandidates, setFetchingCandidates] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [stageFilter, setStageFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+  const latestLoadRef = useRef(0);
+
+  async function load(targetPage = page) {
+    const requestId = ++latestLoadRef.current;
+    const isInitialLoad = !data;
+    if (isInitialLoad) setLoading(true);
+    else setFetchingCandidates(true);
+
+    try {
+      const res = await api.get(`/requisitions/${id}`, {
+        params: {
+          page: targetPage,
+          limit: PAGE_SIZE,
+          search: debouncedSearch.trim() || undefined,
+          disposition: statusFilter === 'IN_PROGRESS' ? 'in_progress' : statusFilter !== 'all' ? statusFilter : undefined,
+          stageKey: stageFilter !== 'all' ? stageFilter : undefined,
+        },
+      });
+      if (requestId !== latestLoadRef.current) return;
+      setData(res.data);
+      setPagination(res.data.pagination || { total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+      setPage(res.data.pagination?.page || 1);
+    } finally {
+      if (requestId === latestLoadRef.current) {
+        setLoading(false);
+        setFetchingCandidates(false);
+      }
+    }
+  }
 
   useEffect(() => {
-    let active = true;
-    api.get(`/requisitions/${id}`)
-      .then((res) => { if (active) setData(res.data); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [id]);
+    const timeoutId = window.setTimeout(() => setDebouncedSearch(search), 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    load(1);
+  }, [id, debouncedSearch, statusFilter, stageFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applications = data?.applications || [];
   const stageLabels = useMemo(() => Object.fromEntries((data?.requisition?.stages || []).map((stage) => [stage.key, stage.label])), [data]);
-  const query = search.trim().toLowerCase();
-
-  const statusCounts = useMemo(() => {
-    const counts = { IN_PROGRESS: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 };
-    applications.forEach((app) => {
-      if (app.disposition && counts[app.disposition] !== undefined) {
-        counts[app.disposition] += 1;
-      } else {
-        counts.IN_PROGRESS += 1;
-      }
-    });
-    return counts;
-  }, [applications]);
-
-  const filteredApplications = useMemo(() => {
-    return applications.filter((application) => {
-      const matchesSearch = !query || `${application.candidateId?.name || ''} ${application.candidateId?.email || ''}`.toLowerCase().includes(query);
-      const matchesStatus = statusFilter === 'all'
-        || (statusFilter === 'IN_PROGRESS' && !application.disposition)
-        || application.disposition === statusFilter;
-      const matchesStage = stageFilter === 'all'
-        || application.currentStageKey === stageFilter;
-      return matchesSearch && matchesStatus && matchesStage;
-    });
-  }, [applications, query, statusFilter, stageFilter]);
+  const statusCounts = data?.applicationStats || { total: 0, IN_PROGRESS: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 };
 
   const hasActiveFilters = Boolean(search || statusFilter !== 'all' || stageFilter !== 'all');
 
@@ -77,7 +89,7 @@ export default function RequisitionCandidates() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">{data.requisition.title} Candidates</h1>
             <p className="text-sm text-muted-foreground">
-              {applications.length} candidate{applications.length === 1 ? '' : 's'} · {statusCounts.IN_PROGRESS} in progress
+              {pagination.total} candidate{pagination.total === 1 ? '' : 's'} {hasActiveFilters ? 'match the current filters' : 'in this job opening'} · {statusCounts.IN_PROGRESS} in progress
             </p>
           </div>
         </div>
@@ -89,14 +101,14 @@ export default function RequisitionCandidates() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => { setSearch(event.target.value); setPage(1); }}
             placeholder="Search candidates..."
             className="pl-9 pr-9"
           />
           {search && (
             <button
               type="button"
-              onClick={() => setSearch('')}
+              onClick={() => { setSearch(''); setPage(1); }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />
@@ -104,12 +116,12 @@ export default function RequisitionCandidates() {
           )}
         </div>
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses ({applications.length})</SelectItem>
+            <SelectItem value="all">All statuses ({statusCounts.total})</SelectItem>
             <SelectItem value="IN_PROGRESS">In progress ({statusCounts.IN_PROGRESS})</SelectItem>
             <SelectItem value="HIRE">Hire ({statusCounts.HIRE})</SelectItem>
             <SelectItem value="MAYBE">Maybe ({statusCounts.MAYBE})</SelectItem>
@@ -118,7 +130,7 @@ export default function RequisitionCandidates() {
         </Select>
 
         {(data?.requisition?.stages || []).length > 0 && (
-          <Select value={stageFilter} onValueChange={setStageFilter}>
+          <Select value={stageFilter} onValueChange={(value) => { setStageFilter(value); setPage(1); }}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="All stages" />
             </SelectTrigger>
@@ -137,7 +149,7 @@ export default function RequisitionCandidates() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { setSearch(''); setStatusFilter('all'); setStageFilter('all'); }}
+            onClick={() => { setSearch(''); setStatusFilter('all'); setStageFilter('all'); setPage(1); }}
             className="text-xs text-muted-foreground hover:text-foreground h-9 px-2"
           >
             <X className="mr-1 h-3.5 w-3.5" />
@@ -148,7 +160,7 @@ export default function RequisitionCandidates() {
 
       <Card className="mt-4">
         <CardContent className="p-0">
-          {filteredApplications.length === 0 ? (
+          {applications.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center text-muted-foreground">
               <Users className="h-6 w-6" />
               <p className="text-sm">
@@ -161,7 +173,7 @@ export default function RequisitionCandidates() {
                   variant="outline"
                   size="sm"
                   className="mt-2"
-                  onClick={() => { setSearch(''); setStatusFilter('all'); setStageFilter('all'); }}
+                  onClick={() => { setSearch(''); setStatusFilter('all'); setStageFilter('all'); setPage(1); }}
                 >
                   Clear filters
                 </Button>
@@ -178,7 +190,7 @@ export default function RequisitionCandidates() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredApplications.map((application) => {
+                {applications.map((application) => {
                   const disp = application.disposition;
                   const badgeClass = disp ? DISPOSITION_BADGE[disp] || '' : DISPOSITION_BADGE.IN_PROGRESS;
                   const badgeText = disp ? DISPOSITION_LABEL[disp] || disp : 'In progress';
@@ -211,6 +223,33 @@ export default function RequisitionCandidates() {
           )}
         </CardContent>
       </Card>
+
+      {pagination.total > PAGE_SIZE && (
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} candidates
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => load(pagination.page - 1)}
+              disabled={fetchingCandidates || pagination.page <= 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.totalPages}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => load(pagination.page + 1)}
+              disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

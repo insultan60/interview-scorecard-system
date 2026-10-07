@@ -484,7 +484,7 @@ const list = asyncHandler(async (req, res) => {
 /**
  * GET /api/requisitions/:id
  * Returns one requisition with its scorecard and server-paginated applications.
- * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&candidateId=...
+ * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&stageKey=...&candidateId=...
  */
 const getOne = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
@@ -506,6 +506,10 @@ const getOne = asyncHandler(async (req, res) => {
     query.candidateId = req.query.candidateId;
   }
 
+  if (req.query.stageKey && req.query.stageKey !== 'all') {
+    query.currentStageKey = req.query.stageKey;
+  }
+
   if (req.query.search && req.query.search.trim()) {
     const searchRegex = new RegExp(escapeRegex(req.query.search.trim()), 'i');
     const matchingCandidates = await Candidate.find({
@@ -522,6 +526,16 @@ const getOne = asyncHandler(async (req, res) => {
   }
 
   const totalApplications = await Application.countDocuments(query);
+  const dispositionCounts = await Application.aggregate([
+    { $match: { requisitionId: requisition._id } },
+    { $group: { _id: '$disposition', count: { $sum: 1 } } },
+  ]);
+  const applicationStats = { total: 0, IN_PROGRESS: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 };
+  dispositionCounts.forEach(({ _id: disposition, count }) => {
+    if (disposition && applicationStats[disposition] !== undefined) applicationStats[disposition] = count;
+    else applicationStats.IN_PROGRESS += count;
+    applicationStats.total += count;
+  });
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
   const totalPages = Math.max(1, Math.ceil(totalApplications / limit));
   const requestedPage = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -553,6 +567,7 @@ const getOne = asyncHandler(async (req, res) => {
     requisition: requisitionResponse,
     scorecard,
     applications,
+    applicationStats,
     pagination: {
       total: totalApplications,
       page,
