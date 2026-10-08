@@ -295,8 +295,10 @@ function hasApplicationDeadlinePassed(deadline) {
 
 /** Uses each application question and its ideal answer / JD context as the HR-screen rubric. */
 function syncHrQuestionnaireRubric(scorecard, requisition) {
-  const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === 'hr_screen');
-  if (!hrStage) return false;
+  let updated = false;
+  ['hr_screen', 'hr_interview'].forEach((stageKey) => {
+    const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === stageKey);
+    if (!hrStage) return;
 
   const attributes = (requisition.questionnaire || []).map((item, index) => {
     const question = typeof item === 'string' ? item : item.question;
@@ -306,13 +308,13 @@ function syncHrQuestionnaireRubric(scorecard, requisition) {
     let anchor5 = 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.';
     let redFlags = 'Does not answer the question, or provides an unclear or irrelevant response.';
 
-    if (requireIdealAnswer && idealAnswer) {
+    if (idealAnswer) {
       anchor5 = `Ideal answer benchmark: ${idealAnswer}`;
       redFlags = `Does not address or match the required ideal answer benchmark: "${idealAnswer}".`;
     }
 
     return {
-      attributeId: `hr_screen_question_${index + 1}`,
+      attributeId: `${hrStage.stageKey || 'hr_screen'}_question_${index + 1}`,
       name: `Question ${index + 1}`,
       question,
       anchor5,
@@ -322,9 +324,12 @@ function syncHrQuestionnaireRubric(scorecard, requisition) {
     };
   });
 
-  if (JSON.stringify(hrStage.attributes) === JSON.stringify(attributes)) return false;
-  hrStage.attributes = attributes;
-  return true;
+    if (JSON.stringify(hrStage.attributes) !== JSON.stringify(attributes)) {
+      hrStage.attributes = attributes;
+      updated = true;
+    }
+  });
+  return updated;
 }
 
 function assignMissingAttributeIds(stages) {

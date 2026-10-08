@@ -73,7 +73,7 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
 
       requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\n${criteriaText ? `INITIAL SCREENING CRITERIA:\n${criteriaText}\n\n` : ''}---\n`;
     }
-  } else if (stageType === 'hr_screen' && requisition) {
+  } else if ((stageType === 'hr_screen' || stageType === 'hr_interview') && requisition) {
     contextHeader = isManual ? 'HR INTERVIEW TRANSCRIPT:' : 'APPLICATION QUESTIONNAIRE RESPONSES:';
     requisitionContext = `POSITION TITLE: ${requisition.title || ''}\n\nJOB DESCRIPTION:\n${requisition.jobDescription || ''}\n\nEVALUATION GUIDELINES FOR QUESTIONNAIRE RESPONSES:
 - For questions with a required Ideal Answer benchmark: Score candidate's response primarily against that provided Ideal Answer benchmark.
@@ -120,7 +120,7 @@ async function scoreInterview({ interview, stageType, attributes, requisition, a
   const transcriptText = (interview.transcriptText || '').trim();
   const wordCount = transcriptText ? transcriptText.split(/\s+/).filter(Boolean).length : 0;
 
-  if (wordCount < MIN_TRANSCRIPT_WORDS && stageType !== 'hr_screen') {
+  if (wordCount < MIN_TRANSCRIPT_WORDS && stageType !== 'hr_screen' && stageType !== 'hr_interview') {
     interview.transcriptStatus = 'failed';
     await interview.save();
     const message = `Transcript is empty or too short to score (${wordCount} words, need at least ${MIN_TRANSCRIPT_WORDS}). Please re-upload a complete transcript.`;

@@ -78,7 +78,7 @@ async function seedDefaultPipeline() {
   const template = await PipelineTemplate.create({
     name: "Standard Hiring Process",
     description:
-      "HR Screen (10%) -> Sales Simulation (35%) -> Technical/Ops (35%) -> Final/CEO (20%).",
+      "Initial Screening (10%) -> HR Interview (15%) -> Sales Simulation (25%) -> Technical/Ops (25%) -> Final/CEO (15%).",
     isDefault: true,
     stages: DEFAULT_PIPELINE_STAGES,
   });

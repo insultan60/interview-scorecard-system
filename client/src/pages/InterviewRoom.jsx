@@ -80,7 +80,33 @@ export default function InterviewRoom() {
   }, [load]);
 
   const stageConfig = requisition?.stages.find((s) => s.key === interview?.stageKey);
-  const stageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
+  const rawStageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
+  const stageAttributes = (rawStageAttributes.length > 0 && (rawStageAttributes[0]?.question || rawStageAttributes[0]?.name))
+    ? rawStageAttributes.map((attr) => ({
+        ...attr,
+        name: attr.name && !attr.name.startsWith('resume_screen') ? attr.name : 'Overall Resume & Qualification Evaluation',
+      }))
+    : (interview?.stageKey === 'hr_screen' || interview?.stageKey === 'hr_interview') && requisition?.questionnaire?.length > 0
+      ? requisition.questionnaire.map((qItem, idx) => {
+          const qText = typeof qItem === 'string' ? qItem : qItem.question;
+          const ideal = typeof qItem === 'object' ? qItem.idealAnswer : '';
+          return {
+            attributeId: `${interview.stageKey}_question_${idx + 1}`,
+            name: `Question ${idx + 1}`,
+            question: qText,
+            anchor5: ideal ? `Ideal answer benchmark: ${ideal}` : 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.',
+            redFlags: ideal ? `Does not address or match the required ideal answer benchmark: "${ideal}".` : 'Does not answer the question, or provides an unclear or irrelevant response.',
+          };
+        })
+      : interview?.stageKey === 'resume_screen'
+        ? [{
+            attributeId: 'resume_screen_1',
+            name: 'Overall Resume & Qualification Evaluation',
+            question: 'Assessing whether the candidate\'s CV meets the Job Description and Initial Screening Criteria.',
+            anchor5: 'CV demonstrates strong alignment with all key experience, skills, and qualifications required for the role.',
+            redFlags: 'CV lacks required core experience, qualifications, or key skills specified in the job posting.',
+          }]
+        : rawStageAttributes;
 
   const enabledStages = requisition?.stages?.filter((s) => s.enabled) || [];
   const isFinalStage = enabledStages.length > 0 && enabledStages[enabledStages.length - 1].key === interview?.stageKey;
@@ -612,7 +638,15 @@ export default function InterviewRoom() {
                       onClick={() => toggleAttr(attr.attributeId)}
                       className="flex w-full items-center justify-between text-left"
                     >
-                      <p className="text-sm font-semibold text-foreground">{attr.name}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {attr.name && !attr.name.includes('_question_') && !attr.name.startsWith('resume_screen')
+                          ? attr.name
+                          : attr.name?.startsWith('resume_screen') || attr.attributeId?.startsWith('resume_screen')
+                            ? 'Overall Resume & Qualification Evaluation'
+                            : attr.name?.includes('_question_') || attr.attributeId?.includes('_question_')
+                              ? `Question ${String(attr.name || attr.attributeId).split('_question_')[1]}`
+                              : attr.name || attr.attributeId}
+                      </p>
                       <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isOpen && (

@@ -55,12 +55,28 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
     setDrafts((prev) => ({ ...prev, [attributeId]: { ...prev[attributeId], [field]: value } }));
   }
 
+  const formatName = (rawName) => {
+    if (!rawName) return 'Evaluation Attribute';
+    const str = String(rawName).trim();
+    if (str.startsWith('resume_screen') || str.toLowerCase().includes('resume_screen')) {
+      return 'Overall Resume & Qualification Evaluation';
+    }
+    const qMatch = str.match(/_question_(\d+)$/i);
+    if (qMatch) return `Question ${qMatch[1]}`;
+    const genericMatch = str.match(/^([a-z0-9_]+)_(\d+)_[a-f0-9]+$/i);
+    if (genericMatch) {
+      const stageName = genericMatch[1].replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+      return `${stageName} Attribute ${genericMatch[2]}`;
+    }
+    return str;
+  };
+
   const displayItems = (attributes && attributes.length > 0)
     ? attributes.map((attr) => {
       const s = (interview?.scores || []).find((score) => score.attributeId === attr.attributeId);
       return {
         attributeId: attr.attributeId,
-        name: attr.name,
+        name: formatName(attr.name || attr.attributeId),
         question: attr.question,
         aiScore: s?.aiScore,
         aiJustification: s?.aiJustification || (s?.aiScore == null ? 'Live Rating (Manual Entry)' : ''),
@@ -68,7 +84,14 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
         overridden: s?.overridden,
       };
     })
-    : (interview?.scores || []).map((s) => ({ ...s, name: attributeById[s.attributeId]?.name || s.attributeId }));
+    : (interview?.scores || []).map((s) => {
+      const attr = attributeById[s.attributeId];
+      return {
+        ...s,
+        name: formatName(attr?.name || s.attributeId),
+        question: attr?.question,
+      };
+    });
 
   function changedRows() {
     return displayItems.filter((item) => {
@@ -200,12 +223,16 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
               const changed = Number(draft.approvedScore) !== Number(item.approvedScore ?? item.aiScore);
               return (
                 <tr key={item.attributeId}>
-                  <td className="max-w-[14rem] px-4 py-3">
-                    <div className="font-medium text-gray-900">
-                      {item.name || item.attributeId}
+                  <td className="max-w-[16rem] px-4 py-3 align-top">
+                    <div className="font-semibold text-slate-900">
+                      {formatName(item.name || item.attributeId)}
                       {item.overridden && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">overridden</span>}
                     </div>
-                    {item.question && <div className="mt-0.5 text-xs text-gray-400">{item.question}</div>}
+                    {item.question && (
+                      <div className="mt-1 text-xs font-normal text-slate-600 leading-snug">
+                        {item.question}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-700">{item.aiScore != null ? formatScore(item.aiScore) : '—'}</td>
                   <td className="max-w-xs px-4 py-3 text-xs text-gray-500">{item.aiJustification}</td>

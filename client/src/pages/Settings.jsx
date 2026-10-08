@@ -62,7 +62,8 @@ const MODEL_TIERS = [
 
 const ALL_STAGE_TYPES = [
   { key: 'resume_screen', label: 'Résumé Screen' },
-  { key: 'hr_screen', label: 'HR Screen' },
+  { key: 'hr_screen', label: 'Initial Screening' },
+  { key: 'hr_interview', label: 'HR Interview' },
   { key: 'task_performance', label: 'Task Performance' },
   { key: 'technical', label: 'Technical' },
   { key: 'simulation', label: 'Simulation' },
@@ -78,6 +79,7 @@ const DEFAULT_STAGE_MODEL_TIERS = {
   reference: 'cheap',
   background: 'cheap',
   hr_screen: 'cheap',
+  hr_interview: 'cheap',
   final: 'cheap',
   client: 'cheap',
   culture: 'cheap',
