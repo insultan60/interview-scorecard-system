@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
-import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, Pencil } from 'lucide-react';
 import api from '../hooks/useApi';
 import { sendMeetingEmailClient, sendHostMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
@@ -13,6 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TimePicker } from '@/components/ui/time-picker';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { formatDisposition } from '../utils/formatters';
 
 function formatLocalDateTime(date) {
@@ -22,6 +28,7 @@ function formatLocalDateTime(date) {
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
 function parseEmailList(value) {
   return [...new Set(value
@@ -70,6 +77,11 @@ export default function InterviewRoom() {
   const [passFailResult, setPassFailResult] = useState('');
   const [passFailSaving, setPassFailSaving] = useState(false);
   const [requestingAvailability, setRequestingAvailability] = useState(false);
+
+  const [editCandidateOpen, setEditCandidateOpen] = useState(false);
+  const [editCandidateForm, setEditCandidateForm] = useState({ name: '', email: '', phone: '', notes: '' });
+  const [editCandidateResumeFile, setEditCandidateResumeFile] = useState(null);
+  const [savingCandidate, setSavingCandidate] = useState(false);
 
   const load = useCallback(async () => {
     const { data: interviewData } = await api.get(`/interviews/${id}`);
@@ -662,6 +674,61 @@ export default function InterviewRoom() {
   }
 
 
+  function openEditCandidate() {
+    const candName = candidate.name || application?.candidateName || '';
+    const candEmail = candidate.email || application?.candidateEmail || '';
+    const candPhone = candidate.phone || '';
+    const candNotes = candidate.notes || '';
+    setEditCandidateForm({ name: candName, email: candEmail, phone: candPhone, notes: candNotes });
+    setEditCandidateResumeFile(null);
+    setEditCandidateOpen(true);
+  }
+
+  async function handleSaveCandidate(e) {
+    e.preventDefault();
+    const candId = candidate._id || application?.candidateId?._id || application?.candidate?._id;
+    if (!candId) {
+      toast.error('Candidate ID not found.');
+      return;
+    }
+    if (!editCandidateForm.name.trim()) {
+      toast.error('Name is required.');
+      return;
+    }
+    if (!editCandidateForm.email.trim()) {
+      toast.error('Email is required.');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(editCandidateForm.email.trim())) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+    if (editCandidateForm.phone && !PHONE_NUMBER_PATTERN.test(editCandidateForm.phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+
+    setSavingCandidate(true);
+    try {
+      const body = new FormData();
+      body.append('name', editCandidateForm.name.trim());
+      body.append('email', editCandidateForm.email.trim());
+      body.append('phone', editCandidateForm.phone.trim());
+      body.append('notes', editCandidateForm.notes);
+      if (editCandidateResumeFile) body.append('resume', editCandidateResumeFile);
+
+      await api.patch(`/candidates/${candId}`, body, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(`${editCandidateForm.name.trim()}'s profile was updated.`);
+      setEditCandidateOpen(false);
+      setEditCandidateResumeFile(null);
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not update candidate profile.');
+    } finally {
+      setSavingCandidate(false);
+    }
+  }
+
   const isTranscriptStage = stageConfig?.inputType === 'transcript' && stageConfig?.stageType !== 'simulation' && stageConfig?.stageType !== 'task_performance';
   const isTranscriptDisabled = stageConfig?.stageType === 'simulation' || stageConfig?.stageType === 'task_performance' || stageConfig?.inputType === 'manual_rubric';
   const showConsentCard = isTranscriptStage && !isTranscriptDisabled;
@@ -686,26 +753,42 @@ export default function InterviewRoom() {
         Back to {requisition.title}
       </button>
 
-      <h1 className="mt-3 text-2xl font-semibold text-foreground">
-        {candidate.name || application?.candidateName || 'Candidate'} — {stageConfig?.label || interview.stageKey}
-      </h1>
-      <p className="mt-1 text-sm text-muted-foreground">{requisition.title}</p>
-      {(candidate.email || candidate.phone) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
-          {candidate.email && (
-            <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy email address">
-              <Mail className="h-4 w-4" />
-              {candidate.email}
-            </button>
-          )}
-          {candidate.phone && (
-            <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy phone number">
-              <Phone className="h-4 w-4" />
-              {candidate.phone}
-            </button>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-foreground">
+              {candidate.name || application?.candidateName || 'Candidate'} — {stageConfig?.label || interview.stageKey}
+            </h1>
+            {(candidate._id || application?.candidateId?._id || application?.candidate?._id) && (
+              <button
+                type="button"
+                onClick={openEditCandidate}
+                className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                title="Edit candidate profile"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">{requisition.title}</p>
+          {(candidate.email || candidate.phone) && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+              {candidate.email && (
+                <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy email address">
+                  <Mail className="h-4 w-4" />
+                  {candidate.email}
+                </button>
+              )}
+              {candidate.phone && (
+                <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy phone number">
+                  <Phone className="h-4 w-4" />
+                  {candidate.phone}
+                </button>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
 
       <Card className="mt-4">
         <CardContent className="pt-6">
@@ -1426,6 +1509,80 @@ export default function InterviewRoom() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={editCandidateOpen} onOpenChange={setEditCandidateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit candidate profile</DialogTitle>
+            <DialogDescription>
+              Update the candidate's profile details. Replacing the profile résumé does not change evidence already attached to interviews.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveCandidate} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="ir-edit-cand-name">Name <span className="text-red-500">*</span></Label>
+                <Input
+                  id="ir-edit-cand-name"
+                  value={editCandidateForm.name}
+                  autoFocus
+                  onChange={(e) => setEditCandidateForm({ ...editCandidateForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ir-edit-cand-email">Email <span className="text-red-500">*</span></Label>
+                <Input
+                  id="ir-edit-cand-email"
+                  type="email"
+                  value={editCandidateForm.email}
+                  onChange={(e) => setEditCandidateForm({ ...editCandidateForm, email: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ir-edit-cand-phone">Phone</Label>
+                <Input
+                  id="ir-edit-cand-phone"
+                  value={editCandidateForm.phone}
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{11}"
+                  maxLength={11}
+                  onChange={(e) => setEditCandidateForm({ ...editCandidateForm, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                  placeholder="03001234567"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ir-edit-cand-resume">Replace résumé <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  id="ir-edit-cand-resume"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => setEditCandidateResumeFile(e.target.files?.[0] || null)}
+                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ir-edit-cand-notes">Notes</Label>
+              <Textarea
+                id="ir-edit-cand-notes"
+                rows={3}
+                value={editCandidateForm.notes}
+                onChange={(e) => setEditCandidateForm({ ...editCandidateForm, notes: e.target.value })}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditCandidateOpen(false)} disabled={savingCandidate}>Cancel</Button>
+              <Button type="submit" disabled={savingCandidate} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+                {savingCandidate ? 'Saving…' : 'Save changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
