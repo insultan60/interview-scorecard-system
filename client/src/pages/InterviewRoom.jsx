@@ -43,6 +43,7 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
+  const [additionalInvitees, setAdditionalInvitees] = useState([]);
   const [additionalInviteesInput, setAdditionalInviteesInput] = useState('');
   const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => dayjs().add(1, 'hour').startOf('hour').toDate());
   const [selectedStartTime, setSelectedStartTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').format('HH:mm'));
@@ -167,12 +168,13 @@ export default function InterviewRoom() {
         localEndTime = formatLocalDateTime(endDateObj);
       }
 
-      const additionalAttendeeEmails = parseEmailList(additionalInviteesInput);
-      const invalidEmail = additionalAttendeeEmails.find((email) => !EMAIL_PATTERN.test(email));
+      const pendingInvitees = parseEmailList(additionalInviteesInput);
+      const invalidEmail = pendingInvitees.find((email) => !EMAIL_PATTERN.test(email));
       if (useProvider && invalidEmail) {
         toast.error(`Enter a valid invitee email address: ${invalidEmail}`);
         return;
       }
+      const additionalAttendeeEmails = [...new Set([...additionalInvitees, ...pendingInvitees])];
 
       const body = useProvider
         ? {
@@ -207,6 +209,7 @@ export default function InterviewRoom() {
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
       setMeetingLinkInput('');
+      setAdditionalInvitees([]);
       setAdditionalInviteesInput('');
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
@@ -269,6 +272,24 @@ export default function InterviewRoom() {
       console.warn('[EmailNotifier] Browser EmailJS host notification failed:', clientRes.reason);
       toast.error(`Host email was not sent: ${clientRes.reason}`);
     }
+  }
+
+  function addAdditionalInvitees(value) {
+    const emails = parseEmailList(value);
+    const invalidEmail = emails.find((email) => !EMAIL_PATTERN.test(email));
+    if (invalidEmail) {
+      toast.error(`Enter a valid invitee email address: ${invalidEmail}`);
+      return false;
+    }
+    if (emails.length > 0) {
+      setAdditionalInvitees((current) => [...new Set([...current, ...emails])]);
+    }
+    return true;
+  }
+
+  function commitAdditionalInvitee() {
+    if (!additionalInviteesInput.trim()) return;
+    if (addAdditionalInvitees(additionalInviteesInput)) setAdditionalInviteesInput('');
   }
 
   async function handleResendMeetingEmail() {
@@ -1001,15 +1022,43 @@ export default function InterviewRoom() {
                       <label htmlFor="additional-invitees" className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         Additional Invitees <span className="normal-case font-normal text-slate-400">(optional)</span>
                       </label>
-                      <textarea
-                        id="additional-invitees"
-                        value={additionalInviteesInput}
-                        onChange={(event) => setAdditionalInviteesInput(event.target.value)}
-                        placeholder="hod@company.com, ceo@company.com"
-                        rows={2}
-                        className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
-                      />
-                      <p className="text-xs text-muted-foreground">Separate email addresses with commas, semicolons, or new lines. They will receive the Calendar invite.</p>
+                      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:border-[#d21e2b] focus-within:ring-1 focus-within:ring-[#d21e2b]">
+                        {additionalInvitees.map((email) => (
+                          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-[#d21e2b]/10 px-2 py-1 text-xs font-medium text-[#a41420]">
+                            {email}
+                            <button
+                              type="button"
+                              aria-label={`Remove ${email}`}
+                              onClick={() => setAdditionalInvitees((current) => current.filter((item) => item !== email))}
+                              className="text-[#a41420]/70 hover:text-[#a41420]"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          id="additional-invitees"
+                          value={additionalInviteesInput}
+                          onChange={(event) => setAdditionalInviteesInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (['Enter', ',', ';'].includes(event.key)) {
+                              event.preventDefault();
+                              commitAdditionalInvitee();
+                            }
+                          }}
+                          onPaste={(event) => {
+                            const pasted = event.clipboardData.getData('text');
+                            if (/[;,\n]/.test(pasted)) {
+                              event.preventDefault();
+                              if (addAdditionalInvitees(pasted)) setAdditionalInviteesInput('');
+                            }
+                          }}
+                          onBlur={commitAdditionalInvitee}
+                          placeholder={additionalInvitees.length ? 'Add another email…' : 'hod@company.com'}
+                          className="min-w-40 flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Press comma, semicolon, or Enter after each email. Only valid addresses are added and sent with the Calendar invite.</p>
                     </div>
                   </div>
                   <button
