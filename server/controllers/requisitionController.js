@@ -577,7 +577,7 @@ const getOne = asyncHandler(async (req, res) => {
     { $limit: limit },
     { $project: { _rankSort: 0 } },
   ]);
-  await Application.populate(applications, { path: 'candidateId', select: 'name email' });
+  await Application.populate(applications, { path: 'candidateId', select: 'name email phone' });
 
   const requisitionResponse = requisition.toObject();
   if (requisitionResponse.status === 'on_hold') requisitionResponse.status = 'paused';

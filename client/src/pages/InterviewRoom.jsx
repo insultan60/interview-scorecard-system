@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
-import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone } from 'lucide-react';
 import api from '../hooks/useApi';
 import { sendMeetingEmailClient, sendHostMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
@@ -95,6 +95,7 @@ export default function InterviewRoom() {
   }, [load]);
 
   const stageConfig = requisition?.stages.find((s) => s.key === interview?.stageKey);
+  const candidate = application?.candidateId || application?.candidate || {};
   const rawStageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
   const stageAttributes = (rawStageAttributes.length > 0 && (rawStageAttributes[0]?.question || rawStageAttributes[0]?.name))
     ? rawStageAttributes.map((attr) => ({
@@ -272,6 +273,12 @@ export default function InterviewRoom() {
       console.warn('[EmailNotifier] Browser EmailJS host notification failed:', clientRes.reason);
       toast.error(`Host email was not sent: ${clientRes.reason}`);
     }
+  }
+
+  function copyCandidateContact(value, label) {
+    navigator.clipboard.writeText(value)
+      .then(() => toast.success(`${label} copied.`))
+      .catch(() => toast.error(`Could not copy the ${label.toLowerCase()}.`));
   }
 
   function addAdditionalInvitees(value) {
@@ -676,9 +683,25 @@ export default function InterviewRoom() {
       </button>
 
       <h1 className="mt-3 text-2xl font-semibold text-foreground">
-        {application?.candidateId?.name || 'Candidate'} — {stageConfig?.label || interview.stageKey}
+        {candidate.name || application?.candidateName || 'Candidate'} — {stageConfig?.label || interview.stageKey}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">{requisition.title}</p>
+      {(candidate.email || candidate.phone) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+          {candidate.email && (
+            <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy email address">
+              <Mail className="h-4 w-4" />
+              {candidate.email}
+            </button>
+          )}
+          {candidate.phone && (
+            <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy phone number">
+              <Phone className="h-4 w-4" />
+              {candidate.phone}
+            </button>
+          )}
+        </div>
+      )}
 
       <Card className="mt-4">
         <CardContent className="pt-6">
@@ -943,6 +966,8 @@ export default function InterviewRoom() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* Temporarily hidden: keep the manual-link workflow available in the API,
+                      but only allow Google Calendar meetings from this screen for now.
                   <div className="flex gap-2">
                     <input
                       type="text" value={meetingLinkInput} onChange={(e) => setMeetingLinkInput(e.target.value)}
@@ -956,6 +981,7 @@ export default function InterviewRoom() {
                       Use Link
                     </button>
                   </div>
+                  */}
                   <div className="space-y-3 pt-1">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
