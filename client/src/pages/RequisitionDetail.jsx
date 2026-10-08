@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -661,8 +661,8 @@ export default function RequisitionDetail() {
                           </TableCell>
 
                           <TableCell className="align-middle">
-                            {finalDecision ? (
-                              <div className="flex flex-col gap-0.5">
+                            {finalDecision && openDecisionRowId !== app._id ? (
+                              <div className="flex flex-col gap-1">
                                 <Badge variant="secondary" className={`font-normal w-fit ${DECISION_BADGE[finalDecision] || ''}`}>
                                   {DECISION_LABEL[finalDecision] || finalDecision}
                                 </Badge>
@@ -671,6 +671,19 @@ export default function RequisitionDetail() {
                                     {finalDecisionReason}
                                   </span>
                                 )}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setOpenDecisionRowId(app._id);
+                                    setDecisionDraft(finalDecision);
+                                    setDecisionReasonDraft(app.rejectionReason || '');
+                                  }}
+                                  className="h-5 w-fit px-0 text-[11px] text-[#d21e2b] hover:bg-transparent hover:text-[#a41420]"
+                                >
+                                  Change decision
+                                </Button>
                               </div>
                             ) : openDecisionRowId === app._id ? (
                               <div className="flex flex-col gap-1.5 py-1 min-w-[140px]">
@@ -729,6 +742,38 @@ export default function RequisitionDetail() {
 
                           <TableCell className="text-right align-middle">
                             <div className="flex items-center justify-end gap-1.5">
+                              <span
+                                className="inline-flex"
+                                title="ClickUp onboarding form delivery is not configured yet. Add the ClickUp form URL when this feature is ready."
+                              >
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  aria-label="Send ClickUp onboarding form"
+                                  className="h-8 w-8 border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                                  disabled
+                                >
+                                  <ClipboardList className="h-4 w-4" />
+                                </Button>
+                              </span>
+                              {finalDecision === 'hired' && (
+                                <span
+                                  className="inline-flex"
+                                  title={`Send an offer letter to ${app.candidateId?.name || 'this candidate'}.`}
+                                >
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label="Send offer letter"
+                                    className="h-8 w-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                    onClick={() => toast('Offer-letter delivery will be added here.', { icon: '📄' })}
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                </span>
+                              )}
                               <Button
                                 type="button"
                                 variant="outline"
