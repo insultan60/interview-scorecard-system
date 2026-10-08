@@ -75,9 +75,13 @@ export default function InterviewRoom() {
     const { data: interviewData } = await api.get(`/interviews/${id}`);
     setInterview(interviewData.interview);
 
-    const { data: reqData } = await api.get(`/requisitions/${interviewData.interview.requisitionId}`);
+    const [reqResponse, scorecardResponse] = await Promise.all([
+      api.get(`/requisitions/${interviewData.interview.requisitionId}`),
+      api.get(`/requisitions/${interviewData.interview.requisitionId}/scorecard`),
+    ]);
+    const reqData = reqResponse.data;
     setRequisition(reqData.requisition);
-    setScorecard(reqData.scorecard || null);
+    setScorecard(scorecardResponse.data.scorecard || null);
     const appId = String(interviewData.interview.applicationId?._id || interviewData.interview.applicationId);
     const app = reqData.applications.find((a) => String(a._id) === appId);
     setApplication(app || null);

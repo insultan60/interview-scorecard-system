@@ -32,6 +32,58 @@ async function getCalendarClient() {
 }
 
 /**
+ * Logs the identifiers and artifact metadata needed to diagnose a Meet
+ * transcript that appears in Drive but is not returned by the Meet API.
+ * Tokens, attendees, and transcript text are deliberately never logged.
+ */
+async function logTranscriptDiagnostics(interview, conferenceRecordName, transcripts) {
+  const diagnostic = {
+    interviewId: String(interview._id),
+    storedConferenceId: interview.conferenceId || null,
+    calendarEventId: interview.calendarEventId || null,
+    resolvedConferenceRecord: conferenceRecordName || null,
+    transcriptCount: transcripts?.length || 0,
+    transcripts: (transcripts || []).map((item) => ({
+      name: item.name,
+      state: item.state,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      documentId: item.docsDestination?.document || null,
+      exportUri: item.docsDestination?.exportUri || null,
+    })),
+  };
+
+  try {
+    const auth = await getOAuthClient();
+    const accessToken = await auth.getAccessToken();
+    if (accessToken?.token) {
+      const tokenInfo = await auth.getTokenInfo(accessToken.token);
+      diagnostic.oauthScopes = tokenInfo.scopes || [];
+    }
+  } catch (err) {
+    diagnostic.oauthScopeCheck = `unavailable: ${err.message}`;
+  }
+
+  if (interview.calendarEventId) {
+    try {
+      const calendar = await getCalendarClient();
+      const { data: event } = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: interview.calendarEventId,
+        fields: 'id,conferenceData(conferenceId,entryPoints(entryPointType,uri))',
+      });
+      diagnostic.calendarConferenceId = event.conferenceData?.conferenceId || null;
+      diagnostic.calendarMeetUri = (event.conferenceData?.entryPoints || [])
+        .find((entry) => entry.entryPointType === 'video')?.uri || null;
+    } catch (err) {
+      diagnostic.calendarEventCheck = `unavailable: ${err.message}`;
+    }
+  }
+
+  logger.info(`[GoogleMeet][TranscriptDiagnostics] ${JSON.stringify(diagnostic)}`);
+}
+
+/**
  * Creates a Google Meet space via the Meet REST API.
  *
  * The returned `conferenceId` is NOT a real conference record yet — no call
@@ -254,6 +306,7 @@ async function fetchTranscript(interview) {
     parent: conferenceRecordName,
   }));
   const transcripts = transcriptsData.transcripts || [];
+  await logTranscriptDiagnostics(interview, conferenceRecordName, transcripts);
   if (transcripts.length === 0) {
     logger.info(`[GoogleMeet] Conference record ${conferenceRecordName} has no transcript artifact yet. status=pending`);
     return { status: 'pending', resolvedConferenceId: conferenceRecordName };
