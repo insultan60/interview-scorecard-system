@@ -98,6 +98,7 @@ export default function Candidates() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [resumeFile, setResumeFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [viewFor, setViewFor] = useState(null);
   const [editFor, setEditFor] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editResumeFile, setEditResumeFile] = useState(null);
@@ -208,6 +209,7 @@ export default function Candidates() {
   }
 
   function openEdit(candidate) {
+    setViewFor(null);
     setEditFor(candidate);
     setEditForm({
       name: candidate.name || '', email: candidate.email || '', phone: candidate.phone || '', notes: candidate.notes || '',
@@ -538,9 +540,24 @@ export default function Candidates() {
               </TableHeader>
               <TableBody>
                 {candidates.map((c) => (
-                  <TableRow key={c._id}>
+                  <TableRow
+                    key={c._id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setViewFor(c)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setViewFor(c);
+                      }
+                    }}
+                    className="cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
+                    title={`View ${c.name}`}
+                  >
                     <TableCell>
-                      <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center gap-3"
+                      >
                         <Avatar className="h-8 w-8 text-xs">
                           <AvatarFallback>{initials(c.name)}</AvatarFallback>
                         </Avatar>
@@ -549,7 +566,7 @@ export default function Candidates() {
                           {c.email ? (
                             <button
                               type="button"
-                              onClick={() => copyContact(c.email, 'Email')}
+                              onClick={(event) => { event.stopPropagation(); copyContact(c.email, 'Email'); }}
                               className="block max-w-full truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
                               title="Copy email"
                             >
@@ -566,7 +583,7 @@ export default function Candidates() {
                       {c.phone ? (
                         <button
                           type="button"
-                          onClick={() => copyContact(c.phone, 'Phone number')}
+                          onClick={(event) => { event.stopPropagation(); copyContact(c.phone, 'Phone number'); }}
                           className="hover:text-foreground hover:underline"
                           title="Copy phone number"
                         >
@@ -581,7 +598,7 @@ export default function Candidates() {
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {c.applications.map((a) => (
-                            <Link key={a.applicationId} to={`/requisitions/${a.requisitionId}`}>
+                            <Link key={a.applicationId} to={`/requisitions/${a.requisitionId}`} onClick={(event) => event.stopPropagation()}>
                               <Badge
                                 variant="secondary"
                                 className={`font-normal ${a.disposition ? DISPOSITION_BADGE[a.disposition] || '' : ''}`}
@@ -600,7 +617,7 @@ export default function Candidates() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline" size="sm"
                           className="border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5 hover:text-[#d21e2b]"
@@ -734,6 +751,75 @@ export default function Candidates() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewFor} onOpenChange={(open) => !open && setViewFor(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Candidate details</DialogTitle>
+            <DialogDescription>Review this candidate’s profile and attachments.</DialogDescription>
+          </DialogHeader>
+
+          {viewFor && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-11 w-11">
+                  <AvatarFallback>{initials(viewFor.name)}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold text-foreground">{viewFor.name}</p>
+                  <p className="text-xs text-muted-foreground">Added {formatDate(viewFor.createdAt)}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 rounded-lg border bg-slate-50/60 p-3 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Email</p>
+                  <button type="button" onClick={() => copyContact(viewFor.email, 'Email')} className="mt-0.5 break-all text-left font-medium hover:text-[#d21e2b] hover:underline">
+                    {viewFor.email || '—'}
+                  </button>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Phone</p>
+                  <button type="button" onClick={() => copyContact(viewFor.phone, 'Phone number')} className="mt-0.5 text-left font-medium hover:text-[#d21e2b] hover:underline">
+                    {viewFor.phone || '—'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{viewFor.notes || 'No notes added.'}</p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Attached to</p>
+                {(viewFor.applications || []).length ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {viewFor.applications.map((application) => (
+                      <Badge key={application.applicationId} variant="secondary" className="font-normal">
+                        {application.title}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : <p className="mt-1 text-sm">Not attached to a job opening.</p>}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            {viewFor?.resumeFileUrl && (
+              <Button type="button" variant="outline" onClick={() => window.open(viewFor.resumeFileUrl, '_blank', 'noreferrer')}>
+                <FileText />
+                View résumé
+              </Button>
+            )}
+            <Button type="button" onClick={() => openEdit(viewFor)} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Pencil />
+              Edit candidate
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
