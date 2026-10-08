@@ -240,12 +240,9 @@ export default function Requisitions() {
     if (e) e.stopPropagation();
     setDuplicatingId(reqId);
     try {
-      const res = await api.post(`/requisitions/${reqId}/duplicate`);
+      await api.post(`/requisitions/${reqId}/duplicate`);
       toast.success(`Duplicated "${title}" successfully!`);
       loadRequisitions();
-      if (res.data?.requisition?._id) {
-        navigate(`/requisitions/${res.data.requisition._id}`);
-      }
     } catch (error) {
       console.error('Failed to duplicate job opening:', error);
       toast.error(error?.response?.data?.message || 'Failed to duplicate job opening.');
