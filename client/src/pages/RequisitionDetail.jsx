@@ -580,6 +580,7 @@ export default function RequisitionDetail() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+              {/* Final Decision filter is temporarily hidden.
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-40">
@@ -601,6 +602,7 @@ export default function RequisitionDetail() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+              */}
               <div className="relative w-full sm:w-56">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
