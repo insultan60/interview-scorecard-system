@@ -105,6 +105,8 @@ export default function CandidateApply() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [opportunityOption, setOpportunityOption] = useState('30_days');
+  const [opportunityCustom, setOpportunityCustom] = useState('');
   const [answers, setAnswers] = useState({});
   const [resumeFile, setResumeFile] = useState(null);
   const [formPart, setFormPart] = useState(1);
@@ -222,10 +224,24 @@ export default function CandidateApply() {
 
     setSubmitting(true);
     try {
+      let durationText = '30 days';
+      if (opportunityOption === '7_days') durationText = '7 days';
+      else if (opportunityOption === '15_days') durationText = '15 days';
+      else if (opportunityOption === '30_days') durationText = '30 days';
+      else if (opportunityOption === '2_months') durationText = '2 months';
+      else if (opportunityOption === 'custom') {
+        if (!opportunityCustom.trim()) {
+          toast.error('Please enter your custom opportunity availability duration.');
+          return;
+        }
+        durationText = opportunityCustom.trim();
+      }
+
       const formData = new FormData();
       formData.append('name', name.trim());
       formData.append('email', email.trim());
       formData.append('phone', phone.trim());
+      formData.append('opportunityDuration', durationText);
       formData.append('questionnaireAnswers', JSON.stringify(answers));
       formData.append('resume', resumeFile);
       if (captcha.enabled) formData.append('captchaToken', captchaToken);
@@ -472,6 +488,37 @@ export default function CandidateApply() {
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                       required
                     />
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <Label htmlFor="opportunity-duration" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Opportunity Availability <span className="text-red-500">*</span>
+                    </Label>
+                    <p className="text-xs text-slate-500">
+                      How long will you remain open to this job opportunity?
+                    </p>
+                    <select
+                      id="opportunity-duration"
+                      value={opportunityOption}
+                      onChange={(e) => setOpportunityOption(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="7_days">7 days</option>
+                      <option value="15_days">15 days</option>
+                      <option value="30_days">30 days</option>
+                      <option value="2_months">2 months</option>
+                      <option value="custom">Custom duration...</option>
+                    </select>
+                    {opportunityOption === 'custom' && (
+                      <Input
+                        type="text"
+                        placeholder="e.g. 45 days or 3 months"
+                        value={opportunityCustom}
+                        onChange={(e) => setOpportunityCustom(e.target.value)}
+                        className="mt-2 text-sm"
+                        required
+                      />
+                    )}
                   </div>
                 </div>}
 

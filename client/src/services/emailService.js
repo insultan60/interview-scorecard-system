@@ -176,3 +176,59 @@ export async function sendApplicationConfirmationEmailClient({ candidateEmail, c
     return { sent: false, reason: err?.text || err?.message || 'Failed to send application confirmation email.' };
   }
 }
+
+/**
+ * Sends an availability request link email directly from the browser via EmailJS HTTPS API.
+ */
+export async function sendAvailabilityEmailClient({ candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl }) {
+  console.log('[EmailJS Browser] Attempting to send Availability Request Email...', { candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl });
+  if (!isBrowserEmailJSConfigured()) {
+    console.warn('[EmailJS Browser] Browser EmailJS environment variables are not configured in .env.');
+    return { sent: false, reason: 'Browser EmailJS is not configured.' };
+  }
+
+  if (!candidateEmail) {
+    console.warn('[EmailJS Browser] Candidate email is missing.');
+    return { sent: false, reason: 'No candidate email address on file.' };
+  }
+
+  const subject = `Please provide your availability — ${requisitionTitle} (${stageLabel})`;
+  const message = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    `Our hiring team would like to arrange your interview for the ${stageLabel} stage of your application for ${requisitionTitle}.`,
+    '',
+    'Please click the link below to select your preferred date and time windows:',
+    availabilityUrl,
+    '',
+    'Thank you,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  try {
+    await emailjs.send(
+      SERVICE_ID,
+      TEMPLATE_ID,
+      {
+        to_email: candidateEmail,
+        email_to: candidateEmail,
+        recipient: candidateEmail,
+        to_name: candidateName || 'Candidate',
+        candidate_name: candidateName || 'Candidate',
+        requisition_title: requisitionTitle,
+        stage_label: stageLabel,
+        availability_url: availabilityUrl,
+        link: availabilityUrl,
+        subject,
+        message,
+        body: message,
+      },
+      PUBLIC_KEY
+    );
+    console.log(`[EmailJS Browser] Successfully sent availability request email to ${candidateEmail}`);
+    return { sent: true };
+  } catch (err) {
+    console.warn('[EmailJS Browser] Failed to send availability email:', err);
+    return { sent: false, reason: err?.text || err?.message || 'Failed to send availability email via browser EmailJS.' };
+  }
+}

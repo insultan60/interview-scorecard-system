@@ -25,6 +25,14 @@ const interviewSchema = new mongoose.Schema({
   conferenceId: String,        // Provider's record id — maps transcript back to THIS interview
   designatedScorerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
+  candidateAvailability: {
+    preferredDate: String,
+    startTime: String,
+    endTime: String,
+    notes: String,
+    submittedAt: Date,
+  },
+
   consentObtained: { type: Boolean, default: false },   // HR confirms candidate consent before recording
   transcriptText: String,      // Fetched or manually uploaded
   transcriptStatus: { type: String, enum: TRANSCRIPT_STATUS, default: 'none' },

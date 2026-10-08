@@ -16,6 +16,7 @@ const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
 const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
+const { getSecrets } = require('../utils/secrets');
 const { extractArtifactText } = require('../utils/textExtractor');
 const { recomputeAndPersist, getOrCreateNextInterview } = require('./scoringController');
 
@@ -56,6 +57,79 @@ async function emailMeetingLinkToCandidate(interview) {
     // meeting creation into a 500 the caller has to retry.
     logger.warn(`[Interview] Could not email meeting link for ${interview._id}: ${err.message}`);
     return { sent: false, reason: 'Could not send the email — the meeting link was still saved.' };
+  }
+}
+
+/**
+ * Google Calendar does not send an invitation to the owner of the calendar
+ * hosting the event. Send that account an explicit confirmation instead.
+ * GOOGLE_CALENDAR_HOST_EMAIL overrides GMAIL_USER when those accounts differ.
+ */
+async function emailCalendarHost(interview, action) {
+  try {
+    const { gmailUser } = await getSecrets();
+    const hostEmail = process.env.GOOGLE_CALENDAR_HOST_EMAIL || gmailUser;
+    if (!hostEmail) return { sent: false, reason: 'No Calendar host email configured.' };
+
+    const application = await Application.findById(interview.applicationId).populate('candidateId', 'name');
+    const requisition = await Requisition.findById(interview.requisitionId);
+    const stage = requisition?.stages?.find((item) => item.key === interview.stageKey);
+    const candidateName = application?.candidateId?.name || 'Candidate';
+    const stageLabel = stage?.label || interview.stageKey;
+    const isCancelled = action === 'cancelled';
+    const timeZone = process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Asia/Karachi';
+    const meetingTime = interview.meetingStart
+      ? new Intl.DateTimeFormat('en-PK', {
+        dateStyle: 'full', timeStyle: 'short', timeZone,
+      }).format(new Date(interview.meetingStart))
+      : 'Not specified';
+
+    const result = await emailNotifier.sendEmail({
+      to: hostEmail,
+      subject: `${isCancelled ? 'Cancelled' : 'Scheduled'}: ${candidateName} — ${stageLabel}`,
+      text: isCancelled
+        ? [
+          'Hello,',
+          '',
+          'This is to confirm that the following interview has been cancelled.',
+          '',
+          `Candidate: ${candidateName}`,
+          `Position: ${requisition?.title || 'Interview'}`,
+          `Interview stage: ${stageLabel}`,
+          `Previously scheduled: ${meetingTime} (${timeZone})`,
+          '',
+          'The Google Calendar event has been removed and the candidate has been notified.',
+          '',
+          'Regards,',
+          'Red Star Technologies Hiring Team',
+        ].join('\n')
+        : [
+          'Hello,',
+          '',
+          'This is to confirm that an interview has been scheduled in your Google Calendar.',
+          '',
+          `Candidate: ${candidateName}`,
+          `Position: ${requisition?.title || 'Interview'}`,
+          `Interview stage: ${stageLabel}`,
+          `Date and time: ${meetingTime} (${timeZone})`,
+          `Duration: ${interview.meetingEnd && interview.meetingStart ? `${Math.round((new Date(interview.meetingEnd) - new Date(interview.meetingStart)) / 60000)} minutes` : 'Not specified'}`,
+          `Google Meet link: ${interview.meetingUri || 'Not available'}`,
+          '',
+          'The candidate has been invited through Google Calendar. Please review the event on your calendar before the interview.',
+          '',
+          'Regards,',
+          'Red Star Technologies Hiring Team',
+        ].join('\n'),
+    });
+    if (result.sent) {
+      logger.info(`[Interview] Calendar host notification (${action}) sent to ${hostEmail} for ${interview._id}.`);
+    } else {
+      logger.warn(`[Interview] Calendar host notification (${action}) was not sent to ${hostEmail} for ${interview._id}: ${result.reason || 'unknown email error'}`);
+    }
+    return result;
+  } catch (err) {
+    logger.warn(`[Interview] Could not notify Calendar host for ${interview._id}: ${err.message}`);
+    return { sent: false, reason: 'Could not notify the Calendar host.' };
   }
 }
 
@@ -207,6 +281,12 @@ const createMeeting = asyncHandler(async (req, res) => {
     const { meetingUri, conferenceId, calendarEventId, meetingStart, meetingEnd } = await transcriptProvider.createMeeting(interview, {
       startTime: req.body?.meetingStart,
       endTime: req.body?.meetingEnd,
+      localStartTime: req.body?.localStartTime,
+      localEndTime: req.body?.localEndTime,
+      // Keep the Calendar event in the timezone in which the recruiter picked
+      // the date and time. Without this, the provider falls back to the
+      // server timezone, which can move the event onto a different date.
+      timeZone: req.body?.timeZone,
       candidateEmail: application?.candidateId?.email,
       candidateName: application?.candidateId?.name,
       requisitionTitle: requisition?.title,
@@ -229,6 +309,7 @@ const createMeeting = asyncHandler(async (req, res) => {
   const emailResult = interview.calendarEventId
     ? { sent: true, reason: 'Google Calendar invitation sent.' }
     : await emailMeetingLinkToCandidate(interview);
+  if (interview.calendarEventId) await emailCalendarHost(interview, 'scheduled');
 
   logger.info(`[Interview] Meeting set for ${interview._id}: ${interview.meetingUri}`);
   res.json({ interview, emailSent: emailResult.sent, emailReason: emailResult.reason });
@@ -264,8 +345,14 @@ const cancelMeeting = asyncHandler(async (req, res) => {
   await assertInterviewMutable(interview, 'cancel a meeting');
 
   if (interview.calendarEventId) {
-    await transcriptProvider.cancelMeeting(interview);
+    try {
+      await transcriptProvider.cancelMeeting(interview);
+    } catch (err) {
+      logger.warn(`[Interview] Calendar cancellation warning for ${interview._id}: ${err.message}. Clearing local meeting link anyway.`);
+    }
   }
+
+  if (interview.calendarEventId) await emailCalendarHost(interview, 'cancelled');
 
   interview.meetingUri = undefined;
   interview.conferenceId = undefined;
@@ -598,7 +685,92 @@ const sendOffer = asyncHandler(async (req, res) => {
   });
 });
 
+const requestAvailability = asyncHandler(async (req, res) => {
+  const interview = await Interview.findById(req.params.id);
+  if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+
+  const application = await Application.findById(interview.applicationId).populate('candidateId');
+  if (!application || !application.candidateId) {
+    throw new ValidationError(['applicationId'], 'Candidate information not found.');
+  }
+  const requisition = await Requisition.findById(interview.requisitionId);
+  const stageConfig = (requisition?.stages || []).find((s) => s.key === interview.stageKey);
+  const stageLabel = stageConfig?.label || interview.stageKey;
+
+  const candidateEmail = application.candidateId.email;
+  const candidateName = application.candidateId.name;
+  const requisitionTitle = requisition?.title || 'Job Opening';
+
+  const clientHost = process.env.CLIENT_URL || req.headers.origin || 'http://localhost:5173';
+  const availabilityUrl = `${clientHost}/interview/${interview._id}/availability`;
+
+  let emailResult = { sent: false, reason: 'No candidate email on file.' };
+  if (candidateEmail) {
+    emailResult = await emailNotifier.sendAvailabilityRequestEmail({
+      candidateEmail,
+      candidateName,
+      requisitionTitle,
+      stageLabel,
+      availabilityUrl,
+    });
+  }
+
+  logger.info(`[Interview] Availability request created for interview ${interview._id} to ${candidateEmail}: ${availabilityUrl}. emailSent=${emailResult.sent}`);
+  res.json({
+    sent: emailResult.sent,
+    interview,
+    availabilityUrl,
+    candidateEmail,
+    candidateName,
+    requisitionTitle,
+    stageLabel,
+  });
+});
+
+const getPublicAvailability = asyncHandler(async (req, res) => {
+  const interview = await Interview.findById(req.params.id);
+  if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found or expired.' });
+
+  const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
+  const requisition = await Requisition.findById(interview.requisitionId).select('title employmentType location');
+  const stageConfig = (requisition?.stages || []).find((s) => s.key === interview.stageKey);
+
+  res.json({
+    candidateName: application?.candidateId?.name || 'Candidate',
+    requisitionTitle: requisition?.title || 'Job Opening',
+    stageLabel: stageConfig?.label || interview.stageKey,
+    candidateAvailability: interview.candidateAvailability || null,
+  });
+});
+
+const submitPublicAvailability = asyncHandler(async (req, res) => {
+  const interview = await Interview.findById(req.params.id);
+  if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+
+  const { preferredDate, startTime, endTime, notes } = req.body;
+  if (!preferredDate) {
+    throw new ValidationError(['preferredDate'], 'Preferred date is required.');
+  }
+
+  interview.candidateAvailability = {
+    preferredDate: String(preferredDate).trim(),
+    startTime: startTime ? String(startTime).trim() : '',
+    endTime: endTime ? String(endTime).trim() : '',
+    notes: notes ? String(notes).trim() : '',
+    submittedAt: new Date(),
+  };
+
+  await interview.save();
+  logger.info(`[Interview] Candidate submitted availability for interview ${interview._id}: ${preferredDate}`);
+
+  res.json({
+    message: 'Availability submitted successfully.',
+    candidateAvailability: interview.candidateAvailability,
+  });
+});
+
 module.exports = {
   list, getOne, create, createMeeting, cancelMeeting, sendMeetingEmail, recordConsent, fetchTranscript,
   uploadTranscript, uploadArtifact, score, googleOAuthCallback, sendOffer, getOrCreateNextInterview,
+  requestAvailability, getPublicAvailability, submitPublicAvailability,
 };

@@ -595,6 +595,7 @@ export default function RequisitionDetail() {
                     <TableRow className="bg-slate-50/50">
                       <TableHead className="w-16 font-semibold">Rank</TableHead>
                       <TableHead className="min-w-[160px] font-semibold">Candidate</TableHead>
+                      <TableHead className="w-32 font-semibold">Availability</TableHead>
                       <TableHead className="min-w-[260px] font-semibold">Hiring Stages</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
@@ -638,6 +639,16 @@ export default function RequisitionDetail() {
                           <TableCell className="align-middle">
                             <div className="font-medium text-foreground">{app.candidateId?.name || 'Unknown'}</div>
                             <div className="text-xs text-muted-foreground">{app.candidateId?.email}</div>
+                          </TableCell>
+
+                          <TableCell className="align-middle">
+                            {app.opportunityDuration ? (
+                              <Badge variant="secondary" className="font-normal text-xs bg-slate-100 text-slate-700 border-slate-200">
+                                {app.opportunityDuration}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </TableCell>
 
                           <TableCell className="align-middle">

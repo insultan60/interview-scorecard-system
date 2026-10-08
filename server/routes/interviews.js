@@ -8,6 +8,10 @@ const router = express.Router();
 // Google's OAuth redirect hits this URL directly (no bearer token available) — must be public.
 router.get('/google/callback', interviewController.googleOAuthCallback);
 
+// Public candidate availability endpoints (no auth token required)
+router.get('/:id/availability/public', interviewController.getPublicAvailability);
+router.post('/:id/availability/public', interviewController.submitPublicAvailability);
+
 router.use(requireAuth);
 
 router.get('/', interviewController.list);
@@ -16,6 +20,7 @@ router.post('/', interviewController.create);
 router.post('/:id/meeting', interviewController.createMeeting);
 router.delete('/:id/meeting', interviewController.cancelMeeting);
 router.post('/:id/send-meeting-email', interviewController.sendMeetingEmail);
+router.post('/:id/request-availability', interviewController.requestAvailability);
 router.post('/:id/consent', interviewController.recordConsent);
 router.post('/:id/fetch-transcript', interviewController.fetchTranscript);
 router.post('/:id/upload-transcript', upload.single('transcript'), interviewController.uploadTranscript);

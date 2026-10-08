@@ -1100,7 +1100,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, email, phone, questionnaireAnswers } = req.body;
+  const { name, email, phone, questionnaireAnswers, opportunityDuration } = req.body;
   if (!name || !email) {
     throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
   }
@@ -1242,6 +1242,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     source: 'public_link',
     stageProgress,
     questionnaireAnswers: parsedQAnswers,
+    opportunityDuration: opportunityDuration ? String(opportunityDuration).trim() : undefined,
   });
 
   // 3. Create Stage 1 Interview document

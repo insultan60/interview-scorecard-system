@@ -14,6 +14,7 @@ import InterviewRoom from './pages/InterviewRoom';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
 import CandidateApply from './pages/CandidateApply';
+import CandidateAvailability from './pages/CandidateAvailability';
 
 function ProtectedPage({ children }) {
   return (
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/apply/:id" element={<CandidateApply />} />
+      <Route path="/interview/:id/availability" element={<CandidateAvailability />} />
       <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
       <Route path="/requisitions" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
       <Route path="/requisitions/new" element={<ProtectedPage><Requisitions /></ProtectedPage>} />

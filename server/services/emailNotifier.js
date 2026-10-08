@@ -147,4 +147,22 @@ async function sendPasswordResetEmail({ userEmail, userName, resetUrl, expiresIn
   return sendEmail({ to: userEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail };
+/** Emails a candidate asking for their preferred interview date & time availability. */
+async function sendAvailabilityRequestEmail({ candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl }) {
+  const subject = `Please provide your availability — ${requisitionTitle} (${stageLabel})`;
+  const text = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    `Our hiring team would like to arrange your interview for the ${stageLabel} stage of your application for ${requisitionTitle}.`,
+    '',
+    'Please click the link below to select your preferred date and time windows:',
+    availabilityUrl,
+    '',
+    'Thank you,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  return sendEmail({ to: candidateEmail, subject, text });
+}
+
+module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail, sendAvailabilityRequestEmail };

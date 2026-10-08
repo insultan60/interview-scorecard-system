@@ -1,11 +1,11 @@
 import RichTextViewer from '../components/RichTextViewer';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
-import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail } from 'lucide-react';
 import api from '../hooks/useApi';
-import { sendMeetingEmailClient, sendOfferEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
+import { sendMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -14,6 +14,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TimePicker } from '@/components/ui/time-picker';
 import { formatDisposition } from '../utils/formatters';
+
+function formatLocalDateTime(date) {
+  const datePart = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+  return `${datePart}T${timePart}`;
+}
 
 export default function InterviewRoom() {
   const { id } = useParams();
@@ -28,11 +34,11 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
-  const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => new Date());
-  const [selectedStartTime, setSelectedStartTime] = useState('10:00');
-  const [selectedEndTime, setSelectedEndTime] = useState('10:30');
-  const [meetingStartInput, setMeetingStartInput] = useState(() => `${dayjs().format('YYYY-MM-DD')}T10:00`);
-  const [meetingEndInput, setMeetingEndInput] = useState(() => `${dayjs().format('YYYY-MM-DD')}T10:30`);
+  const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => dayjs().add(1, 'hour').startOf('hour').toDate());
+  const [selectedStartTime, setSelectedStartTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').format('HH:mm'));
+  const [selectedEndTime, setSelectedEndTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('HH:mm'));
+  const [meetingStartInput, setMeetingStartInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').format('YYYY-MM-DDTHH:mm')}`);
+  const [meetingEndInput, setMeetingEndInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('YYYY-MM-DDTHH:mm')}`);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
   const [confirmingConsent, setConfirmingConsent] = useState(false);
   const [fetchingTranscript, setFetchingTranscript] = useState(false);
@@ -52,8 +58,7 @@ export default function InterviewRoom() {
 
   const [passFailResult, setPassFailResult] = useState('');
   const [passFailSaving, setPassFailSaving] = useState(false);
-
-  const pollTimer = useRef(null);
+  const [requestingAvailability, setRequestingAvailability] = useState(false);
 
   const load = useCallback(async () => {
     const { data: interviewData } = await api.get(`/interviews/${id}`);
@@ -76,7 +81,6 @@ export default function InterviewRoom() {
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
-    return () => clearTimeout(pollTimer.current);
   }, [load]);
 
   const stageConfig = requisition?.stages.find((s) => s.key === interview?.stageKey);
@@ -130,39 +134,39 @@ export default function InterviewRoom() {
     });
   }
 
-  function stopPolling() {
-    clearTimeout(pollTimer.current);
-    pollTimer.current = null;
-  }
-
-  async function pollTranscript() {
-    const res = await api.post(`/interviews/${id}/fetch-transcript`, {}, { validateStatus: () => true });
-    if (res.status === 202) {
-      const delay = Math.min(Math.max((res.data.retryAfter || 15) * 1000, 5000), 30000);
-      pollTimer.current = setTimeout(pollTranscript, delay);
-    } else if (res.status === 200) {
-      stopPolling();
-      setInterview(res.data.interview);
-      setFetchingTranscript(false);
-      toast.success('Transcript ready.');
-    } else {
-      stopPolling();
-      setFetchingTranscript(false);
-      toast.error(res.data?.message || 'Could not fetch transcript.');
-    }
-  }
-
   async function handleCreateMeeting(useProvider) {
     setCreatingMeeting(true);
     try {
-      const dateStr = dayjs(selectedMeetingDate || new Date()).format('YYYY-MM-DD');
-      const startStr = meetingStartInput || `${dateStr}T${selectedStartTime || '10:00'}`;
-      const endStr = meetingEndInput || `${dateStr}T${selectedEndTime || '10:30'}`;
+      let startDateObj, endDateObj;
+      let localStartTime, localEndTime;
+      if (useProvider) {
+        const baseDate = selectedMeetingDate || new Date();
+        const year = baseDate.getFullYear();
+        const month = baseDate.getMonth();
+        const day = baseDate.getDate();
+        const [startH, startM] = (selectedStartTime || '10:00').split(':').map(Number);
+        startDateObj = new Date(year, month, day, startH, startM, 0, 0);
+
+        const [endH, endM] = (selectedEndTime || '10:30').split(':').map(Number);
+        endDateObj = new Date(year, month, day, endH, endM, 0, 0);
+
+        if (endDateObj <= startDateObj) {
+          endDateObj = new Date(startDateObj.getTime() + 30 * 60 * 1000);
+        }
+        localStartTime = formatLocalDateTime(startDateObj);
+        localEndTime = formatLocalDateTime(endDateObj);
+      }
 
       const body = useProvider
         ? {
-          meetingStart: new Date(startStr).toISOString(),
-          meetingEnd: new Date(endStr).toISOString(),
+          // Keep the date picked in the calendar separate from the UTC instant.
+          // Google Calendar uses this local value with `timeZone`, so a timezone
+          // conversion can never roll the event into the following day.
+          localStartTime,
+          localEndTime,
+          meetingStart: startDateObj.toISOString(),
+          meetingEnd: endDateObj.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }
         : { meetingUri: meetingLinkInput.trim() };
 
@@ -170,23 +174,21 @@ export default function InterviewRoom() {
         toast.error('Paste a meeting link first.');
         return;
       }
-      if (useProvider && (!startStr || !endStr)) {
+      if (useProvider && (!selectedStartTime || !selectedEndTime)) {
         toast.error('Choose the meeting start and end time first.');
         return;
       }
-      if (useProvider && new Date(startStr) <= new Date()) {
-        toast.error('Meeting start time must be in the future.');
+      if (useProvider && startDateObj.getTime() < Date.now() - 2 * 60 * 1000) {
+        toast.error('Meeting start time is in the past. Please select a future date and time.');
         return;
       }
-      if (useProvider && new Date(endStr) - new Date(startStr) > 60 * 60 * 1000) {
+      if (useProvider && endDateObj.getTime() - startDateObj.getTime() > 60 * 60 * 1000) {
         toast.error('Interview duration cannot be longer than 1 hour.');
         return;
       }
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
       setMeetingLinkInput('');
-      setMeetingStartInput(startStr);
-      setMeetingEndInput(endStr);
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
         toast.success('Meeting set and emailed to candidate.');
@@ -261,6 +263,72 @@ export default function InterviewRoom() {
     }
   }
 
+  async function handleRequestAvailability() {
+    setRequestingAvailability(true);
+    console.log('[EmailNotifier] Requesting availability link from server for interview:', id);
+    try {
+      const res = await api.post(`/interviews/${id}/request-availability`);
+      console.log('[EmailNotifier] Server response for request-availability:', res.data);
+      if (res.data?.interview) {
+        setInterview(res.data.interview);
+      }
+
+      if (res.data.sent) {
+        console.log('[EmailNotifier] Availability request email successfully sent via BACKEND server to:', res.data.candidateEmail);
+        toast.success(`Availability request email sent to ${res.data.candidateEmail || 'candidate'}!`);
+      } else {
+        console.warn('[EmailNotifier] Backend email not sent. Reason:', res.data.emailReason);
+        if (isBrowserEmailJSConfigured()) {
+          console.log('[EmailNotifier] Attempting to send availability link via BROWSER EmailJS...');
+          const clientRes = await sendAvailabilityEmailClient({
+            candidateEmail: res.data.candidateEmail,
+            candidateName: res.data.candidateName,
+            requisitionTitle: res.data.requisitionTitle,
+            stageLabel: res.data.stageLabel,
+            availabilityUrl: res.data.availabilityUrl,
+          });
+          if (clientRes.sent) {
+            console.log('[EmailNotifier] Availability email successfully sent via BROWSER EmailJS.');
+            toast.success('Availability link sent to candidate via Browser EmailJS!');
+          } else {
+            console.warn('[EmailNotifier] Browser EmailJS failed:', clientRes.reason);
+            toast.error(`Could not email candidate (${res.data.emailReason || clientRes.reason || 'Gmail SMTP not configured in Settings'}).`);
+          }
+        } else {
+          console.warn('[EmailNotifier] Gmail SMTP not configured in Settings and Browser EmailJS not configured in .env');
+          toast.error(res.data.emailReason || 'Gmail SMTP not configured in Settings (GMAIL_USER & GMAIL_APP_PASSWORD required).');
+        }
+      }
+    } catch (err) {
+      console.error('[EmailNotifier] Error requesting availability:', err);
+      toast.error(err?.response?.data?.message || 'Failed to send availability request.');
+    } finally {
+      setRequestingAvailability(false);
+    }
+  }
+
+  function handleApplyCandidateAvailability() {
+    if (!interview?.candidateAvailability?.preferredDate) return;
+    const avail = interview.candidateAvailability;
+    let preferredDateObj;
+    if (typeof avail.preferredDate === 'string' && avail.preferredDate.includes('-')) {
+      const [year, month, day] = avail.preferredDate.split('-').map(Number);
+      preferredDateObj = new Date(year, month - 1, day, 12, 0, 0);
+    } else {
+      preferredDateObj = new Date(avail.preferredDate);
+    }
+
+    setSelectedMeetingDate(preferredDateObj);
+    const startTimeStr = avail.startTime || '10:00';
+    const endTimeStr = avail.endTime || '10:30';
+    setSelectedStartTime(startTimeStr);
+    setSelectedEndTime(endTimeStr);
+    const dateStr = dayjs(preferredDateObj).format('YYYY-MM-DD');
+    setMeetingStartInput(`${dateStr}T${startTimeStr}`);
+    setMeetingEndInput(`${dateStr}T${endTimeStr}`);
+    toast.success("Meeting date and time set from candidate's preferred availability!");
+  }
+
   async function handleStartNextStage(stageKey) {
     setStartingStage(true);
     try {
@@ -311,9 +379,23 @@ export default function InterviewRoom() {
     }
   }
 
-  function handleFetchTranscript() {
+  async function handleFetchTranscript() {
     setFetchingTranscript(true);
-    pollTranscript();
+    try {
+      const res = await api.post(`/interviews/${id}/fetch-transcript`, {}, { validateStatus: () => true });
+      if (res.status === 200) {
+        setInterview(res.data.interview);
+        toast.success('Transcript ready.');
+      } else if (res.status === 202) {
+        toast('Transcript is not ready yet. Please try again later.', { icon: '⏳' });
+      } else {
+        toast.error(res.data?.message || 'Could not fetch transcript.');
+      }
+    } catch {
+      toast.error('Could not fetch transcript. Please try again.');
+    } finally {
+      setFetchingTranscript(false);
+    }
   }
 
   async function handleUploadTranscript(e) {
@@ -677,24 +759,113 @@ export default function InterviewRoom() {
               <CardTitle>Meeting</CardTitle>
             </CardHeader>
             <CardContent>
-              {interview.meetingUri ? (
-                <div className="space-y-2.5">
+              {/* Candidate Availability Section */}
+              {interview.candidateAvailability?.preferredDate ? (
+                <div className="mb-4 rounded-lg border border-[#d21e2b]/30 bg-[#d21e2b]/5 p-3.5 text-sm">
+                  <div className="flex items-center justify-between font-semibold text-slate-900 mb-1">
+                    <span className="flex items-center gap-1.5 text-[#d21e2b]">
+                      <CalendarIcon className="h-4 w-4" />
+                      Candidate Preferred Availability Submitted
+                    </span>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      {dayjs(interview.candidateAvailability.submittedAt).format('MMM D, h:mm A')}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-slate-800 space-y-1 text-xs sm:text-sm">
+                    <p>
+                      <strong className="text-slate-900">Date:</strong>{' '}
+                      {(() => {
+                        const d = interview.candidateAvailability.preferredDate;
+                        if (typeof d === 'string' && d.includes('-')) {
+                          const [y, m, day] = d.split('-').map(Number);
+                          return dayjs(new Date(y, m - 1, day)).format('dddd, MMMM D, YYYY');
+                        }
+                        return dayjs(d).format('dddd, MMMM D, YYYY');
+                      })()}
+                    </p>
+                    <p>
+                      <strong className="text-slate-900">Time Window:</strong>{' '}
+                      {interview.candidateAvailability.startTime} - {interview.candidateAvailability.endTime}
+                    </p>
+                    {interview.candidateAvailability.notes && (
+                      <p>
+                        <strong className="text-slate-900">Candidate Notes:</strong>{' '}
+                        {interview.candidateAvailability.notes}
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {!interview.meetingUri && (
+                      <button
+                        type="button"
+                        onClick={handleApplyCandidateAvailability}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-[#d21e2b] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#d21e2b]/90 shadow-sm"
+                      >
+                        <Clock className="h-3.5 w-3.5" />
+                        Pre-fill & Use Candidate's Preferred Time
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleRequestAvailability}
+                      disabled={requestingAvailability}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#d21e2b]/40 bg-white px-2.5 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {requestingAvailability ? 'Sending...' : 'Request Again'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div>
-                    <a href={interview.meetingUri} target="_blank" rel="noreferrer" className="break-all text-sm text-blue-600 hover:underline">
+                    <p className="text-xs font-semibold text-slate-800">Ask Candidate for Availability</p>
+                    <p className="text-xs text-slate-500">Send an email link so candidate can choose their available date & time.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRequestAvailability}
+                    disabled={requestingAvailability}
+                    className="inline-flex items-center gap-1.5 shrink-0 rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    {requestingAvailability ? 'Sending...' : 'Send Request Email'}
+                  </button>
+                </div>
+              )}
+
+              {interview.meetingUri ? (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3.5">
+                  {interview.meetingStart && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-semibold text-slate-900 border-b pb-2.5">
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="h-4 w-4 text-[#d21e2b]" />
+                        {dayjs(interview.meetingStart).format('dddd, MMMM D, YYYY')}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-slate-700">
+                        <Clock className="h-4 w-4 text-slate-400" />
+                        {dayjs(interview.meetingStart).format('h:mm A')}
+                        {interview.meetingEnd ? ` – ${dayjs(interview.meetingEnd).format('h:mm A')}` : ''}
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Meeting Link</p>
+                    <a href={interview.meetingUri} target="_blank" rel="noreferrer" className="break-all text-sm font-medium text-blue-600 hover:underline">
                       {interview.meetingUri}
                     </a>
-                    <span className="ml-2 text-xs text-muted-foreground">({interview.provider === 'manual' ? 'pasted link' : 'created via Google Meet'})</span>
+                    <span className="ml-2 text-xs text-muted-foreground">({interview.provider === 'manual' ? 'Pasted link' : 'Google Meet'})</span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-1">
                     <button
                       type="button" onClick={handleResendMeetingEmail} disabled={sendingMeetingEmail}
-                      className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {sendingMeetingEmail ? 'Sending...' : 'Resend Email'}
+                      {sendingMeetingEmail ? 'Sending...' : 'Resend Meeting Email'}
                     </button>
                     <button
                       type="button" onClick={handleCancelMeeting} disabled={creatingMeeting}
-                      className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {creatingMeeting ? 'Cancelling...' : 'Cancel Meeting'}
                     </button>

@@ -48,13 +48,13 @@ async function getCalendarClient() {
  * @throws {import('../utils/errors').ServiceError} on persistent network failure.
  */
 async function createMeeting(interview, details = {}) {
-  const { startTime, endTime, candidateEmail, candidateName, requisitionTitle, stageLabel } = details;
+  const { startTime, endTime, localStartTime, localEndTime, candidateEmail, candidateName, requisitionTitle, stageLabel } = details;
   const start = new Date(startTime);
   const end = new Date(endTime);
   if (!startTime || !endTime || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
     throw new ValidationError(['meetingStart', 'meetingEnd'], 'Choose a valid meeting start and end time.');
   }
-  if (start.getTime() <= Date.now()) {
+  if (start.getTime() < Date.now() - 2 * 60 * 1000) {
     throw new ValidationError(['meetingStart'], 'The meeting start time must be in the future.');
   }
   if (end.getTime() - start.getTime() > 60 * 60 * 1000) {
@@ -62,6 +62,21 @@ async function createMeeting(interview, details = {}) {
   }
 
   const calendar = await getCalendarClient();
+  // Calendar must interpret the selected wall-clock time in the organizer's
+  // calendar timezone. A browser can be set to a different timezone (for
+  // example, Pacific time), which would otherwise move a Pakistan meeting to
+  // the following day in Google Calendar.
+  const timeZone = process.env.GOOGLE_CALENDAR_TIME_ZONE
+    || details.timeZone
+    || Intl.DateTimeFormat().resolvedOptions().timeZone
+    || 'UTC';
+  // A timestamp ending in Z is an absolute UTC instant. Supplying it alongside
+  // a timezone can make Calendar display a different calendar day. Prefer the
+  // local date/time selected by the recruiter and let Calendar apply its IANA
+  // timezone. Keep the UTC timestamps above for validation and persistence.
+  const localDateTime = (value, fallback) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value || '')
+    ? value
+    : fallback.toISOString();
   const { data } = await withRetry('GoogleCalendar', () => calendar.events.insert({
     calendarId: 'primary',
     conferenceDataVersion: 1,
@@ -69,8 +84,8 @@ async function createMeeting(interview, details = {}) {
     requestBody: {
       summary: `${candidateName || 'Candidate'} — ${stageLabel || 'Interview'} — ${requisitionTitle || 'Interview'}`,
       description: `Interview with ${candidateName || 'candidate'}.`,
-      start: { dateTime: start.toISOString() },
-      end: { dateTime: end.toISOString() },
+      start: { dateTime: localDateTime(localStartTime, start), timeZone },
+      end: { dateTime: localDateTime(localEndTime, end), timeZone },
       attendees: candidateEmail ? [{ email: candidateEmail }] : [],
       conferenceData: { createRequest: { requestId: `interview-${interview._id}-${Date.now()}` } },
     },
@@ -83,18 +98,31 @@ async function createMeeting(interview, details = {}) {
     meetingUri: entryPoint.uri,
     conferenceId: data.conferenceData?.conferenceId ? `meetingCode:${data.conferenceData.conferenceId}` : undefined,
     calendarEventId: data.id,
-    meetingStart: start,
-    meetingEnd: end,
+    // Google returns the canonical event times after applying the organizer's
+    // calendar timezone. Persist those values so app displays and email
+    // notifications always match the Calendar event.
+    meetingStart: data.start?.dateTime ? new Date(data.start.dateTime) : start,
+    meetingEnd: data.end?.dateTime ? new Date(data.end.dateTime) : end,
   };
 }
 
 async function cancelMeeting(interview) {
   if (!interview.calendarEventId) return { cancelled: false };
-  const calendar = await getCalendarClient();
-  await withRetry('GoogleCalendar', () => calendar.events.delete({
-    calendarId: 'primary', eventId: interview.calendarEventId, sendUpdates: 'all',
-  }));
-  logger.info(`[GoogleMeet] Calendar event cancelled: ${interview.calendarEventId}`);
+  try {
+    const calendar = await getCalendarClient();
+    await withRetry('GoogleCalendar', () => calendar.events.delete({
+      calendarId: 'primary', eventId: interview.calendarEventId, sendUpdates: 'all',
+    }));
+    logger.info(`[GoogleMeet] Calendar event cancelled: ${interview.calendarEventId}`);
+  } catch (err) {
+    const status = err.code || err.status || err.response?.status;
+    const message = err.message || '';
+    if (status === 404 || status === 410 || message.includes('Resource has been deleted') || message.includes('Not Found')) {
+      logger.info(`[GoogleMeet] Calendar event ${interview.calendarEventId} was already deleted directly in Google Calendar.`);
+    } else {
+      logger.warn(`[GoogleMeet] Error cancelling event ${interview.calendarEventId}: ${err.message}. Clearing local reference.`);
+    }
+  }
   return { cancelled: true };
 }
 
