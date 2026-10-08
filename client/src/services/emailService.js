@@ -66,6 +66,58 @@ export async function sendMeetingEmailClient({ candidateEmail, candidateName, re
   }
 }
 
+/** Sends the Calendar owner's scheduled/cancelled interview notification through EmailJS. */
+export async function sendHostMeetingEmailClient({ hostEmail, action, candidateName, requisitionTitle, stageLabel, meetingUri, meetingStart, meetingEnd, timeZone = 'Asia/Karachi' }) {
+  if (!isBrowserEmailJSConfigured()) {
+    return { sent: false, reason: 'Client EmailJS environment variables are not configured.' };
+  }
+  if (!hostEmail) return { sent: false, reason: 'No Calendar host email address is configured.' };
+
+  const isCancelled = action === 'cancelled';
+  const meetingTime = meetingStart
+    ? new Intl.DateTimeFormat('en-PK', { dateStyle: 'full', timeStyle: 'short', timeZone }).format(new Date(meetingStart))
+    : 'Not specified';
+  const duration = meetingStart && meetingEnd
+    ? `${Math.round((new Date(meetingEnd) - new Date(meetingStart)) / 60000)} minutes`
+    : 'Not specified';
+  const subject = `${isCancelled ? 'Cancelled' : 'Scheduled'}: ${candidateName || 'Candidate'} — ${stageLabel}`;
+  const message = isCancelled
+    ? [
+      'Hello,', '', 'This is to confirm that the following interview has been cancelled.', '',
+      `Candidate: ${candidateName || 'Candidate'}`,
+      `Position: ${requisitionTitle || 'Interview'}`,
+      `Interview stage: ${stageLabel}`,
+      `Previously scheduled: ${meetingTime} (${timeZone})`, '',
+      'The Google Calendar event has been removed and the candidate has been notified.', '',
+      'Regards,', 'Red Star Technologies Hiring Team',
+    ].join('\n')
+    : [
+      'Hello,', '', 'This is to confirm that an interview has been scheduled in your Google Calendar.', '',
+      `Candidate: ${candidateName || 'Candidate'}`,
+      `Position: ${requisitionTitle || 'Interview'}`,
+      `Interview stage: ${stageLabel}`,
+      `Date and time: ${meetingTime} (${timeZone})`,
+      `Duration: ${duration}`,
+      `Google Meet link: ${meetingUri || 'Not available'}`, '',
+      'The candidate has been invited through Google Calendar. Please review the event on your calendar before the interview.', '',
+      'Regards,', 'Red Star Technologies Hiring Team',
+    ].join('\n');
+
+  try {
+    await emailjs.send(SERVICE_ID, TEMPLATE_ID, {
+      to_email: hostEmail, email_to: hostEmail, recipient: hostEmail,
+      to_name: 'Calendar Host', candidate_name: candidateName || 'Candidate',
+      requisition_title: requisitionTitle || 'Interview', stage_label: stageLabel,
+      meeting_uri: meetingUri || '', subject, message, body: message,
+    }, PUBLIC_KEY);
+    console.log(`[EmailJS Browser] Sent host ${action} notification to ${hostEmail}.`);
+    return { sent: true };
+  } catch (err) {
+    console.warn(`[EmailJS Browser] Failed to send host ${action} notification:`, err);
+    return { sent: false, reason: err?.text || err?.message || 'Failed to send host email via browser EmailJS.' };
+  }
+}
+
 /**
  * Sends a job offer letter email directly from the browser via EmailJS HTTPS API.
  * @param {{candidateEmail: string, candidateName?: string, requisitionTitle: string, offerLetterUrl?: string}} params

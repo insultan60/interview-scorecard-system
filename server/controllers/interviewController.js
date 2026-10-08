@@ -126,7 +126,7 @@ async function emailCalendarHost(interview, action) {
     } else {
       logger.warn(`[Interview] Calendar host notification (${action}) was not sent to ${hostEmail} for ${interview._id}: ${result.reason || 'unknown email error'}`);
     }
-    return result;
+    return { ...result, hostEmail };
   } catch (err) {
     logger.warn(`[Interview] Could not notify Calendar host for ${interview._id}: ${err.message}`);
     return { sent: false, reason: 'Could not notify the Calendar host.' };
@@ -287,6 +287,7 @@ const createMeeting = asyncHandler(async (req, res) => {
       // the date and time. Without this, the provider falls back to the
       // server timezone, which can move the event onto a different date.
       timeZone: req.body?.timeZone,
+      additionalAttendeeEmails: req.body?.additionalAttendeeEmails,
       candidateEmail: application?.candidateId?.email,
       candidateName: application?.candidateId?.name,
       requisitionTitle: requisition?.title,
@@ -309,10 +310,19 @@ const createMeeting = asyncHandler(async (req, res) => {
   const emailResult = interview.calendarEventId
     ? { sent: true, reason: 'Google Calendar invitation sent.' }
     : await emailMeetingLinkToCandidate(interview);
-  if (interview.calendarEventId) await emailCalendarHost(interview, 'scheduled');
+  const hostEmailResult = interview.calendarEventId
+    ? await emailCalendarHost(interview, 'scheduled')
+    : null;
 
   logger.info(`[Interview] Meeting set for ${interview._id}: ${interview.meetingUri}`);
-  res.json({ interview, emailSent: emailResult.sent, emailReason: emailResult.reason });
+  res.json({
+    interview,
+    emailSent: emailResult.sent,
+    emailReason: emailResult.reason,
+    hostEmailSent: hostEmailResult?.sent,
+    hostEmailReason: hostEmailResult?.reason,
+    hostEmail: hostEmailResult?.hostEmail,
+  });
 });
 
 /**
@@ -352,7 +362,9 @@ const cancelMeeting = asyncHandler(async (req, res) => {
     }
   }
 
-  if (interview.calendarEventId) await emailCalendarHost(interview, 'cancelled');
+  const hostEmailResult = interview.calendarEventId
+    ? await emailCalendarHost(interview, 'cancelled')
+    : null;
 
   interview.meetingUri = undefined;
   interview.conferenceId = undefined;
@@ -369,7 +381,12 @@ const cancelMeeting = asyncHandler(async (req, res) => {
   await interview.save();
 
   logger.info(`[Interview] Meeting cancelled for ${interview._id}.`);
-  res.json({ interview });
+  res.json({
+    interview,
+    hostEmailSent: hostEmailResult?.sent,
+    hostEmailReason: hostEmailResult?.reason,
+    hostEmail: hostEmailResult?.hostEmail,
+  });
 });
 
 /** POST /api/interviews/:id/consent */

@@ -77,16 +77,27 @@ async function createMeeting(interview, details = {}) {
   const localDateTime = (value, fallback) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value || '')
     ? value
     : fallback.toISOString();
+  const additionalAttendeeEmails = Array.isArray(details.additionalAttendeeEmails)
+    ? details.additionalAttendeeEmails.map((email) => String(email || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const invalidEmail = additionalAttendeeEmails.find((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  if (invalidEmail) throw new ValidationError(['additionalAttendeeEmails'], `Invalid attendee email: ${invalidEmail}`);
+  if (additionalAttendeeEmails.length > 50) {
+    throw new ValidationError(['additionalAttendeeEmails'], 'You can invite up to 50 additional attendees.');
+  }
+  const attendeeEmails = [...new Set([candidateEmail, ...additionalAttendeeEmails]
+    .map((email) => String(email || '').trim().toLowerCase())
+    .filter(Boolean))];
   const { data } = await withRetry('GoogleCalendar', () => calendar.events.insert({
     calendarId: 'primary',
     conferenceDataVersion: 1,
-    sendUpdates: candidateEmail ? 'all' : 'none',
+    sendUpdates: attendeeEmails.length > 0 ? 'all' : 'none',
     requestBody: {
       summary: `${candidateName || 'Candidate'} — ${stageLabel || 'Interview'} — ${requisitionTitle || 'Interview'}`,
       description: `Interview with ${candidateName || 'candidate'}.`,
       start: { dateTime: localDateTime(localStartTime, start), timeZone },
       end: { dateTime: localDateTime(localEndTime, end), timeZone },
-      attendees: candidateEmail ? [{ email: candidateEmail }] : [],
+      attendees: attendeeEmails.map((email) => ({ email })),
       conferenceData: { createRequest: { requestId: `interview-${interview._id}-${Date.now()}` } },
     },
   }));

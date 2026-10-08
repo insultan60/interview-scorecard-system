@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail } from 'lucide-react';
 import api from '../hooks/useApi';
-import { sendMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
+import { sendMeetingEmailClient, sendHostMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -21,6 +21,15 @@ function formatLocalDateTime(date) {
   return `${datePart}T${timePart}`;
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseEmailList(value) {
+  return [...new Set(value
+    .split(/[;,\n]/)
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean))];
+}
+
 export default function InterviewRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -34,6 +43,7 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
+  const [additionalInviteesInput, setAdditionalInviteesInput] = useState('');
   const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => dayjs().add(1, 'hour').startOf('hour').toDate());
   const [selectedStartTime, setSelectedStartTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').format('HH:mm'));
   const [selectedEndTime, setSelectedEndTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('HH:mm'));
@@ -157,6 +167,13 @@ export default function InterviewRoom() {
         localEndTime = formatLocalDateTime(endDateObj);
       }
 
+      const additionalAttendeeEmails = parseEmailList(additionalInviteesInput);
+      const invalidEmail = additionalAttendeeEmails.find((email) => !EMAIL_PATTERN.test(email));
+      if (useProvider && invalidEmail) {
+        toast.error(`Enter a valid invitee email address: ${invalidEmail}`);
+        return;
+      }
+
       const body = useProvider
         ? {
           // Keep the date picked in the calendar separate from the UTC instant.
@@ -167,6 +184,7 @@ export default function InterviewRoom() {
           meetingStart: startDateObj.toISOString(),
           meetingEnd: endDateObj.toISOString(),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          additionalAttendeeEmails,
         }
         : { meetingUri: meetingLinkInput.trim() };
 
@@ -189,6 +207,7 @@ export default function InterviewRoom() {
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
       setMeetingLinkInput('');
+      setAdditionalInviteesInput('');
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
         toast.success('Meeting set and emailed to candidate.');
@@ -219,8 +238,36 @@ export default function InterviewRoom() {
           toast.error(res.data.emailReason || 'Could not email the candidate.');
         }
       }
+      await sendHostEmailFallback(res.data, 'scheduled', res.data.interview);
     } finally {
       setCreatingMeeting(false);
+    }
+  }
+
+  async function sendHostEmailFallback(result, action, meeting) {
+    if (result?.hostEmailSent !== false) return;
+
+    if (!isBrowserEmailJSConfigured()) {
+      console.warn('[EmailNotifier] Host email was not sent by the backend and Browser EmailJS is not configured:', result.hostEmailReason);
+      toast.error(`Host email was not sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
+      return;
+    }
+
+    const clientRes = await sendHostMeetingEmailClient({
+      hostEmail: result.hostEmail,
+      action,
+      candidateName: application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '',
+      requisitionTitle: requisition?.title || '',
+      stageLabel: stageConfig?.label || meeting?.stageKey || '',
+      meetingUri: meeting?.meetingUri || '',
+      meetingStart: meeting?.meetingStart,
+      meetingEnd: meeting?.meetingEnd,
+    });
+    if (clientRes.sent) {
+      toast.success('Host notification sent via Browser EmailJS.');
+    } else {
+      console.warn('[EmailNotifier] Browser EmailJS host notification failed:', clientRes.reason);
+      toast.error(`Host email was not sent: ${clientRes.reason}`);
     }
   }
 
@@ -356,6 +403,7 @@ export default function InterviewRoom() {
     if (!window.confirm('Cancel this meeting? The link will be removed — you can create or paste a new one afterward.')) return;
     setCreatingMeeting(true);
     try {
+      const cancelledMeeting = interview;
       const res = await api.delete(`/interviews/${id}/meeting`, { validateStatus: () => true });
       if (res.status >= 400) {
         toast.error(res.data?.message || 'Could not cancel the meeting.');
@@ -363,6 +411,7 @@ export default function InterviewRoom() {
       }
       setInterview(res.data.interview);
       toast.success('Meeting cancelled.');
+      await sendHostEmailFallback(res.data, 'cancelled', cancelledMeeting);
     } finally {
       setCreatingMeeting(false);
     }
@@ -947,6 +996,20 @@ export default function InterviewRoom() {
                           }}
                         />
                       </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="additional-invitees" className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                        Additional Invitees <span className="normal-case font-normal text-slate-400">(optional)</span>
+                      </label>
+                      <textarea
+                        id="additional-invitees"
+                        value={additionalInviteesInput}
+                        onChange={(event) => setAdditionalInviteesInput(event.target.value)}
+                        placeholder="hod@company.com, ceo@company.com"
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                      />
+                      <p className="text-xs text-muted-foreground">Separate email addresses with commas, semicolons, or new lines. They will receive the Calendar invite.</p>
                     </div>
                   </div>
                   <button
