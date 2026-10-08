@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
@@ -90,12 +90,15 @@ export default function Candidates() {
 
   const [candidates, setCandidates] = useState([]);
   const [requisitions, setRequisitions] = useState([]);
+  const [filterRequisitions, setFilterRequisitions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchingCandidates, setFetchingCandidates] = useState(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [resumeFile, setResumeFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [viewFor, setViewFor] = useState(null);
   const [editFor, setEditFor] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editResumeFile, setEditResumeFile] = useState(null);
@@ -112,24 +115,53 @@ export default function Candidates() {
   const [deleting, setDeleting] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [requisitionFilter, setRequisitionFilter] = useState('all');
   const [dateSort, setDateSort] = useState('newest');
   const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+  const latestLoadRef = useRef(0);
 
-  async function loadCandidates() {
-    setLoading(true);
+  async function loadCandidates(targetPage = page) {
+    const requestId = ++latestLoadRef.current;
+    const isInitialLoad = candidates.length === 0 && loading;
+    if (isInitialLoad) setLoading(true);
+    else setFetchingCandidates(true);
     try {
-      const res = await api.get('/candidates');
+      const res = await api.get('/candidates', {
+        params: {
+          page: targetPage,
+          limit: PAGE_SIZE,
+          search: debouncedSearch.trim() || undefined,
+          requisitionId: requisitionFilter !== 'all' ? requisitionFilter : undefined,
+          sort: dateSort,
+        },
+      });
+      if (requestId !== latestLoadRef.current) return;
       setCandidates(res.data.candidates);
+      setFilterRequisitions(res.data.requisitionOptions || []);
+      setPagination(res.data.pagination || { total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+      setPage(res.data.pagination?.page || 1);
     } finally {
-      setLoading(false);
+      if (requestId === latestLoadRef.current) {
+        setLoading(false);
+        setFetchingCandidates(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadCandidates();
     api.get('/requisitions', { params: { status: 'open' } }).then((res) => setRequisitions(res.data.requisitions));
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebouncedSearch(search), 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    loadCandidates(1);
+  }, [debouncedSearch, requisitionFilter, dateSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -143,6 +175,11 @@ export default function Candidates() {
     }
     if (!EMAIL_PATTERN.test(form.email.trim())) {
       toast.error('Please enter a valid email address.');
+      return;
+    }
+    const duplicate = candidates.some((c) => c.email?.trim().toLowerCase() === form.email.trim().toLowerCase());
+    if (duplicate) {
+      toast.error('A candidate with this email address already exists.');
       return;
     }
     if (form.phone && !PHONE_NUMBER_PATTERN.test(form.phone)) {
@@ -164,12 +201,15 @@ export default function Candidates() {
       setResumeFile(null);
       setCreateOpen(false);
       loadCandidates();
+    } catch {
+      // API interceptor handles toast error messaging
     } finally {
       setCreating(false);
     }
   }
 
   function openEdit(candidate) {
+    setViewFor(null);
     setEditFor(candidate);
     setEditForm({
       name: candidate.name || '', email: candidate.email || '', phone: candidate.phone || '', notes: candidate.notes || '',
@@ -192,6 +232,11 @@ export default function Candidates() {
       toast.error('Please enter a valid email address.');
       return;
     }
+    const duplicate = candidates.some((c) => c._id !== editFor._id && c.email?.trim().toLowerCase() === editForm.email.trim().toLowerCase());
+    if (duplicate) {
+      toast.error('A candidate with this email address already exists.');
+      return;
+    }
     if (editForm.phone && !PHONE_NUMBER_PATTERN.test(editForm.phone)) {
       toast.error('Phone number must contain exactly 11 digits.');
       return;
@@ -210,6 +255,8 @@ export default function Candidates() {
       setEditFor(null);
       setEditResumeFile(null);
       loadCandidates();
+    } catch {
+      // API interceptor handles toast error messaging
     } finally {
       setEditing(false);
     }
@@ -270,7 +317,14 @@ export default function Candidates() {
         toast.error('The CSV must include a header row and at least one candidate.');
         return;
       }
-      const headers = parsed[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
+      const headers = parsed[0].map((header) => {
+        const h = header.replace(/^\uFEFF/, '').trim().toLowerCase();
+        if (['full name', 'candidate name', 'name'].includes(h)) return 'name';
+        if (['email address', 'email'].includes(h)) return 'email';
+        if (['phone number', 'mobile', 'cell', 'telephone', 'phone'].includes(h)) return 'phone';
+        if (['notes', 'comment', 'comments', 'remark', 'remarks'].includes(h)) return 'notes';
+        return h;
+      });
       const requiredHeaders = ['name', 'email'];
       const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
       if (missingHeaders.length > 0) {
@@ -346,38 +400,6 @@ export default function Candidates() {
       .catch(() => toast.error(`Could not copy the ${label.toLowerCase()}.`));
   }
 
-  const query = search.trim().toLowerCase();
-  const attachedRequisitions = useMemo(() => {
-    const unique = new Map();
-    candidates.forEach((candidate) => {
-      (candidate.applications || []).forEach((application) => {
-        if (application.requisitionId && application.title) {
-          unique.set(application.requisitionId, application.title);
-        }
-      });
-    });
-    return [...unique.entries()]
-      .map(([id, title]) => ({ id, title }))
-      .sort((a, b) => a.title.localeCompare(b.title));
-  }, [candidates]);
-
-  const filtered = useMemo(() => candidates
-    .filter((candidate) => {
-      const matchesSearch = !query
-        || `${candidate.name || ''} ${candidate.email || ''} ${candidate.phone || ''}`.toLowerCase().includes(query);
-      const matchesRequisition = requisitionFilter === 'all'
-        || (candidate.applications || []).some((application) => application.requisitionId === requisitionFilter);
-      return matchesSearch && matchesRequisition;
-    })
-    .sort((a, b) => {
-      const difference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return dateSort === 'oldest' ? difference : -difference;
-    }), [candidates, query, requisitionFilter, dateSort]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
   // Requisitions this candidate isn't on yet — attaching twice is a guaranteed 409.
   const availableRequisitions = attachFor
     ? requisitions.filter((r) => !(attachFor.applications || []).some((a) => a.requisitionId === r._id))
@@ -394,7 +416,7 @@ export default function Candidates() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Candidates</h1>
             <p className="text-sm text-muted-foreground">
-              {loading ? 'Loading…' : `${candidates.length} total`}
+              {loading ? 'Loading…' : `${pagination.total} ${search || requisitionFilter !== 'all' ? 'matching' : 'total'}`}
             </p>
           </div>
         </div>
@@ -411,25 +433,25 @@ export default function Candidates() {
       </div>
 
       {/* ---------- search ---------- */}
-      {(candidates.length > 0 || loading) && (
+      {(pagination.total > 0 || loading || search || requisitionFilter !== 'all') && (
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search by name, email or phone…"
-            className="pl-9 pr-9"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => { setSearch(''); setPage(1); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Search by name, email or phone…"
+              className="pl-9 pr-9"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setPage(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           <Select value={requisitionFilter} onValueChange={(value) => { setRequisitionFilter(value); setPage(1); }}>
@@ -438,7 +460,7 @@ export default function Candidates() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Job Openings</SelectItem>
-              {attachedRequisitions.map((requisition) => (
+              {filterRequisitions.map((requisition) => (
                 <SelectItem key={requisition.id} value={requisition.id}>{requisition.title}</SelectItem>
               ))}
             </SelectContent>
@@ -472,7 +494,7 @@ export default function Candidates() {
                 </div>
               ))}
             </div>
-          ) : candidates.length === 0 ? (
+          ) : pagination.total === 0 && !search && requisitionFilter === 'all' ? (
             <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
                 <Users className="h-5 w-5 text-muted-foreground" />
@@ -488,10 +510,22 @@ export default function Candidates() {
                 New Candidate
               </Button>
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="px-6 py-14 text-center">
-              <p className="text-sm font-medium text-foreground">No matches for “{search}”</p>
-              <p className="mt-1 text-sm text-muted-foreground">Try a different name, email or phone number.</p>
+          ) : candidates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+              <p className="text-sm font-medium text-foreground">
+                {search ? `No matches for “${search}”` : 'No matching candidates'}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Try adjusting your search query or job opening filter.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => { setSearch(''); setRequisitionFilter('all'); setPage(1); }}
+              >
+                Clear filters
+              </Button>
             </div>
           ) : (
             <Table>
@@ -505,10 +539,25 @@ export default function Candidates() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginated.map((c) => (
-                  <TableRow key={c._id}>
+                {candidates.map((c) => (
+                  <TableRow
+                    key={c._id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setViewFor(c)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setViewFor(c);
+                      }
+                    }}
+                    className="cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
+                    title={`View ${c.name}`}
+                  >
                     <TableCell>
-                      <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center gap-3"
+                      >
                         <Avatar className="h-8 w-8 text-xs">
                           <AvatarFallback>{initials(c.name)}</AvatarFallback>
                         </Avatar>
@@ -517,7 +566,7 @@ export default function Candidates() {
                           {c.email ? (
                             <button
                               type="button"
-                              onClick={() => copyContact(c.email, 'Email')}
+                              onClick={(event) => { event.stopPropagation(); copyContact(c.email, 'Email'); }}
                               className="block max-w-full truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
                               title="Copy email"
                             >
@@ -534,7 +583,7 @@ export default function Candidates() {
                       {c.phone ? (
                         <button
                           type="button"
-                          onClick={() => copyContact(c.phone, 'Phone number')}
+                          onClick={(event) => { event.stopPropagation(); copyContact(c.phone, 'Phone number'); }}
                           className="hover:text-foreground hover:underline"
                           title="Copy phone number"
                         >
@@ -549,7 +598,7 @@ export default function Candidates() {
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {c.applications.map((a) => (
-                            <Link key={a.applicationId} to={`/requisitions/${a.requisitionId}`}>
+                            <Link key={a.applicationId} to={`/requisitions/${a.requisitionId}`} onClick={(event) => event.stopPropagation()}>
                               <Badge
                                 variant="secondary"
                                 className={`font-normal ${a.disposition ? DISPOSITION_BADGE[a.disposition] || '' : ''}`}
@@ -568,7 +617,7 @@ export default function Candidates() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline" size="sm"
                           className="border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5 hover:text-[#d21e2b]"
@@ -621,20 +670,20 @@ export default function Candidates() {
       </Card>
 
       {/* ---------- pagination ---------- */}
-      {!loading && filtered.length > PAGE_SIZE && (
+      {!loading && pagination.total > PAGE_SIZE && (
         <div className="mt-3 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}>
+            <Button variant="outline" size="sm" onClick={() => loadCandidates(pagination.page - 1)} disabled={fetchingCandidates || pagination.page <= 1}>
               Previous
             </Button>
-            <span className="text-xs text-muted-foreground">Page {safePage} of {totalPages}</span>
+            <span className="text-xs text-muted-foreground">Page {pagination.page} of {pagination.totalPages}</span>
             <Button
               variant="outline" size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage === totalPages}
+              onClick={() => loadCandidates(pagination.page + 1)}
+              disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
             >
               Next
             </Button>
@@ -675,8 +724,8 @@ export default function Candidates() {
           <form onSubmit={handleEdit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="edit-cand-name">Name</Label>
-                <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                <Label htmlFor="edit-cand-name">Name <span className="text-red-500">*</span></Label>
+                <Input id="edit-cand-name" value={editForm.name} autoFocus onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-cand-email">Email <span className="text-red-500">*</span></Label>
@@ -705,154 +754,221 @@ export default function Candidates() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!viewFor} onOpenChange={(open) => !open && setViewFor(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Candidate details</DialogTitle>
+            <DialogDescription>Review this candidate’s profile and attachments.</DialogDescription>
+          </DialogHeader>
+
+          {viewFor && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-11 w-11">
+                  <AvatarFallback>{initials(viewFor.name)}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold text-foreground">{viewFor.name}</p>
+                  <p className="text-xs text-muted-foreground">Added {formatDate(viewFor.createdAt)}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 rounded-lg border bg-slate-50/60 p-3 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Email</p>
+                  <button type="button" onClick={() => copyContact(viewFor.email, 'Email')} className="mt-0.5 break-all text-left font-medium hover:text-[#d21e2b] hover:underline">
+                    {viewFor.email || '—'}
+                  </button>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Phone</p>
+                  <button type="button" onClick={() => copyContact(viewFor.phone, 'Phone number')} className="mt-0.5 text-left font-medium hover:text-[#d21e2b] hover:underline">
+                    {viewFor.phone || '—'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{viewFor.notes || 'No notes added.'}</p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Attached to</p>
+                {(viewFor.applications || []).length ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {viewFor.applications.map((application) => (
+                      <Badge key={application.applicationId} variant="secondary" className="font-normal">
+                        {application.title}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : <p className="mt-1 text-sm">Not attached to a job opening.</p>}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            {viewFor?.resumeFileUrl && (
+              <Button type="button" variant="outline" onClick={() => window.open(viewFor.resumeFileUrl, '_blank', 'noreferrer')}>
+                <FileText />
+                View résumé
+              </Button>
+            )}
+            <Button type="button" onClick={() => openEdit(viewFor)} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Pencil />
+              Edit candidate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ---------- bulk import dialog ---------- */}
       <Dialog open={bulkImportOpen} onOpenChange={(open) => {
         setBulkImportOpen(open);
         if (!open) setBulkRows([]);
       }}>
-       <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
-  <DialogHeader className="shrink-0">
-    <DialogTitle>Import candidates from CSV</DialogTitle>
-    <DialogDescription>
-      Your CSV should contain the columns <b>name</b>, <b>email</b>, <b>phone</b> and <b>notes</b>.
-      Name and email are required. Phone and notes are optional, must be valid if provided.
-    </DialogDescription>
-  </DialogHeader>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Import candidates from CSV</DialogTitle>
+            <DialogDescription>
+              Your CSV should contain the columns <b>name</b>, <b>email</b>, <b>phone</b> and <b>notes</b>.
+              Name and email are required. Phone and notes are optional, must be valid if provided.
+            </DialogDescription>
+          </DialogHeader>
 
-  {/* CSV upload */}
-  <div className="shrink-0 flex flex-wrap items-center gap-3">
-    <Input
-      type="file"
-      accept=".csv,text/csv"
-      onChange={(event) => handleBulkFile(event.target.files?.[0])}
-      className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
-    />
+          {/* CSV upload */}
+          <div className="shrink-0 flex flex-wrap items-center gap-3">
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => handleBulkFile(event.target.files?.[0])}
+              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+            />
 
-    <Button
-      type="button"
-      variant="link"
-      className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]"
-      onClick={downloadBulkTemplate}
-    >
-      Download CSV Template
-    </Button>
-  </div>
+            <Button
+              type="button"
+              variant="link"
+              className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]"
+              onClick={downloadBulkTemplate}
+            >
+              Download CSV Template
+            </Button>
+          </div>
 
-  {/* Preview */}
-  {bulkRows.length > 0 && (() => {
-    const validCount = bulkRows.filter(
-      (row) => row.errors.length === 0
-    ).length;
+          {/* Preview */}
+          {bulkRows.length > 0 && (() => {
+            const validCount = bulkRows.filter(
+              (row) => row.errors.length === 0
+            ).length;
 
-    const invalidCount = bulkRows.length - validCount;
+            const invalidCount = bulkRows.length - validCount;
 
-    return (
-      <div className="flex flex-1 flex-col min-h-0 space-y-3">
-        {/* Summary */}
-        <p className="shrink-0 text-sm text-muted-foreground">
-          {validCount} ready to import
-          {invalidCount
-            ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention`
-            : ''}
-        </p>
+            return (
+              <div className="flex flex-1 flex-col min-h-0 space-y-3">
+                {/* Summary */}
+                <p className="shrink-0 text-sm text-muted-foreground">
+                  {validCount} ready to import
+                  {invalidCount
+                    ? ` · ${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention`
+                    : ''}
+                </p>
 
-        {/* ONLY THE TABLE SCROLLS */}
-        <div className="flex-1 min-h-0 overflow-auto rounded-md border">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              <TableRow>
-                <TableHead>Row</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
+                {/* ONLY THE TABLE SCROLLS */}
+                <div className="flex-1 min-h-0 overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-10 bg-background">
+                      <TableRow>
+                        <TableHead>Row</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Notes</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
 
-            <TableBody>
-              {bulkRows.map((row) => (
-                <TableRow
-                  key={row.rowNumber}
-                  className={
-                    row.errors.length > 0
-                      ? 'bg-red-50/60'
-                      : ''
-                  }
-                >
-                  <TableCell>{row.rowNumber}</TableCell>
+                    <TableBody>
+                      {bulkRows.map((row) => (
+                        <TableRow
+                          key={row.rowNumber}
+                          className={
+                            row.errors.length > 0
+                              ? 'bg-red-50/60'
+                              : ''
+                          }
+                        >
+                          <TableCell>{row.rowNumber}</TableCell>
 
-                  <TableCell>
-                    {row.name || '—'}
-                  </TableCell>
+                          <TableCell>
+                            {row.name || '—'}
+                          </TableCell>
 
-                  <TableCell>
-                    {row.email || '—'}
-                  </TableCell>
+                          <TableCell>
+                            {row.email || '—'}
+                          </TableCell>
 
-                  <TableCell>
-                    {row.phone || '—'}
-                  </TableCell>
+                          <TableCell>
+                            {row.phone || '—'}
+                          </TableCell>
 
-                  <TableCell
-                    className="max-w-[10rem] truncate"
-                    title={row.notes}
-                  >
-                    {row.notes || '—'}
-                  </TableCell>
+                          <TableCell
+                            className="max-w-[10rem] truncate"
+                            title={row.notes}
+                          >
+                            {row.notes || '—'}
+                          </TableCell>
 
-                  <TableCell
-                    className={
-                      row.errors.length > 0
-                        ? 'text-red-600'
-                        : 'text-green-700'
-                    }
-                  >
-                    {row.errors.length > 0
-                      ? row.errors.join(', ')
-                      : 'Ready'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-    );
-  })()}
+                          <TableCell
+                            className={
+                              row.errors.length > 0
+                                ? 'text-red-600'
+                                : 'text-green-700'
+                            }
+                          >
+                            {row.errors.length > 0
+                              ? row.errors.join(', ')
+                              : 'Ready'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            );
+          })()}
 
-  {/* Buttons */}
-  <DialogFooter className="shrink-0 border-t pt-4 mt-auto">
-    <Button
-      type="button"
-      variant="outline"
-      onClick={() => setBulkImportOpen(false)}
-      disabled={importing}
-    >
-      Cancel
-    </Button>
+          {/* Buttons */}
+          <DialogFooter className="shrink-0 border-t pt-4 mt-auto">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBulkImportOpen(false)}
+              disabled={importing}
+            >
+              Cancel
+            </Button>
 
-    <Button
-      type="button"
-      onClick={handleBulkImport}
-      disabled={
-        importing ||
-        bulkRows.filter((row) => row.errors.length === 0).length === 0
-      }
-      className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
-    >
-      {importing
-        ? 'Importing…'
-        : `Import ${
-            bulkRows.filter((row) => row.errors.length === 0).length || ''
-          } candidate${
-            bulkRows.filter((row) => row.errors.length === 0).length === 1
-              ? ''
-              : 's'
-          }`}
-    </Button>
-  </DialogFooter>
-</DialogContent>
+            <Button
+              type="button"
+              onClick={handleBulkImport}
+              disabled={
+                importing ||
+                bulkRows.filter((row) => row.errors.length === 0).length === 0
+              }
+              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            >
+              {importing
+                ? 'Importing…'
+                : `Import ${bulkRows.filter((row) => row.errors.length === 0).length || ''
+                } candidate${bulkRows.filter((row) => row.errors.length === 0).length === 1
+                  ? ''
+                  : 's'
+                }`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
 
       </Dialog>
 
@@ -862,18 +978,19 @@ export default function Candidates() {
           <DialogHeader>
             <DialogTitle>New candidate</DialogTitle>
             <DialogDescription>
-              Only a name is required — everything else can be added later.
+              Name and email are required — everything else can be added later.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="cand-name">Name</Label>
+                <Label htmlFor="cand-name">Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="cand-name" value={form.name} autoFocus
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="Jane Cooper"
+                  required
                 />
               </div>
               <div className="space-y-1.5">
@@ -973,7 +1090,7 @@ export default function Candidates() {
                     <span className={attachTarget ? '' : 'text-muted-foreground'}>
                       {attachTarget
                         ? availableRequisitions.find((r) => r._id === attachTarget)?.title
-                        : `Search ${availableRequisitions.length} open jobs ${availableRequisitions.length === 1 ? '' : 's'}…`}
+                        : `Search ${availableRequisitions.length} open job${availableRequisitions.length === 1 ? '' : 's'}…`}
                     </span>
                     <ChevronsUpDown className="opacity-50" />
                   </Button>

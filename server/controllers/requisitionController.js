@@ -295,8 +295,10 @@ function hasApplicationDeadlinePassed(deadline) {
 
 /** Uses each application question and its ideal answer / JD context as the HR-screen rubric. */
 function syncHrQuestionnaireRubric(scorecard, requisition) {
-  const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === 'hr_screen');
-  if (!hrStage) return false;
+  let updated = false;
+  ['hr_screen', 'hr_interview'].forEach((stageKey) => {
+    const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === stageKey);
+    if (!hrStage) return;
 
   const attributes = (requisition.questionnaire || []).map((item, index) => {
     const question = typeof item === 'string' ? item : item.question;
@@ -306,13 +308,13 @@ function syncHrQuestionnaireRubric(scorecard, requisition) {
     let anchor5 = 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.';
     let redFlags = 'Does not answer the question, or provides an unclear or irrelevant response.';
 
-    if (requireIdealAnswer && idealAnswer) {
+    if (idealAnswer) {
       anchor5 = `Ideal answer benchmark: ${idealAnswer}`;
       redFlags = `Does not address or match the required ideal answer benchmark: "${idealAnswer}".`;
     }
 
     return {
-      attributeId: `hr_screen_question_${index + 1}`,
+      attributeId: `${hrStage.stageKey || 'hr_screen'}_question_${index + 1}`,
       name: `Question ${index + 1}`,
       question,
       anchor5,
@@ -322,9 +324,12 @@ function syncHrQuestionnaireRubric(scorecard, requisition) {
     };
   });
 
-  if (JSON.stringify(hrStage.attributes) === JSON.stringify(attributes)) return false;
-  hrStage.attributes = attributes;
-  return true;
+    if (JSON.stringify(hrStage.attributes) !== JSON.stringify(attributes)) {
+      hrStage.attributes = attributes;
+      updated = true;
+    }
+  });
+  return updated;
 }
 
 function assignMissingAttributeIds(stages) {
@@ -483,25 +488,129 @@ const list = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/requisitions/:id
- * Returns one requisition with its scorecard and current (persisted) ranking.
+ * Returns one requisition with its scorecard and server-paginated applications.
+ * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&finalDecision=hired|rejected|withdrawn|undecided&stageKey=...&candidateId=...
  */
 const getOne = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
 
-  const scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : null;
-  const applications = await Application.find({ requisitionId: requisition._id })
-    .populate('candidateId', 'name email');
+  // The scorecard is loaded separately when its tab is opened.
+  const scorecard = null;
 
-  applications.sort((a, b) => {
-    if (a.rank === null || a.rank === undefined) return 1;
-    if (b.rank === null || b.rank === undefined) return -1;
-    return a.rank - b.rank;
+  const query = { requisitionId: requisition._id };
+
+  if (req.query.disposition) {
+    const dispositions = String(req.query.disposition).split(',').filter(Boolean);
+    if (dispositions.includes('none')) {
+      query._id = { $in: [] };
+    } else if (!dispositions.includes('all')) {
+      const includeInProgress = dispositions.includes('in_progress');
+      const scoredDispositions = dispositions.filter((value) => ['HIRE', 'MAYBE', 'NO_HIRE'].includes(value));
+      if (includeInProgress && scoredDispositions.length) {
+        query.$or = [{ disposition: null }, { disposition: { $in: scoredDispositions } }];
+      } else if (includeInProgress) {
+        query.disposition = null;
+      } else {
+        query.disposition = { $in: scoredDispositions };
+      }
+    }
+  }
+
+  if (req.query.finalDecision) {
+    const decisions = String(req.query.finalDecision).split(',').filter(Boolean);
+    if (decisions.includes('none')) {
+      query._id = { $in: [] };
+    } else if (!decisions.includes('all')) {
+      const includeUndecided = decisions.includes('undecided');
+      const recordedDecisions = decisions.filter((value) => ['hired', 'rejected', 'withdrawn'].includes(value));
+      if (includeUndecided && recordedDecisions.length) {
+        query.finalDecision = { $in: [null, ...recordedDecisions] };
+      } else if (includeUndecided) {
+        query.finalDecision = null;
+      } else {
+        query.finalDecision = { $in: recordedDecisions };
+      }
+    }
+  }
+
+  if (req.query.candidateId) {
+    // This query is later used in an aggregation pipeline, which unlike a
+    // Mongoose find() query does not cast URL strings to ObjectIds for us.
+    query.candidateId = mongoose.isValidObjectId(req.query.candidateId)
+      ? new mongoose.Types.ObjectId(req.query.candidateId)
+      : { $in: [] };
+  }
+
+  if (req.query.stageKey && req.query.stageKey !== 'all') {
+    query.currentStageKey = req.query.stageKey;
+  }
+
+  if (req.query.search && req.query.search.trim()) {
+    const searchRegex = new RegExp(escapeRegex(req.query.search.trim()), 'i');
+    const matchingCandidates = await Candidate.find({
+      $or: [{ name: searchRegex }, { email: searchRegex }],
+    }).select('_id').lean();
+
+    const candidateIds = matchingCandidates.map((c) => c._id);
+    if (query.candidateId) {
+      const targetCid = String(query.candidateId);
+      query.candidateId = { $in: candidateIds.filter((cid) => String(cid) === targetCid) };
+    } else {
+      query.candidateId = { $in: candidateIds };
+    }
+  }
+
+  const totalApplications = await Application.countDocuments(query);
+  const dispositionCounts = await Application.aggregate([
+    { $match: { requisitionId: requisition._id } },
+    { $group: { _id: '$disposition', count: { $sum: 1 } } },
+  ]);
+  const applicationStats = { total: 0, IN_PROGRESS: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 };
+  dispositionCounts.forEach(({ _id: disposition, count }) => {
+    if (disposition && applicationStats[disposition] !== undefined) applicationStats[disposition] = count;
+    else applicationStats.IN_PROGRESS += count;
+    applicationStats.total += count;
   });
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+  const totalPages = Math.max(1, Math.ceil(totalApplications / limit));
+  const requestedPage = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const page = Math.min(requestedPage, totalPages);
+  const skip = (page - 1) * limit;
+
+  // Put ranked applications first. A normal MongoDB ascending sort places
+  // null/missing ranks before rank 1, which is not the ranking shown in the UI.
+  const applications = await Application.aggregate([
+    { $match: query },
+    {
+      $addFields: {
+        _rankSort: {
+          $cond: [{ $ne: [{ $ifNull: ['$rank', null] }, null] }, 0, 1],
+        },
+      },
+    },
+    { $sort: { _rankSort: 1, rank: 1, weightedTotal: -1, createdAt: -1 } },
+    { $skip: skip },
+    { $limit: limit },
+    { $project: { _rankSort: 0 } },
+  ]);
+  await Application.populate(applications, { path: 'candidateId', select: 'name email phone' });
 
   const requisitionResponse = requisition.toObject();
   if (requisitionResponse.status === 'on_hold') requisitionResponse.status = 'paused';
-  res.json({ requisition: requisitionResponse, scorecard, applications });
+
+  res.json({
+    requisition: requisitionResponse,
+    scorecard,
+    applications,
+    applicationStats,
+    pagination: {
+      total: totalApplications,
+      page,
+      limit,
+      totalPages,
+    },
+  });
 });
 
 /**
@@ -635,6 +744,81 @@ const remove = asyncHandler(async (req, res) => {
   await requisition.deleteOne();
   logger.info(`[Requisition] Deleted ${requisition._id} by user=${req.user._id}`);
   res.json({ message: 'Requisition deleted.' });
+});
+
+/**
+ * POST /api/requisitions/:id/duplicate
+ * Duplicates a job opening (requisition) without copying candidates or applications.
+ * Copies all metadata, employment details, job description, workplace, hiring process stages,
+ * screening criteria, questionnaire, and clones the scorecard if present.
+ */
+const duplicate = asyncHandler(async (req, res) => {
+  const sourceReq = await Requisition.findById(req.params.id);
+  if (!sourceReq) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
+  }
+
+  const newTitle = normalizeJobTitle(sourceReq.title);
+
+  const duplicateActiveOpening = await Requisition.findOne({
+    title: { $regex: `^${escapeRegex(newTitle)}$`, $options: 'i' },
+    status: 'open',
+  }).select('_id title').lean();
+
+  const sourceData = sourceReq.toObject();
+  delete sourceData._id;
+  delete sourceData.createdAt;
+  delete sourceData.updatedAt;
+  delete sourceData.closedAt;
+  delete sourceData.scorecardId;
+
+  const newReqData = {
+    ...sourceData,
+    title: newTitle,
+    status: 'open',
+    createdBy: req.user._id,
+  };
+
+  const newReq = await Requisition.create(newReqData);
+
+  // Clone scorecard if original had one
+  if (sourceReq.scorecardId) {
+    const sourceScorecard = await Scorecard.findById(sourceReq.scorecardId);
+    if (sourceScorecard) {
+      const scorecardData = sourceScorecard.toObject();
+      delete scorecardData._id;
+      delete scorecardData.createdAt;
+      delete scorecardData.updatedAt;
+      scorecardData.requisitionId = newReq._id;
+
+      if (Array.isArray(scorecardData.stages)) {
+        assignMissingAttributeIds(scorecardData.stages);
+      }
+
+      const newScorecard = await Scorecard.create(scorecardData);
+      newReq.scorecardId = newScorecard._id;
+      await newReq.save();
+    }
+  }
+
+  await AuditLog.create({
+    action: 'requisition_duplicated',
+    userId: req.user._id,
+    requisitionId: newReq._id,
+    targetType: 'requisition',
+    targetId: newReq._id.toString(),
+    reason: `Duplicated from Job Opening "${sourceReq.title}" (${sourceReq._id}).`,
+  });
+
+  logger.info(`[Requisition] Duplicated "${sourceReq.title}" (${sourceReq._id}) -> "${newReq.title}" (${newReq._id}) by user=${req.user._id}`);
+
+  res.status(201).json({
+    requisition: newReq,
+    message: 'Job Opening duplicated successfully.',
+    warning: duplicateActiveOpening
+      ? `An active job opening named "${duplicateActiveOpening.title}" already exists.`
+      : undefined,
+  });
 });
 
 /**
@@ -773,6 +957,14 @@ const ranking = asyncHandler(async (req, res) => {
   });
 
   res.json({ ranking: ranked });
+});
+
+/** GET /api/requisitions/:id/scorecard — lazy scorecard data for the detail tab. */
+const getScorecard = asyncHandler(async (req, res) => {
+  const requisition = await Requisition.findById(req.params.id).select('scorecardId');
+  if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
+  const scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : null;
+  res.json({ scorecard });
 });
 
 /**
@@ -925,7 +1117,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, email, phone, questionnaireAnswers } = req.body;
+  const { name, email, phone, questionnaireAnswers, opportunityDuration } = req.body;
   if (!name || !email) {
     throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
   }
@@ -1067,6 +1259,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     source: 'public_link',
     stageProgress,
     questionnaireAnswers: parsedQAnswers,
+    opportunityDuration: opportunityDuration ? String(opportunityDuration).trim() : undefined,
   });
 
   // 3. Create Stage 1 Interview document
@@ -1272,7 +1465,7 @@ const applyPublic = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  create, list, getOne, update, remove,
+  create, list, getOne, getScorecard, update, remove, duplicate,
   generateScorecard: generateScorecardHandler,
   cloneScorecard,
   updateScorecard,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Briefcase, Users, DollarSign, Activity, Plus, ChevronRight, UserPlus,
+  Briefcase, Users, DollarSign, Activity, Plus, ChevronRight, UserPlus, ArrowUpRight,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -153,9 +153,9 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Job Openings</CardTitle>
-            {!loading && openRequisitions.length > 5 && (
-              <Link to="/requisitions" className="text-xs font-medium text-[#d21e2b] hover:underline">
-                View all {openRequisitions.length}
+            {!loading && (
+              <Link to="/requisitions" className="text-xs font-semibold text-[#d21e2b] hover:underline flex items-center gap-0.5">
+                View all ({openRequisitions.length}) <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             )}
           </CardHeader>
@@ -165,7 +165,7 @@ export default function Dashboard() {
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <Skeleton className="h-4 w-44" />
-                    <Skeleton className="h-5 w-14 rounded-full" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
                   </div>
                 ))}
               </div>
@@ -213,9 +213,9 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Recent Activity</CardTitle>
-            {!loading && recentActivity.length > 0 && (
-              <Link to="/audit-log" className="text-xs font-medium text-[#d21e2b] hover:underline">
-                View audit log
+            {!loading && (
+              <Link to="/audit-log" className="text-xs font-semibold text-[#d21e2b] hover:underline flex items-center gap-0.5">
+                View audit log <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             )}
           </CardHeader>

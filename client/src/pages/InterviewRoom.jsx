@@ -1,14 +1,34 @@
 import RichTextViewer from '../components/RichTextViewer';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import dayjs from 'dayjs';
+import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone } from 'lucide-react';
 import api from '../hooks/useApi';
-import { sendMeetingEmailClient, sendOfferEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
+import { sendMeetingEmailClient, sendHostMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { TimePicker } from '@/components/ui/time-picker';
 import { formatDisposition } from '../utils/formatters';
+
+function formatLocalDateTime(date) {
+  const datePart = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+  return `${datePart}T${timePart}`;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseEmailList(value) {
+  return [...new Set(value
+    .split(/[;,\n]/)
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean))];
+}
 
 export default function InterviewRoom() {
   const { id } = useParams();
@@ -23,8 +43,13 @@ export default function InterviewRoom() {
   const [loading, setLoading] = useState(true);
 
   const [meetingLinkInput, setMeetingLinkInput] = useState('');
-  const [meetingStartInput, setMeetingStartInput] = useState('');
-  const [meetingEndInput, setMeetingEndInput] = useState('');
+  const [additionalInvitees, setAdditionalInvitees] = useState([]);
+  const [additionalInviteesInput, setAdditionalInviteesInput] = useState('');
+  const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => dayjs().add(1, 'hour').startOf('hour').toDate());
+  const [selectedStartTime, setSelectedStartTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').format('HH:mm'));
+  const [selectedEndTime, setSelectedEndTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('HH:mm'));
+  const [meetingStartInput, setMeetingStartInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').format('YYYY-MM-DDTHH:mm')}`);
+  const [meetingEndInput, setMeetingEndInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('YYYY-MM-DDTHH:mm')}`);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
   const [confirmingConsent, setConfirmingConsent] = useState(false);
   const [fetchingTranscript, setFetchingTranscript] = useState(false);
@@ -44,16 +69,19 @@ export default function InterviewRoom() {
 
   const [passFailResult, setPassFailResult] = useState('');
   const [passFailSaving, setPassFailSaving] = useState(false);
-
-  const pollTimer = useRef(null);
+  const [requestingAvailability, setRequestingAvailability] = useState(false);
 
   const load = useCallback(async () => {
     const { data: interviewData } = await api.get(`/interviews/${id}`);
     setInterview(interviewData.interview);
 
-    const { data: reqData } = await api.get(`/requisitions/${interviewData.interview.requisitionId}`);
+    const [reqResponse, scorecardResponse] = await Promise.all([
+      api.get(`/requisitions/${interviewData.interview.requisitionId}`),
+      api.get(`/requisitions/${interviewData.interview.requisitionId}/scorecard`),
+    ]);
+    const reqData = reqResponse.data;
     setRequisition(reqData.requisition);
-    setScorecard(reqData.scorecard || null);
+    setScorecard(scorecardResponse.data.scorecard || null);
     const appId = String(interviewData.interview.applicationId?._id || interviewData.interview.applicationId);
     const app = reqData.applications.find((a) => String(a._id) === appId);
     setApplication(app || null);
@@ -68,11 +96,37 @@ export default function InterviewRoom() {
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
-    return () => clearTimeout(pollTimer.current);
   }, [load]);
 
   const stageConfig = requisition?.stages.find((s) => s.key === interview?.stageKey);
-  const stageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
+  const candidate = application?.candidateId || application?.candidate || {};
+  const rawStageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
+  const stageAttributes = (rawStageAttributes.length > 0 && (rawStageAttributes[0]?.question || rawStageAttributes[0]?.name))
+    ? rawStageAttributes.map((attr) => ({
+      ...attr,
+      name: attr.name && !attr.name.startsWith('resume_screen') ? attr.name : 'Overall Resume & Qualification Evaluation',
+    }))
+    : (interview?.stageKey === 'hr_screen' || interview?.stageKey === 'hr_interview') && requisition?.questionnaire?.length > 0
+      ? requisition.questionnaire.map((qItem, idx) => {
+        const qText = typeof qItem === 'string' ? qItem : qItem.question;
+        const ideal = typeof qItem === 'object' ? qItem.idealAnswer : '';
+        return {
+          attributeId: `${interview.stageKey}_question_${idx + 1}`,
+          name: `Question ${idx + 1}`,
+          question: qText,
+          anchor5: ideal ? `Ideal answer benchmark: ${ideal}` : 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.',
+          redFlags: ideal ? `Does not address or match the required ideal answer benchmark: "${ideal}".` : 'Does not answer the question, or provides an unclear or irrelevant response.',
+        };
+      })
+      : interview?.stageKey === 'resume_screen'
+        ? [{
+          attributeId: 'resume_screen_1',
+          name: 'Overall Resume & Qualification Evaluation',
+          question: 'Assessing whether the candidate\'s CV meets the Job Description and Initial Screening Criteria.',
+          anchor5: 'CV demonstrates strong alignment with all key experience, skills, and qualifications required for the role.',
+          redFlags: 'CV lacks required core experience, qualifications, or key skills specified in the job posting.',
+        }]
+        : rawStageAttributes;
 
   const enabledStages = requisition?.stages?.filter((s) => s.enabled) || [];
   const isFinalStage = enabledStages.length > 0 && enabledStages[enabledStages.length - 1].key === interview?.stageKey;
@@ -96,58 +150,72 @@ export default function InterviewRoom() {
     });
   }
 
-  function stopPolling() {
-    clearTimeout(pollTimer.current);
-    pollTimer.current = null;
-  }
-
-  async function pollTranscript() {
-    const res = await api.post(`/interviews/${id}/fetch-transcript`, {}, { validateStatus: () => true });
-    if (res.status === 202) {
-      const delay = Math.min(Math.max((res.data.retryAfter || 15) * 1000, 5000), 30000);
-      pollTimer.current = setTimeout(pollTranscript, delay);
-    } else if (res.status === 200) {
-      stopPolling();
-      setInterview(res.data.interview);
-      setFetchingTranscript(false);
-      toast.success('Transcript ready.');
-    } else {
-      stopPolling();
-      setFetchingTranscript(false);
-      toast.error(res.data?.message || 'Could not fetch transcript.');
-    }
-  }
-
   async function handleCreateMeeting(useProvider) {
     setCreatingMeeting(true);
     try {
+      let startDateObj, endDateObj;
+      let localStartTime, localEndTime;
+      if (useProvider) {
+        const baseDate = selectedMeetingDate || new Date();
+        const year = baseDate.getFullYear();
+        const month = baseDate.getMonth();
+        const day = baseDate.getDate();
+        const [startH, startM] = (selectedStartTime || '10:00').split(':').map(Number);
+        startDateObj = new Date(year, month, day, startH, startM, 0, 0);
+
+        const [endH, endM] = (selectedEndTime || '10:30').split(':').map(Number);
+        endDateObj = new Date(year, month, day, endH, endM, 0, 0);
+
+        if (endDateObj <= startDateObj) {
+          endDateObj = new Date(startDateObj.getTime() + 30 * 60 * 1000);
+        }
+        localStartTime = formatLocalDateTime(startDateObj);
+        localEndTime = formatLocalDateTime(endDateObj);
+      }
+
+      const pendingInvitees = parseEmailList(additionalInviteesInput);
+      const invalidEmail = pendingInvitees.find((email) => !EMAIL_PATTERN.test(email));
+      if (useProvider && invalidEmail) {
+        toast.error(`Enter a valid invitee email address: ${invalidEmail}`);
+        return;
+      }
+      const additionalAttendeeEmails = [...new Set([...additionalInvitees, ...pendingInvitees])];
+
       const body = useProvider
         ? {
-          meetingStart: meetingStartInput ? new Date(meetingStartInput).toISOString() : '',
-          meetingEnd: meetingEndInput ? new Date(meetingEndInput).toISOString() : '',
+          // Keep the date picked in the calendar separate from the UTC instant.
+          // Google Calendar uses this local value with `timeZone`, so a timezone
+          // conversion can never roll the event into the following day.
+          localStartTime,
+          localEndTime,
+          meetingStart: startDateObj.toISOString(),
+          meetingEnd: endDateObj.toISOString(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          additionalAttendeeEmails,
         }
         : { meetingUri: meetingLinkInput.trim() };
+
       if (!useProvider && !body.meetingUri) {
         toast.error('Paste a meeting link first.');
         return;
       }
-      if (useProvider && (!meetingStartInput || !meetingEndInput)) {
+      if (useProvider && (!selectedStartTime || !selectedEndTime)) {
         toast.error('Choose the meeting start and end time first.');
         return;
       }
-      if (useProvider && new Date(meetingStartInput) <= new Date()) {
-        toast.error('Meeting start time must be in the future.');
+      if (useProvider && startDateObj.getTime() < Date.now() - 2 * 60 * 1000) {
+        toast.error('Meeting start time is in the past. Please select a future date and time.');
         return;
       }
-      if (useProvider && new Date(meetingEndInput) - new Date(meetingStartInput) > 60 * 60 * 1000) {
+      if (useProvider && endDateObj.getTime() - startDateObj.getTime() > 60 * 60 * 1000) {
         toast.error('Interview duration cannot be longer than 1 hour.');
         return;
       }
       const res = await api.post(`/interviews/${id}/meeting`, body);
       setInterview(res.data.interview);
       setMeetingLinkInput('');
-      setMeetingStartInput('');
-      setMeetingEndInput('');
+      setAdditionalInvitees([]);
+      setAdditionalInviteesInput('');
       if (res.data.emailSent) {
         console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
         toast.success('Meeting set and emailed to candidate.');
@@ -178,9 +246,61 @@ export default function InterviewRoom() {
           toast.error(res.data.emailReason || 'Could not email the candidate.');
         }
       }
+      await sendHostEmailFallback(res.data, 'scheduled', res.data.interview);
     } finally {
       setCreatingMeeting(false);
     }
+  }
+
+  async function sendHostEmailFallback(result, action, meeting) {
+    if (result?.hostEmailSent !== false) return;
+
+    if (!isBrowserEmailJSConfigured()) {
+      console.warn('[EmailNotifier] Host email was not sent by the backend and Browser EmailJS is not configured:', result.hostEmailReason);
+      toast.error(`Host email was not sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
+      return;
+    }
+
+    const clientRes = await sendHostMeetingEmailClient({
+      hostEmail: result.hostEmail,
+      action,
+      candidateName: application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '',
+      requisitionTitle: requisition?.title || '',
+      stageLabel: stageConfig?.label || meeting?.stageKey || '',
+      meetingUri: meeting?.meetingUri || '',
+      meetingStart: meeting?.meetingStart,
+      meetingEnd: meeting?.meetingEnd,
+    });
+    if (clientRes.sent) {
+      toast.success('Host notification sent via Browser EmailJS.');
+    } else {
+      console.warn('[EmailNotifier] Browser EmailJS host notification failed:', clientRes.reason);
+      toast.error(`Host email was not sent: ${clientRes.reason}`);
+    }
+  }
+
+  function copyCandidateContact(value, label) {
+    navigator.clipboard.writeText(value)
+      .then(() => toast.success(`${label} copied.`))
+      .catch(() => toast.error(`Could not copy the ${label.toLowerCase()}.`));
+  }
+
+  function addAdditionalInvitees(value) {
+    const emails = parseEmailList(value);
+    const invalidEmail = emails.find((email) => !EMAIL_PATTERN.test(email));
+    if (invalidEmail) {
+      toast.error(`Enter a valid invitee email address: ${invalidEmail}`);
+      return false;
+    }
+    if (emails.length > 0) {
+      setAdditionalInvitees((current) => [...new Set([...current, ...emails])]);
+    }
+    return true;
+  }
+
+  function commitAdditionalInvitee() {
+    if (!additionalInviteesInput.trim()) return;
+    if (addAdditionalInvitees(additionalInviteesInput)) setAdditionalInviteesInput('');
   }
 
   async function handleResendMeetingEmail() {
@@ -222,6 +342,72 @@ export default function InterviewRoom() {
     }
   }
 
+  async function handleRequestAvailability() {
+    setRequestingAvailability(true);
+    console.log('[EmailNotifier] Requesting availability link from server for interview:', id);
+    try {
+      const res = await api.post(`/interviews/${id}/request-availability`);
+      console.log('[EmailNotifier] Server response for request-availability:', res.data);
+      if (res.data?.interview) {
+        setInterview(res.data.interview);
+      }
+
+      if (res.data.sent) {
+        console.log('[EmailNotifier] Availability request email successfully sent via BACKEND server to:', res.data.candidateEmail);
+        toast.success(`Availability request email sent to ${res.data.candidateEmail || 'candidate'}!`);
+      } else {
+        console.warn('[EmailNotifier] Backend email not sent. Reason:', res.data.emailReason);
+        if (isBrowserEmailJSConfigured()) {
+          console.log('[EmailNotifier] Attempting to send availability link via BROWSER EmailJS...');
+          const clientRes = await sendAvailabilityEmailClient({
+            candidateEmail: res.data.candidateEmail,
+            candidateName: res.data.candidateName,
+            requisitionTitle: res.data.requisitionTitle,
+            stageLabel: res.data.stageLabel,
+            availabilityUrl: res.data.availabilityUrl,
+          });
+          if (clientRes.sent) {
+            console.log('[EmailNotifier] Availability email successfully sent via BROWSER EmailJS.');
+            toast.success('Availability link sent to candidate via Browser EmailJS!');
+          } else {
+            console.warn('[EmailNotifier] Browser EmailJS failed:', clientRes.reason);
+            toast.error(`Could not email candidate (${res.data.emailReason || clientRes.reason || 'Gmail SMTP not configured in Settings'}).`);
+          }
+        } else {
+          console.warn('[EmailNotifier] Gmail SMTP not configured in Settings and Browser EmailJS not configured in .env');
+          toast.error(res.data.emailReason || 'Gmail SMTP not configured in Settings (GMAIL_USER & GMAIL_APP_PASSWORD required).');
+        }
+      }
+    } catch (err) {
+      console.error('[EmailNotifier] Error requesting availability:', err);
+      toast.error(err?.response?.data?.message || 'Failed to send availability request.');
+    } finally {
+      setRequestingAvailability(false);
+    }
+  }
+
+  function handleApplyCandidateAvailability() {
+    if (!interview?.candidateAvailability?.preferredDate) return;
+    const avail = interview.candidateAvailability;
+    let preferredDateObj;
+    if (typeof avail.preferredDate === 'string' && avail.preferredDate.includes('-')) {
+      const [year, month, day] = avail.preferredDate.split('-').map(Number);
+      preferredDateObj = new Date(year, month - 1, day, 12, 0, 0);
+    } else {
+      preferredDateObj = new Date(avail.preferredDate);
+    }
+
+    setSelectedMeetingDate(preferredDateObj);
+    const startTimeStr = avail.startTime || '10:00';
+    const endTimeStr = avail.endTime || '10:30';
+    setSelectedStartTime(startTimeStr);
+    setSelectedEndTime(endTimeStr);
+    const dateStr = dayjs(preferredDateObj).format('YYYY-MM-DD');
+    setMeetingStartInput(`${dateStr}T${startTimeStr}`);
+    setMeetingEndInput(`${dateStr}T${endTimeStr}`);
+    toast.success("Meeting date and time set from candidate's preferred availability!");
+  }
+
   async function handleStartNextStage(stageKey) {
     setStartingStage(true);
     try {
@@ -249,6 +435,7 @@ export default function InterviewRoom() {
     if (!window.confirm('Cancel this meeting? The link will be removed — you can create or paste a new one afterward.')) return;
     setCreatingMeeting(true);
     try {
+      const cancelledMeeting = interview;
       const res = await api.delete(`/interviews/${id}/meeting`, { validateStatus: () => true });
       if (res.status >= 400) {
         toast.error(res.data?.message || 'Could not cancel the meeting.');
@@ -256,6 +443,7 @@ export default function InterviewRoom() {
       }
       setInterview(res.data.interview);
       toast.success('Meeting cancelled.');
+      await sendHostEmailFallback(res.data, 'cancelled', cancelledMeeting);
     } finally {
       setCreatingMeeting(false);
     }
@@ -272,9 +460,23 @@ export default function InterviewRoom() {
     }
   }
 
-  function handleFetchTranscript() {
+  async function handleFetchTranscript() {
     setFetchingTranscript(true);
-    pollTranscript();
+    try {
+      const res = await api.post(`/interviews/${id}/fetch-transcript`, {}, { validateStatus: () => true });
+      if (res.status === 200) {
+        setInterview(res.data.interview);
+        toast.success('Transcript ready.');
+      } else if (res.status === 202) {
+        toast('Transcript is not ready yet. Please try again later.', { icon: '⏳' });
+      } else {
+        toast.error(res.data?.message || 'Could not fetch transcript.');
+      }
+    } catch {
+      toast.error('Could not fetch transcript. Please try again.');
+    } finally {
+      setFetchingTranscript(false);
+    }
   }
 
   async function handleUploadTranscript(e) {
@@ -485,9 +687,25 @@ export default function InterviewRoom() {
       </button>
 
       <h1 className="mt-3 text-2xl font-semibold text-foreground">
-        {application?.candidateId?.name || 'Candidate'} — {stageConfig?.label || interview.stageKey}
+        {candidate.name || application?.candidateName || 'Candidate'} — {stageConfig?.label || interview.stageKey}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">{requisition.title}</p>
+      {(candidate.email || candidate.phone) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+          {candidate.email && (
+            <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy email address">
+              <Mail className="h-4 w-4" />
+              {candidate.email}
+            </button>
+          )}
+          {candidate.phone && (
+            <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy phone number">
+              <Phone className="h-4 w-4" />
+              {candidate.phone}
+            </button>
+          )}
+        </div>
+      )}
 
       <Card className="mt-4">
         <CardContent className="pt-6">
@@ -535,49 +753,49 @@ export default function InterviewRoom() {
       {/* Requisition criteria shown only for the résumé screen. */}
       {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
         (requisition?.jobDescription || requisition?.initialScreeningCriteria) && (
-        <Card className="mt-4 overflow-hidden border-slate-200 bg-white shadow-sm">
-          <CardHeader
-            onClick={() => setScreeningInfoOpen((open) => !open)}
-            className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
-          >
-            <CardTitle>Job Description & Initial Screening Criteria</CardTitle>
-            <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${screeningInfoOpen ? 'rotate-180' : ''}`} />
-          </CardHeader>
-          {screeningInfoOpen && <CardContent className="space-y-4 border-t pt-4 text-sm">
-            {requisition.jobDescription && (
-              <div>
-                <span className="font-semibold text-foreground">Job Description:</span>
-                <div className="mt-1 text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
-                  <RichTextViewer content={requisition.jobDescription} />
-                </div>
-              </div>
-            )}
-            {requisition.initialScreeningCriteria && (
-              <div>
-                <span className="font-semibold text-foreground">Initial Screening Criteria & Requirements:</span>
-                {Array.isArray(requisition.initialScreeningCriteria) ? (
-                  <div className="mt-1 space-y-1.5 rounded border bg-card p-2.5">
-                    {requisition.initialScreeningCriteria.map((item, idx) => {
-                      const cName = typeof item === 'string' ? item : item.criteria;
-                      const reqDetail = typeof item === 'object' ? item.requirement : '';
-                      return (
-                        <div key={idx} className="text-muted-foreground leading-relaxed">
-                          <span className="font-medium text-foreground">• {cName}</span>
-                          {reqDetail ? `: ${reqDetail}` : ''}
-                        </div>
-                      );
-                    })}
+          <Card className="mt-4 overflow-hidden border-slate-200 bg-white shadow-sm">
+            <CardHeader
+              onClick={() => setScreeningInfoOpen((open) => !open)}
+              className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
+            >
+              <CardTitle>Job Description & Initial Screening Criteria</CardTitle>
+              <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${screeningInfoOpen ? 'rotate-180' : ''}`} />
+            </CardHeader>
+            {screeningInfoOpen && <CardContent className="space-y-4 border-t pt-4 text-sm">
+              {requisition.jobDescription && (
+                <div>
+                  <span className="font-semibold text-foreground">Job Description:</span>
+                  <div className="mt-1 text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
+                    <RichTextViewer content={requisition.jobDescription} />
                   </div>
-                ) : (
-                  <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
-                    {requisition.initialScreeningCriteria}
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>}
-        </Card>
-      )}
+                </div>
+              )}
+              {requisition.initialScreeningCriteria && (
+                <div>
+                  <span className="font-semibold text-foreground">Initial Screening Criteria & Requirements:</span>
+                  {Array.isArray(requisition.initialScreeningCriteria) ? (
+                    <div className="mt-1 space-y-1.5 rounded border bg-card p-2.5">
+                      {requisition.initialScreeningCriteria.map((item, idx) => {
+                        const cName = typeof item === 'string' ? item : item.criteria;
+                        const reqDetail = typeof item === 'object' ? item.requirement : '';
+                        return (
+                          <div key={idx} className="text-muted-foreground leading-relaxed">
+                            <span className="font-medium text-foreground">• {cName}</span>
+                            {reqDetail ? `: ${reqDetail}` : ''}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
+                      {requisition.initialScreeningCriteria}
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>}
+          </Card>
+        )}
 
       {stageAttributes.length > 0 && (
         <Card className="mt-4">
@@ -599,7 +817,15 @@ export default function InterviewRoom() {
                       onClick={() => toggleAttr(attr.attributeId)}
                       className="flex w-full items-center justify-between text-left"
                     >
-                      <p className="text-sm font-semibold text-foreground">{attr.name}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {attr.name && !attr.name.includes('_question_') && !attr.name.startsWith('resume_screen')
+                          ? attr.name
+                          : attr.name?.startsWith('resume_screen') || attr.attributeId?.startsWith('resume_screen')
+                            ? 'Overall Resume & Qualification Evaluation'
+                            : attr.name?.includes('_question_') || attr.attributeId?.includes('_question_')
+                              ? `Question ${String(attr.name || attr.attributeId).split('_question_')[1]}`
+                              : attr.name || attr.attributeId}
+                      </p>
                       <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isOpen && (
@@ -630,24 +856,113 @@ export default function InterviewRoom() {
               <CardTitle>Meeting</CardTitle>
             </CardHeader>
             <CardContent>
-              {interview.meetingUri ? (
-                <div className="space-y-2.5">
+              {/* Candidate Availability Section */}
+              {interview.candidateAvailability?.preferredDate ? (
+                <div className="mb-4 rounded-lg border border-[#d21e2b]/30 bg-[#d21e2b]/5 p-3.5 text-sm">
+                  <div className="flex items-center justify-between font-semibold text-slate-900 mb-1">
+                    <span className="flex items-center gap-1.5 text-[#d21e2b]">
+                      <CalendarIcon className="h-4 w-4" />
+                      Candidate Preferred Availability Submitted
+                    </span>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      {dayjs(interview.candidateAvailability.submittedAt).format('MMM D, h:mm A')}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-slate-800 space-y-1 text-xs sm:text-sm">
+                    <p>
+                      <strong className="text-slate-900">Date:</strong>{' '}
+                      {(() => {
+                        const d = interview.candidateAvailability.preferredDate;
+                        if (typeof d === 'string' && d.includes('-')) {
+                          const [y, m, day] = d.split('-').map(Number);
+                          return dayjs(new Date(y, m - 1, day)).format('dddd, MMMM D, YYYY');
+                        }
+                        return dayjs(d).format('dddd, MMMM D, YYYY');
+                      })()}
+                    </p>
+                    <p>
+                      <strong className="text-slate-900">Time Window:</strong>{' '}
+                      {interview.candidateAvailability.startTime} - {interview.candidateAvailability.endTime}
+                    </p>
+                    {interview.candidateAvailability.notes && (
+                      <p>
+                        <strong className="text-slate-900">Candidate Notes:</strong>{' '}
+                        {interview.candidateAvailability.notes}
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {!interview.meetingUri && (
+                      <button
+                        type="button"
+                        onClick={handleApplyCandidateAvailability}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-[#d21e2b] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#d21e2b]/90 shadow-sm"
+                      >
+                        <Clock className="h-3.5 w-3.5" />
+                        Pre-fill & Use Candidate's Preferred Time
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleRequestAvailability}
+                      disabled={requestingAvailability}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#d21e2b]/40 bg-white px-2.5 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {requestingAvailability ? 'Sending...' : 'Request Again'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div>
-                    <a href={interview.meetingUri} target="_blank" rel="noreferrer" className="break-all text-sm text-blue-600 hover:underline">
+                    <p className="text-xs font-semibold text-slate-800">Ask Candidate for Availability</p>
+                    <p className="text-xs text-slate-500">Send an email link so candidate can choose their available date & time.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRequestAvailability}
+                    disabled={requestingAvailability}
+                    className="inline-flex items-center gap-1.5 shrink-0 rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    {requestingAvailability ? 'Sending...' : 'Send Request Email'}
+                  </button>
+                </div>
+              )}
+
+              {interview.meetingUri ? (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3.5">
+                  {interview.meetingStart && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-semibold text-slate-900 border-b pb-2.5">
+                      <span className="flex items-center gap-1.5">
+                        <CalendarIcon className="h-4 w-4 text-[#d21e2b]" />
+                        {dayjs(interview.meetingStart).format('dddd, MMMM D, YYYY')}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-slate-700">
+                        <Clock className="h-4 w-4 text-slate-400" />
+                        {dayjs(interview.meetingStart).format('h:mm A')}
+                        {interview.meetingEnd ? ` – ${dayjs(interview.meetingEnd).format('h:mm A')}` : ''}
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Meeting Link</p>
+                    <a href={interview.meetingUri} target="_blank" rel="noreferrer" className="break-all text-sm font-medium text-blue-600 hover:underline">
                       {interview.meetingUri}
                     </a>
-                    <span className="ml-2 text-xs text-muted-foreground">({interview.provider === 'manual' ? 'pasted link' : 'created via Google Meet'})</span>
+                    <span className="ml-2 text-xs text-muted-foreground">({interview.provider === 'manual' ? 'Pasted link' : 'Google Meet'})</span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-1">
                     <button
                       type="button" onClick={handleResendMeetingEmail} disabled={sendingMeetingEmail}
-                      className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {sendingMeetingEmail ? 'Sending...' : 'Resend Email'}
+                      {sendingMeetingEmail ? 'Sending...' : 'Resend Meeting Email'}
                     </button>
                     <button
                       type="button" onClick={handleCancelMeeting} disabled={creatingMeeting}
-                      className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {creatingMeeting ? 'Cancelling...' : 'Cancel Meeting'}
                     </button>
@@ -655,6 +970,8 @@ export default function InterviewRoom() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* Temporarily hidden: keep the manual-link workflow available in the API,
+                      but only allow Google Calendar meetings from this screen for now.
                   <div className="flex gap-2">
                     <input
                       type="text" value={meetingLinkInput} onChange={(e) => setMeetingLinkInput(e.target.value)}
@@ -668,17 +985,111 @@ export default function InterviewRoom() {
                       Use Link
                     </button>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      type="datetime-local" value={meetingStartInput} onChange={(e) => setMeetingStartInput(e.target.value)}
-                      aria-label="Meeting start time"
-                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
-                    />
-                    <input
-                      type="datetime-local" value={meetingEndInput} onChange={(e) => setMeetingEndInput(e.target.value)}
-                      aria-label="Meeting end time"
-                      className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
-                    />
+                  */}
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                        Meeting Date
+                      </label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start font-normal text-left">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            {selectedMeetingDate ? dayjs(selectedMeetingDate).format('ddd, MMM D, YYYY') : 'Pick a date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={selectedMeetingDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                setSelectedMeetingDate(date);
+                                const dateStr = dayjs(date).format('YYYY-MM-DD');
+                                setMeetingStartInput(`${dateStr}T${selectedStartTime}`);
+                                setMeetingEndInput(`${dateStr}T${selectedEndTime}`);
+                              }
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" /> Start Time
+                        </label>
+                        <TimePicker
+                          value={selectedStartTime}
+                          onChange={(val) => {
+                            setSelectedStartTime(val);
+                            if (selectedMeetingDate) {
+                              const dateStr = dayjs(selectedMeetingDate).format('YYYY-MM-DD');
+                              setMeetingStartInput(`${dateStr}T${val}`);
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" /> End Time
+                        </label>
+                        <TimePicker
+                          value={selectedEndTime}
+                          onChange={(val) => {
+                            setSelectedEndTime(val);
+                            if (selectedMeetingDate) {
+                              const dateStr = dayjs(selectedMeetingDate).format('YYYY-MM-DD');
+                              setMeetingEndInput(`${dateStr}T${val}`);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="additional-invitees" className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                        Additional Invitees <span className="normal-case font-normal text-slate-400">(optional)</span>
+                      </label>
+                      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:border-[#d21e2b] focus-within:ring-1 focus-within:ring-[#d21e2b]">
+                        {additionalInvitees.map((email) => (
+                          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-[#d21e2b]/10 px-2 py-1 text-xs font-medium text-[#a41420]">
+                            {email}
+                            <button
+                              type="button"
+                              aria-label={`Remove ${email}`}
+                              onClick={() => setAdditionalInvitees((current) => current.filter((item) => item !== email))}
+                              className="text-[#a41420]/70 hover:text-[#a41420]"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          id="additional-invitees"
+                          value={additionalInviteesInput}
+                          onChange={(event) => setAdditionalInviteesInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (['Enter', ',', ';'].includes(event.key)) {
+                              event.preventDefault();
+                              commitAdditionalInvitee();
+                            }
+                          }}
+                          onPaste={(event) => {
+                            const pasted = event.clipboardData.getData('text');
+                            if (/[;,\n]/.test(pasted)) {
+                              event.preventDefault();
+                              if (addAdditionalInvitees(pasted)) setAdditionalInviteesInput('');
+                            }
+                          }}
+                          onBlur={commitAdditionalInvitee}
+                          placeholder={additionalInvitees.length ? 'Add another email…' : 'hod@company.com'}
+                          className="min-w-40 flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Press comma, semicolon, or Enter after each email. Only valid addresses are added and sent with the Calendar invite.</p>
+                    </div>
                   </div>
                   <button
                     type="button" onClick={() => handleCreateMeeting(true)} disabled={creatingMeeting}

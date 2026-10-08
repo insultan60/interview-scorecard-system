@@ -7,6 +7,7 @@ const applicationSchema = new mongoose.Schema({
 
   currentStageKey: String,     // Which stage they're on now
   source: { type: String, enum: ['public_link', 'manual'], default: 'manual' },
+  opportunityDuration: String,
   questionnaireAnswers: mongoose.Schema.Types.Mixed,
   stageProgress: [{
     stageKey: String,
@@ -34,6 +35,16 @@ const applicationSchema = new mongoose.Schema({
   finalDecision: { type: String, enum: [...FINAL_DECISIONS, null], default: null },
   finalDecisionBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   rejectionReason: String,
+
+  // Offer letters are application-level documents, not pipeline stages.
+  offerLetterUrl: String,
+  offerLetterPublicId: String,
+  offerLetterUploadedAt: Date,
+  offerLetterDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
+  offerLetterSentAt: Date,
+
+  onboardingFormDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
+  onboardingFormSentAt: Date,
 }, { timestamps: true });
 
 applicationSchema.index({ requisitionId: 1, weightedTotal: -1 });

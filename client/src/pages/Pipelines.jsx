@@ -33,7 +33,8 @@ const REQUIRED_STAGE_KEYS = new Set(['resume_screen', 'hr_screen']);
 /** Starting point for a new template; Résumé Screen and HR Screen are mandatory. */
 const STAGE_TYPE_DEFAULTS = [
   { key: 'resume_screen', label: 'Résumé Screen', stageType: 'resume_screen', inputType: 'artifact' },
-  { key: 'hr_screen', label: 'HR Screen', stageType: 'hr_screen', inputType: 'transcript' },
+  { key: 'hr_screen', label: 'Initial Screening', stageType: 'hr_screen', inputType: 'artifact' },
+  { key: 'hr_interview', label: 'HR Interview', stageType: 'hr_interview', inputType: 'transcript' },
   { key: 'task_performance', label: 'Task Performance', stageType: 'task_performance', inputType: 'manual_rubric' },
   { key: 'technical', label: 'Technical', stageType: 'technical', inputType: 'transcript' },
   { key: 'simulation', label: 'Simulation', stageType: 'simulation', inputType: 'manual_rubric' },
@@ -472,7 +473,7 @@ export default function Pipelines() {
             <ArrowLeft />
           </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Hiring Process</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Hiring Stages</h1>
             <p className="text-sm text-muted-foreground">
               {loading ? 'Loading…' : `${templates.length} template${templates.length === 1 ? '' : 's'}`}
             </p>

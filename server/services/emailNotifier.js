@@ -147,4 +147,42 @@ async function sendPasswordResetEmail({ userEmail, userName, resetUrl, expiresIn
   return sendEmail({ to: userEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail };
+/** Emails a candidate asking for their preferred interview date & time availability. */
+async function sendAvailabilityRequestEmail({ candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl }) {
+  const subject = `Please provide your availability — ${requisitionTitle} (${stageLabel})`;
+  const text = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    `Our hiring team would like to arrange your interview for the ${stageLabel} stage of your application for ${requisitionTitle}.`,
+    '',
+    'Please click the link below to select your preferred date and time windows:',
+    availabilityUrl,
+    '',
+    'Thank you,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  return sendEmail({ to: candidateEmail, subject, text });
+}
+
+/** Emails a candidate their ClickUp Onboarding Form link. */
+async function sendOnboardingFormEmail({ candidateEmail, candidateName, onboardingUrl }) {
+  const url = onboardingUrl || 'https://forms.clickup.com/9018918616/f/8ct3hpr-11198/JXG8EGK3RD18TR60TO';
+  const subject = 'ON BOARDING FORM — Red Star Technologies';
+  const text = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    'ON BOARDING FORM',
+    'Welcome to Red Star Technologies! We are thrilled to have you join our team. This onboarding document outlines the key information, policies, and tools you need to integrate smoothly into our work environment. We are committed to supporting your success.',
+    '',
+    'Please complete your onboarding form using the link below:',
+    url,
+    '',
+    'Best regards,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  return sendEmail({ to: candidateEmail, subject, text });
+}
+
+module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail, sendAvailabilityRequestEmail, sendOnboardingFormEmail };

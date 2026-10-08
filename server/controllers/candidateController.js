@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Candidate = require('../models/Candidate');
 const Application = require('../models/Application');
 const Interview = require('../models/Interview');
@@ -10,6 +11,7 @@ const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
+const { sendOnboardingFormEmail } = require('../services/emailNotifier');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,8 +37,8 @@ function validatePhone(phone, required = false) {
 }
 
 /**
- * GET /api/candidates — list all candidates, each with the requisitions it is
- * already attached to.
+ * GET /api/candidates — server-paginated candidates, each with the
+ * requisitions it is already attached to.
  *
  * The attachments are resolved here in two queries rather than left to the
  * client, which would otherwise need one request per requisition just to
@@ -44,7 +46,28 @@ function validatePhone(phone, required = false) {
  * only way to find out is to attempt an attach and read the 409.
  */
 const list = asyncHandler(async (req, res) => {
-  const candidates = await Candidate.find().sort({ createdAt: -1 }).lean();
+  const query = {};
+  if (req.query.search && req.query.search.trim()) {
+    const searchRegex = new RegExp(req.query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    query.$or = [{ name: searchRegex }, { email: searchRegex }, { phone: searchRegex }];
+  }
+
+  if (req.query.requisitionId && req.query.requisitionId !== 'all') {
+    if (!mongoose.isValidObjectId(req.query.requisitionId)) {
+      query._id = { $in: [] };
+    } else {
+      const candidateIds = await Application.distinct('candidateId', { requisitionId: req.query.requisitionId });
+      query._id = { $in: candidateIds };
+    }
+  }
+
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+  const total = await Candidate.countDocuments(query);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const requestedPage = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const page = Math.min(requestedPage, totalPages);
+  const sort = req.query.sort === 'oldest' ? { createdAt: 1 } : { createdAt: -1 };
+  const candidates = await Candidate.find(query).sort(sort).skip((page - 1) * limit).limit(limit).lean();
 
   const applications = await Application.find({ candidateId: { $in: candidates.map((c) => c._id) } })
     .select('candidateId requisitionId currentStageKey disposition')
@@ -53,6 +76,12 @@ const list = asyncHandler(async (req, res) => {
     .select('title status')
     .lean();
   const requisitionById = new Map(requisitions.map((r) => [String(r._id), r]));
+
+  const requisitionIds = await Application.distinct('requisitionId');
+  const requisitionOptions = await Requisition.find({ _id: { $in: requisitionIds } })
+    .select('title')
+    .sort({ title: 1 })
+    .lean();
 
   const byCandidate = new Map();
   applications.forEach((a) => {
@@ -73,6 +102,8 @@ const list = asyncHandler(async (req, res) => {
 
   res.json({
     candidates: candidates.map((c) => ({ ...c, applications: byCandidate.get(String(c._id)) || [] })),
+    requisitionOptions: requisitionOptions.map((r) => ({ id: String(r._id), title: r.title })),
+    pagination: { total, page, limit, totalPages },
   });
 });
 
@@ -82,6 +113,8 @@ const create = asyncHandler(async (req, res) => {
   if (!name) throw new ValidationError(['name'], 'name is required.');
   const validatedEmail = validateEmail(email);
   const validatedPhone = validatePhone(phone);
+  const duplicate = await Candidate.findOne({ email: validatedEmail });
+  if (duplicate) throw new ValidationError(['email'], 'A candidate with this email address already exists.');
 
   let resumeFileUrl;
   let resumeFilePublicId;
@@ -346,4 +379,52 @@ const remove = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, bulkCreate, getOne, update, apply, removeFromRequisition, remove };
+/** POST /api/candidates/send-onboarding-form */
+const sendOnboardingForm = asyncHandler(async (req, res) => {
+  const { candidateEmail, candidateName, onboardingUrl, applicationId } = req.body;
+  if (!candidateEmail) {
+    throw new ValidationError(['candidateEmail'], 'Candidate email is required.');
+  }
+
+  const result = await sendOnboardingFormEmail({
+    candidateEmail,
+    candidateName,
+    onboardingUrl,
+  });
+
+  if (applicationId && mongoose.isValidObjectId(applicationId)) {
+    const application = await Application.findById(applicationId);
+    if (application) {
+      application.onboardingFormDeliveryStatus = result.sent ? 'sent' : 'pending';
+      application.onboardingFormSentAt = result.sent ? new Date() : null;
+      await application.save();
+    }
+  }
+
+  res.json({
+    sent: result.sent,
+    emailReason: result.reason || null,
+  });
+});
+
+/** PATCH /api/candidates/onboarding-form-delivery */
+const recordOnboardingFormDelivery = asyncHandler(async (req, res) => {
+  const { applicationId, deliveryStatus } = req.body;
+  if (!applicationId || !mongoose.isValidObjectId(applicationId)) {
+    throw new ValidationError(['applicationId'], 'Valid applicationId is required.');
+  }
+  const application = await Application.findById(applicationId);
+  if (!application) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  }
+
+  application.onboardingFormDeliveryStatus = deliveryStatus === 'sent' ? 'sent' : 'pending';
+  application.onboardingFormSentAt = deliveryStatus === 'sent' ? new Date() : null;
+  await application.save();
+
+  res.json({ application });
+});
+
+module.exports = { list, create, bulkCreate, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm, recordOnboardingFormDelivery };
+
+

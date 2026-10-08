@@ -2,7 +2,7 @@ require('dotenv').config();
 
 /** All stage types a PipelineTemplate stage / Requisition stage can have. */
 const STAGE_TYPES = [
-  'resume_screen', 'hr_screen', 'task_performance', 'technical',
+  'resume_screen', 'hr_screen', 'hr_interview', 'task_performance', 'technical',
   'simulation', 'final', 'client', 'culture', 'reference',
   'background', 'offer',
 ];
@@ -50,6 +50,7 @@ const AUDIT_ACTIONS = [
   'weight_change', 'disposition_change', 'final_decision',
   'provider_change', 'key_change', 'transcript_upload', 'consent_capture',
   'retention_purge', 'requisition_status_change', 'candidate_update',
+  'requisition_duplicated', 'offer_letter_sent',
 ];
 
 /**
@@ -64,6 +65,7 @@ const STAGE_MODEL_TIER = {
   reference: 'cheap',
   background: 'cheap',
   hr_screen: 'cheap',
+  hr_interview: 'cheap',
   final: 'cheap',
   client: 'cheap',
   culture: 'cheap',
@@ -97,11 +99,21 @@ const DEFAULT_PIPELINE_STAGES = [
   },
   {
     key: 'hr_screen',
-    label: 'HR Screen',
+    label: 'Initial Screening',
     stageType: 'hr_screen',
-    inputType: 'transcript',
+    inputType: 'artifact',
     enabled: true,
     order: 2,
+    weight: 0.10,
+    passThreshold: 3.0,
+  },
+  {
+    key: 'hr_interview',
+    label: 'HR Interview',
+    stageType: 'hr_interview',
+    inputType: 'transcript',
+    enabled: true,
+    order: 3,
     weight: 0.15,
     passThreshold: 3.0,
   },
@@ -111,7 +123,7 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'simulation',
     inputType: 'manual_rubric',
     enabled: true,
-    order: 3,
+    order: 4,
     weight: 0.25,
     passThreshold: 3.0,
   },
@@ -121,8 +133,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'technical',
     inputType: 'transcript',
     enabled: true,
-    order: 4,
-    weight: 0.30,
+    order: 5,
+    weight: 0.25,
     passThreshold: 3.0,
   },
   {
@@ -131,8 +143,8 @@ const DEFAULT_PIPELINE_STAGES = [
     stageType: 'final',
     inputType: 'transcript',
     enabled: true,
-    order: 5,
-    weight: 0.20,
+    order: 6,
+    weight: 0.15,
     passThreshold: 3.0,
   },
   {

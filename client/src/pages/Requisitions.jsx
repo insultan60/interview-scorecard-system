@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2,
+  Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2, MoreVertical,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,6 +15,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
@@ -224,11 +227,28 @@ export default function Requisitions() {
     });
   }
 
+  const [duplicatingId, setDuplicatingId] = useState(null);
+
   function copyApplyLink(reqId, e) {
     if (e) e.stopPropagation();
     const url = `${window.location.origin}/apply/${reqId}`;
     navigator.clipboard.writeText(url);
     toast.success('Candidate application link copied to clipboard!');
+  }
+
+  async function handleDuplicateRequisition(reqId, title, e) {
+    if (e) e.stopPropagation();
+    setDuplicatingId(reqId);
+    try {
+      await api.post(`/requisitions/${reqId}/duplicate`);
+      toast.success(`Duplicated "${title}" successfully!`);
+      loadRequisitions();
+    } catch (error) {
+      console.error('Failed to duplicate job opening:', error);
+      toast.error(error?.response?.data?.message || 'Failed to duplicate job opening.');
+    } finally {
+      setDuplicatingId(null);
+    }
   }
 
   async function loadRequisitions() {
@@ -600,8 +620,47 @@ export default function Requisitions() {
                         {formatDate(r.createdAt)}
                       </TableCell>
 
-                      <TableCell>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <TableCell onClick={(e) => e.stopPropagation()} className="w-16">
+                        <div className="flex items-center justify-end gap-1">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-500 hover:text-foreground hover:bg-slate-100"
+                                title="More options"
+                                disabled={duplicatingId === r._id}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => handleDuplicateRequisition(r._id, r.title, e)}>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Duplicate Job Opening
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => copyApplyLink(r._id, e)}>
+                                <Link2 className="h-4 w-4 mr-2" />
+                                Copy Apply Link
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => navigate(`/requisitions/${r._id}`)}>
+                                <ChevronRight className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-foreground hover:bg-slate-100"
+                            onClick={() => navigate(`/requisitions/${r._id}`)}
+                            title="View Job Opening"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

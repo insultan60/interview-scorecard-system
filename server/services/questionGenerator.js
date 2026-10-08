@@ -152,19 +152,21 @@ ${batch.map((s) => `- stageKey: "${s.key}" (${s.label}, inputType: ${s.inputType
     }
   }
 
-  const hrStage = resultStages.find((stage) => stage.stageKey === 'hr_screen');
-  if (hrStage && hasQuestionnaire) {
-    hrStage.attributes = requisition.questionnaire.map((item, index) => {
-      const question = typeof item === 'string' ? item : item.question;
-      const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
-      return {
-        name: `Question ${index + 1}`,
-        question,
-        anchor5: idealAnswer || 'Fully addresses the question with a relevant, specific answer.',
-        redFlags: 'Does not answer the question, or provides an unclear or irrelevant response.',
-      };
-    });
-  }
+  ['hr_screen', 'hr_interview'].forEach((stageKey) => {
+    const stageObj = resultStages.find((stage) => stage.stageKey === stageKey);
+    if (stageObj && hasQuestionnaire) {
+      stageObj.attributes = requisition.questionnaire.map((item, index) => {
+        const question = typeof item === 'string' ? item : item.question;
+        const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+        return {
+          name: `Question ${index + 1}`,
+          question,
+          anchor5: idealAnswer || 'Fully addresses the question with a relevant, specific answer.',
+          redFlags: 'Does not answer the question, or provides an unclear or irrelevant response.',
+        };
+      });
+    }
+  });
 
   return { stages: resultStages };
 }

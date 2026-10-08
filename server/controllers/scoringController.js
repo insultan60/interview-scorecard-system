@@ -11,6 +11,8 @@ const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/
 const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
+const emailNotifier = require('../services/emailNotifier');
+const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 
 /**
  * Recomputes an application's weightedTotal / allGatesPassed / disposition
@@ -286,17 +288,21 @@ const override = asyncHandler(async (req, res) => {
     if (numScore < 1 || numScore > 5) {
       throw new ValidationError(['approvedScore'], `approvedScore must be between 1 and 5 (attribute ${attributeId}).`);
     }
+    const trimmedReason = String(reason || '').trim();
+    if (trimmedReason.length < 10) {
+      throw new ValidationError(['reason'], `Override reason for attribute "${attributeId}" must be at least 10 characters long.`);
+    }
     let scoreEntry = interview.scores.find((s) => s.attributeId === attributeId);
     if (scoreEntry) {
       const oldValue = scoreEntry.approvedScore;
       scoreEntry.approvedScore = numScore;
       scoreEntry.overridden = true;
       scoreEntry.overriddenBy = req.user._id;
-      scoreEntry.overrideReason = reason || 'Manual score entry';
+      scoreEntry.overrideReason = trimmedReason;
 
       await AuditLog.create({
         action: 'score_override', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
-        targetType: 'score', targetId: attributeId, oldValue, newValue: numScore, reason: reason || 'Manual score entry',
+        targetType: 'score', targetId: attributeId, oldValue, newValue: numScore, reason: trimmedReason,
       });
     } else {
       interview.scores.push({
@@ -304,12 +310,12 @@ const override = asyncHandler(async (req, res) => {
         approvedScore: numScore,
         overridden: true,
         overriddenBy: req.user._id,
-        overrideReason: reason || 'Manual score entry',
+        overrideReason: trimmedReason,
       });
 
       await AuditLog.create({
         action: 'score_override', userId: req.user._id, requisitionId: interview.requisitionId, applicationId: interview.applicationId,
-        targetType: 'score', targetId: attributeId, oldValue: null, newValue: numScore, reason: reason || 'Manual score entry',
+        targetType: 'score', targetId: attributeId, oldValue: null, newValue: numScore, reason: trimmedReason,
       });
     }
   }
@@ -387,6 +393,107 @@ const decision = asyncHandler(async (req, res) => {
   }
 
   logger.info(`[Scoring] Final decision "${finalDecision}" recorded for application ${application._id} by user=${req.user._id}`);
+  res.json({ application });
+});
+
+/**
+ * POST /api/scoring/application/:id/send-offer-letter
+ * Uploads a signed offer document for a hired candidate and sends its secure
+ * link through the server email service.  A non-fatal email failure is
+ * returned to the browser so it can use its configured EmailJS fallback.
+ */
+const sendOfferLetter = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id).populate('candidateId', 'name email');
+  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+
+  if (application.finalDecision !== 'hired') {
+    throw new ValidationError(['finalDecision'], 'An offer letter can only be sent after the candidate is marked Hired.');
+  }
+
+  const requisition = await Requisition.findById(application.requisitionId);
+  assertRequisitionNotClosed(requisition, 'send an offer letter');
+
+  if (!req.file) {
+    throw new ValidationError(['offerLetter'], 'Please upload the offer letter as a PDF.');
+  }
+
+  const filename = req.file.originalname || '';
+  const isPdf = req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(filename);
+  if (!isPdf) {
+    throw new ValidationError(['offerLetter'], 'Only PDF offer letters can be uploaded.');
+  }
+  if (req.file.size > 5 * 1024 * 1024) {
+    throw new ValidationError(['offerLetter'], 'The offer letter must be 5 MB or smaller.');
+  }
+
+  if (application.offerLetterPublicId) {
+    try {
+      await destroyFile(application.offerLetterPublicId);
+    } catch (err) {
+      logger.warn(`[Scoring] Could not remove previous offer letter for ${application._id}: ${err.message}`);
+    }
+  }
+
+  const upload = await uploadBuffer(req.file.buffer, {
+    folder: 'offer-letters',
+    filename: `offer-${application._id}-${Date.now()}.pdf`,
+  });
+
+  application.offerLetterUrl = upload.secureUrl;
+  application.offerLetterPublicId = upload.publicId;
+  application.offerLetterUploadedAt = new Date();
+
+  const candidate = application.candidateId;
+  const emailResult = await emailNotifier.sendOfferEmail({
+    candidateEmail: candidate?.email,
+    candidateName: candidate?.name,
+    requisitionTitle: requisition.title,
+    offerLetterUrl: upload.secureUrl,
+  });
+  application.offerLetterDeliveryStatus = emailResult.sent ? 'sent' : 'pending';
+  application.offerLetterSentAt = emailResult.sent ? new Date() : null;
+  await application.save();
+
+  await AuditLog.create({
+    action: 'offer_letter_sent',
+    userId: req.user._id,
+    requisitionId: application.requisitionId,
+    applicationId: application._id,
+    targetType: 'application',
+    targetId: application._id.toString(),
+    newValue: { offerLetterUrl: upload.secureUrl, emailSent: emailResult.sent },
+    reason: 'Offer letter uploaded for a hired candidate.',
+  });
+
+  logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; server email sent=${emailResult.sent}.`);
+  res.json({ application, emailSent: emailResult.sent, emailReason: emailResult.reason });
+});
+
+/** Records that the browser EmailJS fallback delivered the current offer letter. */
+const recordOfferLetterDelivery = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id);
+  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  if (!application.offerLetterUrl) {
+    throw new ValidationError(['offerLetter'], 'Upload an offer letter before recording delivery.');
+  }
+  if (req.body?.deliveryStatus !== 'sent') {
+    throw new ValidationError(['deliveryStatus'], 'deliveryStatus must be sent.');
+  }
+
+  application.offerLetterDeliveryStatus = 'sent';
+  application.offerLetterSentAt = new Date();
+  await application.save();
+  await AuditLog.create({
+    action: 'offer_letter_sent',
+    userId: req.user._id,
+    requisitionId: application.requisitionId,
+    applicationId: application._id,
+    targetType: 'application',
+    targetId: application._id.toString(),
+    newValue: { offerLetterUrl: application.offerLetterUrl, emailSent: true, deliveryMethod: 'browser_fallback' },
+    reason: 'Offer letter sent through the browser email fallback.',
+  });
+
   res.json({ application });
 });
 
@@ -533,6 +640,11 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
     throw new ValidationError(['passed'], 'passed must be a boolean.');
   }
 
+  const trimmedReason = String(reason || '').trim();
+  if (trimmedReason.length < 10) {
+    throw new ValidationError(['reason'], 'Override justification reason must be at least 10 characters long.');
+  }
+
   const oldScreening = application.initialScreening || {};
   application.initialScreening = {
     aiScore: score !== undefined ? Number(score) : (oldScreening.aiScore || 3.0),
@@ -540,7 +652,7 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
     passed,
     overridden: true,
     overriddenBy: req.user._id,
-    overrideReason: reason || 'Manual HR override',
+    overrideReason: trimmedReason,
   };
 
   const enabledStages = (requisition.stages || []).filter((s) => s.enabled);
@@ -600,5 +712,5 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
   res.json({ application, nextInterviewId });
 });
 
-module.exports = { approve, override, recompute, decision, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
+module.exports = { approve, override, recompute, decision, sendOfferLetter, recordOfferLetterDelivery, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
 
