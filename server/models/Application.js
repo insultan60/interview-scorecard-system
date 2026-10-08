@@ -35,6 +35,13 @@ const applicationSchema = new mongoose.Schema({
   finalDecision: { type: String, enum: [...FINAL_DECISIONS, null], default: null },
   finalDecisionBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   rejectionReason: String,
+
+  // Offer letters are application-level documents, not pipeline stages.
+  offerLetterUrl: String,
+  offerLetterPublicId: String,
+  offerLetterUploadedAt: Date,
+  offerLetterDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
+  offerLetterSentAt: Date,
 }, { timestamps: true });
 
 applicationSchema.index({ requisitionId: 1, weightedTotal: -1 });

@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { formatDisposition, formatScore } from '../utils/formatters';
+import { isBrowserEmailJSConfigured, sendOfferEmailClient } from '../services/emailService';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -60,6 +61,7 @@ export default function RequisitionDetail() {
   const [candidateSearch, setCandidateSearch] = useState('');
   const [debouncedCandidateSearch, setDebouncedCandidateSearch] = useState('');
   const [dispositionFilters, setDispositionFilters] = useState(['in_progress', 'HIRE', 'MAYBE']);
+  const [finalDecisionFilters, setFinalDecisionFilters] = useState(['undecided', 'hired', 'rejected', 'withdrawn']);
   const [fetchingCandidates, setFetchingCandidates] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
@@ -70,7 +72,66 @@ export default function RequisitionDetail() {
   const [decisionDraft, setDecisionDraft] = useState('hired');
   const [decisionReasonDraft, setDecisionReasonDraft] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
+  const [offerFor, setOfferFor] = useState(null);
+  const [offerFile, setOfferFile] = useState(null);
+  const [sendingOffer, setSendingOffer] = useState(false);
   const latestLoadRef = useRef(0);
+
+  async function handleSendOfferLetter(event) {
+    event.preventDefault();
+    if (!offerFor || !offerFile) {
+      toast.error('Choose the candidate\'s offer letter PDF first.');
+      return;
+    }
+    const isPdf = offerFile.type === 'application/pdf' || /\.pdf$/i.test(offerFile.name);
+    if (!isPdf) {
+      toast.error('Only PDF offer letters can be uploaded.');
+      return;
+    }
+    if (offerFile.size > 5 * 1024 * 1024) {
+      toast.error('The offer letter must be 5 MB or smaller.');
+      return;
+    }
+
+    setSendingOffer(true);
+    try {
+      const formData = new FormData();
+      formData.append('offerLetter', offerFile);
+      const response = await api.post(`/scoring/application/${offerFor._id}/send-offer-letter`, formData);
+      const { application, emailSent, emailReason } = response.data;
+
+      if (emailSent) {
+        toast.success('Offer letter uploaded and emailed to the candidate.');
+      } else {
+        const fallback = await sendOfferEmailClient({
+          candidateEmail: offerFor.candidateId?.email,
+          candidateName: offerFor.candidateId?.name,
+          requisitionTitle: data?.requisition?.title || 'the position',
+          offerLetterUrl: application?.offerLetterUrl,
+        });
+        if (fallback.sent) {
+          try {
+            await api.patch(`/scoring/application/${offerFor._id}/offer-letter-delivery`, { deliveryStatus: 'sent' });
+          } catch (deliveryError) {
+            console.warn('[Offer letter] Browser delivery was successful but its status could not be saved.', deliveryError);
+          }
+          toast.success('Offer letter uploaded and emailed through the browser fallback.');
+        } else if (!isBrowserEmailJSConfigured()) {
+          toast.error(`${emailReason || 'Server email could not be sent.'} Browser email fallback is not configured.`);
+        } else {
+          toast.error(fallback.reason || emailReason || 'The offer letter was uploaded, but the email could not be sent.');
+        }
+      }
+
+      setOfferFor(null);
+      setOfferFile(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not upload and send the offer letter.');
+    } finally {
+      setSendingOffer(false);
+    }
+  }
 
   async function handleConfirmDecision(applicationId) {
     if (decisionDraft === 'rejected' && !decisionReasonDraft.trim()) {
@@ -129,6 +190,13 @@ export default function RequisitionDetail() {
     setPage(1);
   }
 
+  function toggleFinalDecisionFilter(value) {
+    setFinalDecisionFilters((current) => (
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    ));
+    setPage(1);
+  }
+
   async function load(targetPage = page) {
     const requestId = ++latestLoadRef.current;
     const isInitialLoad = !data;
@@ -141,6 +209,7 @@ export default function RequisitionDetail() {
         limit: PAGE_SIZE,
         search: debouncedCandidateSearch.trim() || undefined,
         disposition: dispositionFilters.length ? dispositionFilters.join(',') : 'none',
+        finalDecision: finalDecisionFilters.length ? finalDecisionFilters.join(',') : 'none',
         candidateId: candidateIdFromUrl || undefined,
       };
 
@@ -178,7 +247,7 @@ export default function RequisitionDetail() {
 
   useEffect(() => {
     load(1);
-  }, [id, debouncedCandidateSearch, dispositionFilters, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, debouncedCandidateSearch, dispositionFilters, finalDecisionFilters, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab !== 'scorecard' || scorecardData) return;
@@ -319,6 +388,7 @@ export default function RequisitionDetail() {
   const displayApplications = applications || [];
   const hasActiveCandidateFilter = Boolean(candidateSearch.trim())
     || dispositionFilters.length !== 4
+    || finalDecisionFilters.length !== 4
     || Boolean(candidateIdFromUrl);
   const enabledStages = requisition.stages.filter((s) => s.enabled).length;
   const employmentDetails = {
@@ -492,7 +562,7 @@ export default function RequisitionDetail() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-40">
-                    Statuses ({dispositionFilters.length}/4)
+                    Disposition ({dispositionFilters.length}/4)
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -505,6 +575,27 @@ export default function RequisitionDetail() {
                   ].map(([value, label]) => (
                     <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted">
                       <Checkbox checked={dispositionFilters.includes(value)} onCheckedChange={() => toggleDispositionFilter(value)} />
+                      {label}
+                    </label>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-40">
+                    Final Decision ({finalDecisionFilters.length}/4)
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44 p-2">
+                  {[
+                    ['undecided', 'No decision'],
+                    ['hired', 'Hired'],
+                    ['rejected', 'Rejected'],
+                    ['withdrawn', 'Withdrawn'],
+                  ].map(([value, label]) => (
+                    <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted">
+                      <Checkbox checked={finalDecisionFilters.includes(value)} onCheckedChange={() => toggleFinalDecisionFilter(value)} />
                       {label}
                     </label>
                   ))}
@@ -758,21 +849,35 @@ export default function RequisitionDetail() {
                                 </Button>
                               </span>
                               {finalDecision === 'hired' && (
-                                <span
-                                  className="inline-flex"
-                                  title={`Send an offer letter to ${app.candidateId?.name || 'this candidate'}.`}
-                                >
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    aria-label="Send offer letter"
-                                    className="h-8 w-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                                    onClick={() => toast('Offer-letter delivery will be added here.', { icon: '📄' })}
+                                <div className="relative inline-flex">
+                                  {app.offerLetterDeliveryStatus === 'sent' && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="absolute top-0 left-1/2 z-10 h-4 -translate-x-1/2 -translate-y-1/3 whitespace-nowrap bg-emerald-100 px-1.5 text-[9px] font-medium leading-none text-emerald-800 hover:bg-emerald-100"
+                                      title={`Offer letter emailed${app.offerLetterSentAt ? ` on ${new Date(app.offerLetterSentAt).toLocaleString()}` : ''}.`}
+                                    >
+                                      Sent
+                                    </Badge>
+                                  )}
+                                  <span
+                                    className="inline-flex"
+                                    title={`Send an offer letter to ${app.candidateId?.name || 'this candidate'}.`}
                                   >
-                                    <FileText className="h-4 w-4" />
-                                  </Button>
-                                </span>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label="Send offer letter"
+                                      className="h-8 w-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                                      onClick={() => {
+                                        setOfferFor(app);
+                                        setOfferFile(null);
+                                      }}
+                                    >
+                                      <FileText className="h-4 w-4" />
+                                    </Button>
+                                  </span>
+                                </div>
                               )}
                               <Button
                                 type="button"
@@ -860,6 +965,57 @@ export default function RequisitionDetail() {
               </CardContent>
             </Card>
           )}
+
+          <Dialog
+            open={!!offerFor}
+            onOpenChange={(open) => {
+              if (!open && !sendingOffer) {
+                setOfferFor(null);
+                setOfferFile(null);
+              }
+            }}
+          >
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Send offer letter</DialogTitle>
+                <DialogDescription>
+                  Upload a signed PDF for {offerFor?.candidateId?.name || 'this candidate'}. The candidate will receive a secure link by email.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSendOfferLetter} className="space-y-4">
+                <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+                  <p className="font-medium text-foreground">{offerFor?.candidateId?.name || 'Candidate'}</p>
+                  <p className="mt-1 text-muted-foreground">{data?.requisition?.title || 'Job opening'}</p>
+                  <p className="mt-1 break-all text-muted-foreground">{offerFor?.candidateId?.email || 'No email address on file'}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="offer-letter-file">Offer letter (PDF)</Label>
+                  <Input
+                    id="offer-letter-file"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(event) => setOfferFile(event.target.files?.[0] || null)}
+                    disabled={sendingOffer}
+                    className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                  />
+                  <p className="text-xs text-muted-foreground">PDF only, up to 5 MB. The candidate receives a professional email with a secure link to the letter.</p>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => { setOfferFor(null); setOfferFile(null); }}
+                    disabled={sendingOffer}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" disabled={sendingOffer || !offerFile}>
+                    {sendingOffer ? 'Uploading and sending…' : 'Send offer letter'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           {/* ---------- close confirmation ---------- */}
           <AlertDialog open={pendingClose} onOpenChange={setPendingClose}>

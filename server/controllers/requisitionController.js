@@ -489,7 +489,7 @@ const list = asyncHandler(async (req, res) => {
 /**
  * GET /api/requisitions/:id
  * Returns one requisition with its scorecard and server-paginated applications.
- * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&stageKey=...&candidateId=...
+ * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&finalDecision=hired|rejected|withdrawn|undecided&stageKey=...&candidateId=...
  */
 const getOne = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
@@ -513,6 +513,23 @@ const getOne = asyncHandler(async (req, res) => {
         query.disposition = null;
       } else {
         query.disposition = { $in: scoredDispositions };
+      }
+    }
+  }
+
+  if (req.query.finalDecision) {
+    const decisions = String(req.query.finalDecision).split(',').filter(Boolean);
+    if (decisions.includes('none')) {
+      query._id = { $in: [] };
+    } else if (!decisions.includes('all')) {
+      const includeUndecided = decisions.includes('undecided');
+      const recordedDecisions = decisions.filter((value) => ['hired', 'rejected', 'withdrawn'].includes(value));
+      if (includeUndecided && recordedDecisions.length) {
+        query.finalDecision = { $in: [null, ...recordedDecisions] };
+      } else if (includeUndecided) {
+        query.finalDecision = null;
+      } else {
+        query.finalDecision = { $in: recordedDecisions };
       }
     }
   }

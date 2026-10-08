@@ -11,6 +11,8 @@ const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/
 const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
+const emailNotifier = require('../services/emailNotifier');
+const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 
 /**
  * Recomputes an application's weightedTotal / allGatesPassed / disposition
@@ -394,6 +396,107 @@ const decision = asyncHandler(async (req, res) => {
   res.json({ application });
 });
 
+/**
+ * POST /api/scoring/application/:id/send-offer-letter
+ * Uploads a signed offer document for a hired candidate and sends its secure
+ * link through the server email service.  A non-fatal email failure is
+ * returned to the browser so it can use its configured EmailJS fallback.
+ */
+const sendOfferLetter = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id).populate('candidateId', 'name email');
+  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+
+  if (application.finalDecision !== 'hired') {
+    throw new ValidationError(['finalDecision'], 'An offer letter can only be sent after the candidate is marked Hired.');
+  }
+
+  const requisition = await Requisition.findById(application.requisitionId);
+  assertRequisitionNotClosed(requisition, 'send an offer letter');
+
+  if (!req.file) {
+    throw new ValidationError(['offerLetter'], 'Please upload the offer letter as a PDF.');
+  }
+
+  const filename = req.file.originalname || '';
+  const isPdf = req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(filename);
+  if (!isPdf) {
+    throw new ValidationError(['offerLetter'], 'Only PDF offer letters can be uploaded.');
+  }
+  if (req.file.size > 5 * 1024 * 1024) {
+    throw new ValidationError(['offerLetter'], 'The offer letter must be 5 MB or smaller.');
+  }
+
+  if (application.offerLetterPublicId) {
+    try {
+      await destroyFile(application.offerLetterPublicId);
+    } catch (err) {
+      logger.warn(`[Scoring] Could not remove previous offer letter for ${application._id}: ${err.message}`);
+    }
+  }
+
+  const upload = await uploadBuffer(req.file.buffer, {
+    folder: 'offer-letters',
+    filename: `offer-${application._id}-${Date.now()}.pdf`,
+  });
+
+  application.offerLetterUrl = upload.secureUrl;
+  application.offerLetterPublicId = upload.publicId;
+  application.offerLetterUploadedAt = new Date();
+
+  const candidate = application.candidateId;
+  const emailResult = await emailNotifier.sendOfferEmail({
+    candidateEmail: candidate?.email,
+    candidateName: candidate?.name,
+    requisitionTitle: requisition.title,
+    offerLetterUrl: upload.secureUrl,
+  });
+  application.offerLetterDeliveryStatus = emailResult.sent ? 'sent' : 'pending';
+  application.offerLetterSentAt = emailResult.sent ? new Date() : null;
+  await application.save();
+
+  await AuditLog.create({
+    action: 'offer_letter_sent',
+    userId: req.user._id,
+    requisitionId: application.requisitionId,
+    applicationId: application._id,
+    targetType: 'application',
+    targetId: application._id.toString(),
+    newValue: { offerLetterUrl: upload.secureUrl, emailSent: emailResult.sent },
+    reason: 'Offer letter uploaded for a hired candidate.',
+  });
+
+  logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; server email sent=${emailResult.sent}.`);
+  res.json({ application, emailSent: emailResult.sent, emailReason: emailResult.reason });
+});
+
+/** Records that the browser EmailJS fallback delivered the current offer letter. */
+const recordOfferLetterDelivery = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id);
+  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  if (!application.offerLetterUrl) {
+    throw new ValidationError(['offerLetter'], 'Upload an offer letter before recording delivery.');
+  }
+  if (req.body?.deliveryStatus !== 'sent') {
+    throw new ValidationError(['deliveryStatus'], 'deliveryStatus must be sent.');
+  }
+
+  application.offerLetterDeliveryStatus = 'sent';
+  application.offerLetterSentAt = new Date();
+  await application.save();
+  await AuditLog.create({
+    action: 'offer_letter_sent',
+    userId: req.user._id,
+    requisitionId: application.requisitionId,
+    applicationId: application._id,
+    targetType: 'application',
+    targetId: application._id.toString(),
+    newValue: { offerLetterUrl: application.offerLetterUrl, emailSent: true, deliveryMethod: 'browser_fallback' },
+    reason: 'Offer letter sent through the browser email fallback.',
+  });
+
+  res.json({ application });
+});
+
 const passFail = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
 
@@ -609,5 +712,5 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
   res.json({ application, nextInterviewId });
 });
 
-module.exports = { approve, override, recompute, decision, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
+module.exports = { approve, override, recompute, decision, sendOfferLetter, recordOfferLetterDelivery, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
 
