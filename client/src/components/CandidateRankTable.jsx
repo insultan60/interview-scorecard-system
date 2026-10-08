@@ -150,15 +150,15 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
       <div className={`hidden overflow-x-auto md:block ${shouldScroll ? 'max-h-[19rem] overflow-y-auto' : ''}`}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-400">
-              <th className="sticky top-0 bg-white px-4 py-2">Rank</th>
-              <th className="sticky top-0 bg-white px-4 py-2">Candidate</th>
-              <th className="sticky top-0 cursor-pointer bg-white px-4 py-2" onClick={() => setSortDesc((v) => !v)}>
+            <tr className="border-b border-gray-200 text-center text-xs uppercase text-gray-400">
+              <th className="sticky top-0 bg-white px-4 py-2 text-center">Rank</th>
+              <th className="sticky top-0 bg-white px-4 py-2 text-center">Candidate</th>
+              <th className="sticky top-0 cursor-pointer bg-white px-4 py-2 text-center" onClick={() => setSortDesc((v) => !v)}>
                 Weighted Total {sortDesc ? '↓' : '↑'}
               </th>
-              <th className="sticky top-0 bg-white px-4 py-2">All Gates Passed?</th>
-              <th className="sticky top-0 bg-white px-4 py-2">Disposition</th>
-              <th className="sticky top-0 bg-white px-4 py-2">Final Decision</th>
+              <th className="sticky top-0 bg-white px-4 py-2 text-center">All Gates Passed?</th>
+              <th className="sticky top-0 bg-white px-4 py-2 text-center">Disposition</th>
+              <th className="sticky top-0 bg-white px-4 py-2 text-center">Final Decision</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">

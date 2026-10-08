@@ -670,14 +670,14 @@ export default function RequisitionDetail() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50/50">
-                      <TableHead className="w-16 font-semibold">Rank</TableHead>
-                      <TableHead className="min-w-[160px] font-semibold">Candidate</TableHead>
-                      <TableHead className="w-32 font-semibold">Availability</TableHead>
-                      <TableHead className="min-w-[260px] font-semibold">Hiring Stages</TableHead>
+                      <TableHead className="w-16 font-semibold text-center">Rank</TableHead>
+                      <TableHead className="min-w-[160px] font-semibold text-center">Candidate</TableHead>
+                      <TableHead className="w-32 font-semibold text-center">Availability</TableHead>
+                      <TableHead className="min-w-[260px] font-semibold text-center">Hiring Stages</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
-                      <TableHead className="min-w-[150px] font-semibold">Final Decision</TableHead>
-                      <TableHead className="w-24 text-right font-semibold">Actions</TableHead>
+                      <TableHead className="min-w-[150px] font-semibold text-center">Final Decision</TableHead>
+                      <TableHead className="w-24 text-center font-semibold">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
