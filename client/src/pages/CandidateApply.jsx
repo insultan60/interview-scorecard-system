@@ -6,6 +6,7 @@ import api from '@/hooks/useApi';
 import { sendApplicationConfirmationEmailClient } from '../services/emailService';
 import {
   Briefcase, Calendar, CheckCircle2, FileText, Upload, AlertCircle, Sparkles, ArrowRight, MapPin,
+  MessageCircle, Facebook, Instagram, Linkedin, Youtube, Globe,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import redstarIcon from '../assets/redstar-icon.png';
+import applicationSubmittedMedia from '../assets/application-submitted-media.png';
 
 const formatDeadline = (date) => {
   const d = new Date(date);
@@ -317,43 +319,50 @@ export default function CandidateApply() {
   return (
     <div className="min-h-screen bg-slate-50/60 font-sans text-slate-900">
       {/* Top Branding Header */}
-      <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
-        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={redstarIcon} alt="Red Star Technologies" className="h-9 w-9 object-contain" />
-            <span className="font-semibold text-lg tracking-tight">Red Star Technologies</span>
+      {step !== 'success' && (
+        <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-20 shadow-sm">
+          <div className="mx-auto max-w-5xl px-4 py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-xl bg-red-50 border border-red-100">
+                <img src={redstarIcon} alt="Red Star Technologies" className="h-7 w-7 object-contain" />
+              </div>
+              <div>
+                <span className="font-bold text-base tracking-tight text-slate-900 block leading-none">Red Star</span>
+                <span className="text-[10px] uppercase font-semibold text-[#d21e2b] tracking-wider">Technologies</span>
+              </div>
+            </div>
+            {requisition.applicationDeadline && (
+              <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3.5 text-xs font-medium rounded-full shadow-xs">
+                <Calendar className="h-3.5 w-3.5" />
+                {isExpired ? 'Deadline Passed' : `Deadline: ${formatDeadline(requisition.applicationDeadline)}`}
+              </Badge>
+            )}
           </div>
-          {requisition.applicationDeadline && (
-            <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3">
-              <Calendar className="h-3.5 w-3.5" />
-              {isExpired ? 'Deadline Passed' : `Deadline: ${formatDeadline(requisition.applicationDeadline)}`}
-            </Badge>
-          )}
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Container */}
       <main className="mx-auto max-w-3xl px-4 py-8">
         {step === 'jd' && (
-          <Card className="shadow-md border-slate-200">
-            <CardHeader className="border-b bg-white pb-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <Card className="shadow-xl shadow-slate-200/50 border-slate-200/80 rounded-2xl overflow-hidden bg-white transition-all">
+            <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-red-50/30 pb-6 pt-7 px-6 sm:px-8">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <Badge
                   className={
                     isExpired
-                      ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-100'
-                      : 'bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10'
+                      ? 'bg-red-100 text-red-700 border-red-200 rounded-full px-3 py-0.5 text-xs font-semibold'
+                      : 'bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 rounded-full px-3 py-0.5 text-xs font-semibold'
                   }
                 >
                   {isExpired ? 'Closed Position' : 'Open Position'}
                 </Badge>
               </div>
-              <CardTitle className="text-3xl font-bold text-slate-900 tracking-tight">
+              <CardTitle className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
                 {requisition.title}
               </CardTitle>
-              <CardDescription className="text-sm text-slate-500 flex flex-wrap items-center gap-2 mt-1">
-                <span className="flex items-center gap-1">
-                  <Briefcase className="h-4 w-4 text-slate-400" />
+              <CardDescription className="text-sm text-slate-600 flex flex-wrap items-center gap-2 mt-2 font-medium">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-slate-700">
+                  <Briefcase className="h-4 w-4 text-[#d21e2b]" />
                   {
                     {
                       full_time: 'Full-Time',
@@ -365,52 +374,52 @@ export default function CandidateApply() {
                   }
                 </span>
                 {requisition.location && (
-                  <>
-                    <span>·</span>
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4 text-slate-400" />
-                      {requisition.location}
-                    </span>
-                  </>
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-slate-700">
+                    <MapPin className="h-4 w-4 text-[#d21e2b]" />
+                    {requisition.location}
+                  </span>
                 )}
-                <span>·</span>
-                <span>Red Star Technologies</span>
+                <span className="text-slate-400">·</span>
+                <span className="text-slate-700 font-semibold">Red Star Technologies</span>
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="pt-6 space-y-6">
+            <CardContent className="p-6 sm:p-8 space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-[#d21e2b]" /> Job Description & Overview
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-3 flex items-center gap-2 border-l-4 border-[#d21e2b] pl-3 py-0.5">
+                  Job Description & Requirements
                 </h3>
-                <div className="min-w-0 overflow-hidden text-slate-700 leading-relaxed text-sm bg-slate-50/70 p-4 rounded-lg border border-slate-100">
+                <div className="min-w-0 overflow-hidden text-slate-700 leading-relaxed text-sm bg-slate-50/80 p-5 rounded-xl border border-slate-200/70 shadow-xs">
                   <RichTextViewer content={requisition.jobDescription} />
                 </div>
               </div>
 
               {employmentDetails && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-                  <h3 className="text-base font-semibold text-slate-900 mb-2">{employmentDetails.title}</h3>
-                  <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-5 shadow-xs">
+                  <h3 className="text-base font-bold text-slate-900 mb-3">{employmentDetails.title}</h3>
+                  <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
                     {employmentDetails.items.map(([label, value]) => (
-                      <p key={label}><span className="font-medium">{label}:</span> {value}</p>
+                      <div key={label} className="bg-white p-3 rounded-lg border border-slate-200/60 shadow-2xs">
+                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">{label}</span>
+                        <span className="font-semibold text-slate-900 mt-0.5 block">{value}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
               {isExpired ? (
-                <div className="rounded-lg bg-red-50 p-4 border border-red-200 text-red-800 text-sm flex items-center gap-2">
+                <div className="rounded-xl bg-red-50 p-4 border border-red-200 text-red-800 text-sm flex items-center gap-2.5 font-medium">
                   <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
                   Applications for this role closed on {formatDeadline(requisition.applicationDeadline)}.
                 </div>
               ) : (
-                <div className="pt-4 flex justify-end">
+                <div className="pt-2 flex justify-end">
                   <Button
                     onClick={() => { setFormPart(1); setStep('form'); }}
-                    className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6 py-2.5 text-base font-medium shadow-sm gap-2"
+                    className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-7 py-3 text-base font-semibold shadow-lg shadow-red-500/20 rounded-xl gap-2.5 transition-all transform hover:-translate-y-0.5"
                   >
-                    Apply for this Position <ArrowRight className="h-4 w-4" />
+                    Apply for this Position <ArrowRight className="h-5 w-5" />
                   </Button>
                 </div>
               )}
@@ -419,128 +428,141 @@ export default function CandidateApply() {
         )}
 
         {step === 'form' && (
-          <Card className="shadow-md border-slate-200">
-            <CardHeader className="border-b bg-white">
+          <Card className="shadow-xl shadow-slate-200/50 border-slate-200/80 rounded-2xl overflow-hidden bg-white">
+            <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-red-50/30 py-5 px-6 sm:px-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-2xl font-bold text-slate-900">
+                  <CardTitle className="text-2xl font-bold text-slate-900 tracking-tight">
                     Application Form
                   </CardTitle>
-                  <CardDescription className="text-sm">
-                    Step {formPart} of 2 · Position: <span className="font-medium text-slate-800">{requisition.title}</span>
+                  <CardDescription className="text-xs sm:text-sm text-slate-600 mt-1">
+                    Step {formPart} of 2 · Position: <span className="font-semibold text-slate-900">{requisition.title}</span>
                   </CardDescription>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => { setFormPart(1); setStep('jd'); }} className="text-slate-500">
+                <Button variant="ghost" size="sm" onClick={() => { setFormPart(1); setStep('jd'); }} className="text-slate-500 hover:text-slate-900 rounded-lg">
                   Back to JD
                 </Button>
               </div>
+
+              {/* Progress Stepper Bar */}
+              <div className="grid grid-cols-2 gap-2 pt-4">
+                <div className={`h-1.5 rounded-full transition-all ${formPart >= 1 ? 'bg-[#d21e2b]' : 'bg-slate-200'}`} />
+                <div className={`h-1.5 rounded-full transition-all ${formPart >= 2 ? 'bg-[#d21e2b]' : 'bg-slate-200'}`} />
+              </div>
             </CardHeader>
 
-            <CardContent className="pt-6">
+            <CardContent className="p-6 sm:p-8">
               <form onSubmit={formPart === 1 ? handlePersonalContinue : handleSubmit} className="space-y-6">
-                {/* Contact Information */}
-                {formPart === 1 && <div className="space-y-4">
-                  <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
-                    Personal Information
-                  </h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                {/* Personal Info Step */}
+                {formPart === 1 && (
+                  <div className="space-y-5">
+                    <h3 className="text-base font-bold text-slate-900 border-l-4 border-[#d21e2b] pl-3 py-0.5">
+                      Personal & Availability Details
+                    </h3>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="candidate-name" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                          Full Name <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="candidate-name"
+                          type="text"
+                          placeholder="e.g. John Doe"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="h-10 rounded-lg focus:ring-2 focus:ring-[#d21e2b]/30"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="candidate-email" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                          Email Address <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="candidate-email"
+                          type="email"
+                          placeholder="john.doe@example.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="h-10 rounded-lg focus:ring-2 focus:ring-[#d21e2b]/30"
+                          required
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-1.5">
-                      <Label htmlFor="candidate-name" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-                        Full Name <span className="text-red-500">*</span>
+                      <Label htmlFor="candidate-phone" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                        Phone Number (11 Digits) <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="candidate-name"
-                        type="text"
-                        placeholder="e.g. John Doe"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        id="candidate-phone"
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]{11}"
+                        maxLength={11}
+                        placeholder="03001234567"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                        className="h-10 rounded-lg focus:ring-2 focus:ring-[#d21e2b]/30"
                         required
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="candidate-email" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-                        Email Address <span className="text-red-500">*</span>
+                    <div className="space-y-1.5 pt-1">
+                      <Label htmlFor="opportunity-duration" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                        Opportunity Availability Duration <span className="text-red-500">*</span>
                       </Label>
-                      <Input
-                        id="candidate-email"
-                        type="email"
-                        placeholder="john.doe@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                      />
+                      <p className="text-xs text-slate-500">
+                        How long will you remain open to this job opportunity?
+                      </p>
+                      <select
+                        id="opportunity-duration"
+                        value={opportunityOption}
+                        onChange={(e) => setOpportunityOption(e.target.value)}
+                        className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/30"
+                      >
+                        <option value="7_days">7 days</option>
+                        <option value="15_days">15 days</option>
+                        <option value="30_days">30 days</option>
+                        <option value="2_months">2 months</option>
+                        <option value="custom">Custom duration...</option>
+                      </select>
+                      {opportunityOption === 'custom' && (
+                        <Input
+                          type="text"
+                          placeholder="e.g. 45 days or 3 months"
+                          value={opportunityCustom}
+                          onChange={(e) => setOpportunityCustom(e.target.value)}
+                          className="mt-2 text-sm h-10 rounded-lg"
+                          required
+                        />
+                      )}
                     </div>
                   </div>
+                )}
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="candidate-phone" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-                      Phone Number <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="candidate-phone"
-                      type="tel"
-                      inputMode="numeric"
-                      pattern="[0-9]{11}"
-                      maxLength={11}
-                      placeholder="03001234567"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5 pt-1">
-                    <Label htmlFor="opportunity-duration" className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-                      Opportunity Availability <span className="text-red-500">*</span>
-                    </Label>
-                    <p className="text-xs text-slate-500">
-                      How long will you remain open to this job opportunity?
-                    </p>
-                    <select
-                      id="opportunity-duration"
-                      value={opportunityOption}
-                      onChange={(e) => setOpportunityOption(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      <option value="7_days">7 days</option>
-                      <option value="15_days">15 days</option>
-                      <option value="30_days">30 days</option>
-                      <option value="2_months">2 months</option>
-                      <option value="custom">Custom duration...</option>
-                    </select>
-                    {opportunityOption === 'custom' && (
-                      <Input
-                        type="text"
-                        placeholder="e.g. 45 days or 3 months"
-                        value={opportunityCustom}
-                        onChange={(e) => setOpportunityCustom(e.target.value)}
-                        className="mt-2 text-sm"
-                        required
-                      />
-                    )}
-                  </div>
-                </div>}
-
-                {/* Questionnaire Questions */}
+                {/* Questionnaire Questions Step */}
                 {formPart === 2 && requisition.questionnaire && requisition.questionnaire.length > 0 && (
-                  <div className="space-y-4 pt-2">
-                    <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
-                      Application Questionnaire
+                  <div className="space-y-5">
+                    <h3 className="text-base font-bold text-slate-900 border-l-4 border-[#d21e2b] pl-3 py-0.5">
+                      Application Screening Questionnaire
                     </h3>
                     {requisition.questionnaire.map((q, idx) => {
                       const qText = typeof q === 'string' ? q : q.question;
                       return (
-                        <div key={idx} className="space-y-1.5">
-                          <Label htmlFor={`question-${idx}`} className="text-sm font-medium text-slate-800">
+                        <div key={idx} className="space-y-1.5 bg-slate-50/70 p-4 rounded-xl border border-slate-200/70">
+                          <Label htmlFor={`question-${idx}`} className="text-sm font-semibold text-slate-900 block">
                             {idx + 1}. {qText} <span className="text-red-500">*</span>
                           </Label>
                           <Textarea
                             id={`question-${idx}`}
-                            placeholder="Your answer..."
+                            placeholder="Type your answer here..."
                             rows={3}
                             value={answers[qText] || ''}
                             onChange={(e) => handleAnswerChange(qText, e.target.value)}
+                            className="rounded-lg bg-white focus:ring-2 focus:ring-[#d21e2b]/30"
                             required
                           />
                         </div>
@@ -549,50 +571,53 @@ export default function CandidateApply() {
                   </div>
                 )}
 
-                {formPart === 1 && <div className="space-y-2 pt-2">
-                  <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
-                    Resume / CV Attachment <span className="text-red-500">*</span>
-                  </h3>
-                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-6 text-center hover:border-[#d21e2b]/50 transition-colors bg-slate-50/50">
-                    <Upload className="mx-auto h-8 w-8 text-slate-400 mb-2" />
-                    <Label htmlFor="resume-file" className="cursor-pointer text-sm font-medium text-[#d21e2b] hover:underline">
-                      Upload CV / Resume (PDF, max 5 MB)
-                    </Label>
-                    <p className="text-xs text-slate-500 mt-1">PDF only, up to 5 MB</p>
-                    <input
-                      id="resume-file"
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      onChange={(e) => setResumeFile(e.target.files[0] || null)}
-                      className="hidden"
-                    />
-                    {resumeFile && (
-                      <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-slate-800 border shadow-sm">
-                        <FileText className="h-4 w-4 text-[#d21e2b]" />
-                        {resumeFile.name} ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB)
-                      </div>
-                    )}
+                {/* Resume Upload Drop Zone */}
+                {formPart === 1 && (
+                  <div className="space-y-2 pt-2">
+                    <h3 className="text-base font-bold text-slate-900 border-l-4 border-[#d21e2b] pl-3 py-0.5">
+                      Resume / CV Document <span className="text-red-500">*</span>
+                    </h3>
+                    <div className="rounded-xl border-2 border-dashed border-slate-300 p-6 text-center hover:border-[#d21e2b] hover:bg-red-50/20 transition-all bg-slate-50/50">
+                      <Upload className="mx-auto h-9 w-9 text-slate-400 mb-2" />
+                      <Label htmlFor="resume-file" className="cursor-pointer text-sm font-bold text-[#d21e2b] hover:underline block">
+                        Click to Upload CV / Resume (PDF, max 5 MB)
+                      </Label>
+                      <p className="text-xs text-slate-500 mt-1">PDF document format only</p>
+                      <input
+                        id="resume-file"
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        onChange={(e) => setResumeFile(e.target.files[0] || null)}
+                        className="hidden"
+                      />
+                      {resumeFile && (
+                        <div className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-800 border border-green-200 shadow-sm text-green-800">
+                          <FileText className="h-4 w-4 text-green-600" />
+                          {resumeFile.name} ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB) ✓
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>}
+                )}
 
                 {formPart === 2 && captcha.enabled && (
-                  <div>
+                  <div className="pt-2">
                     <TurnstileCaptcha key={captchaResetKey} siteKey={captcha.siteKey} onToken={setCaptchaToken} />
                   </div>
                 )}
 
-                <div className="pt-4 flex justify-end gap-3">
+                <div className="pt-4 flex items-center justify-between gap-3 border-t">
                   {formPart === 1 ? (
-                    <Button type="button" variant="outline" onClick={() => { setFormPart(1); setStep('jd'); }}>Cancel</Button>
+                    <Button type="button" variant="outline" onClick={() => { setFormPart(1); setStep('jd'); }} className="rounded-xl px-5">Cancel</Button>
                   ) : (
-                    <Button type="button" variant="outline" onClick={() => setFormPart(1)}>Back</Button>
+                    <Button type="button" variant="outline" onClick={() => setFormPart(1)} className="rounded-xl px-5">Back</Button>
                   )}
                   <Button
                     type="submit"
                     disabled={submitting}
-                    className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6"
+                    className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white font-semibold px-7 py-2.5 rounded-xl shadow-lg shadow-red-500/20"
                   >
-                    {formPart === 1 ? 'Continue' : (submitting ? 'Submitting Application...' : 'Submit Application')}
+                    {formPart === 1 ? 'Continue to Questions' : (submitting ? 'Submitting Application...' : 'Submit Application')}
                   </Button>
                 </div>
               </form>
@@ -600,21 +625,113 @@ export default function CandidateApply() {
           </Card>
         )}
 
+        {/* Success Visual View */}
         {step === 'success' && (
-          <Card className="shadow-md border-green-200 bg-white text-center py-8 px-4">
-            <CardContent className="space-y-4">
-              <CheckCircle2 className="h-16 w-16 text-green-600 mx-auto" />
-              <h2 className="text-2xl font-bold text-slate-900">Application Submitted!</h2>
-              <p className="text-slate-600 max-w-md mx-auto text-sm leading-relaxed">
-                {result?.message || 'Thank you for applying. Your application has been received.'}
-              </p>
-              <div className="pt-4">
-                <Button variant="outline" onClick={() => { resetForm(); setStep('jd'); }}>
-                  Back to Job Details
-                </Button>
+          <div className="min-h-[85vh] py-8 px-4 flex flex-col items-center justify-center font-sans animate-in fade-in duration-300">
+            <Card className="max-w-5xl lg:max-w-6xl w-full mx-auto shadow-2xl border border-slate-200/90 rounded-3xl overflow-hidden bg-white p-0">
+              <div className="grid grid-cols-1 md:grid-cols-12 items-center">
+                {/* Left Side: Graphic Poster Image (5 cols) */}
+                <div className="md:col-span-5 bg-slate-50 border-b md:border-b-0 md:border-r border-slate-100 p-0 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={applicationSubmittedMedia}
+                    alt="Thank You - Application Submitted Successfully"
+                    className="w-[292px] max-w-full h-[351px] object-cover rounded-none block"
+                  />
+                </div>
+
+                {/* Right Side: Message, Actions & Social Links (7 cols - Wider) */}
+                <div className="md:col-span-7 p-6 sm:p-9 flex flex-col justify-between space-y-6">
+                  <div className="space-y-3">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200/60">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Application Submitted!</span>
+                    </div>
+
+                    <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
+                      Thank You for Applying!
+                    </h2>
+
+                    <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
+                      Please join our community for future updates, interview schedules, job opportunities, and official announcements.
+                    </p>
+                  </div>
+
+                  {/* Action Buttons (Standard Website Size & Font) */}
+                  <div className="flex flex-col sm:flex-row gap-2.5 w-full">
+                    <a
+                      href="https://chat.whatsapp.com/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-semibold py-2 px-3.5 rounded-lg shadow-sm transition-colors text-xs text-center"
+                    >
+                      <MessageCircle className="h-4 w-4 fill-white text-white flex-shrink-0" />
+                      <span>Join WhatsApp</span>
+                    </a>
+
+                    <Button
+                      onClick={() => { resetForm(); setStep('jd'); }}
+                      className="flex-1 bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white font-semibold py-2 px-3.5 rounded-lg shadow-sm transition-colors text-xs gap-1.5 h-9 text-center"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5 rotate-180 flex-shrink-0" />
+                      <span>Back to Job Details</span>
+                    </Button>
+                  </div>
+
+                  {/* Social Icons Footer */}
+                  <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-slate-500">Connect with us:</span>
+                    <div className="flex items-center gap-2.5">
+                      <a
+                        href="https://www.facebook.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Facebook"
+                        className="p-2.5 rounded-full bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#1877F2] transition-all"
+                      >
+                        <Facebook className="h-4 w-4" />
+                      </a>
+                      <a
+                        href="https://www.instagram.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Instagram"
+                        className="p-2.5 rounded-full bg-slate-100 hover:bg-pink-50 text-slate-600 hover:text-[#E4405F] transition-all"
+                      >
+                        <Instagram className="h-4 w-4" />
+                      </a>
+                      <a
+                        href="https://www.linkedin.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="LinkedIn"
+                        className="p-2.5 rounded-full bg-slate-100 hover:bg-sky-50 text-slate-600 hover:text-[#0A66C2] transition-all"
+                      >
+                        <Linkedin className="h-4 w-4" />
+                      </a>
+                      <a
+                        href="https://www.youtube.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="YouTube"
+                        className="p-2.5 rounded-full bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-[#FF0000] transition-all"
+                      >
+                        <Youtube className="h-4 w-4" />
+                      </a>
+                      <a
+                        href="https://www.redstartechs.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Website"
+                        className="p-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-[#d21e2b] transition-all"
+                      >
+                        <Globe className="h-4 w-4" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
+            </Card>
+          </div>
         )}
       </main>
     </div>
