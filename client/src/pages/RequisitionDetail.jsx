@@ -26,6 +26,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { formatDisposition, formatScore } from '../utils/formatters';
 import { isBrowserEmailJSConfigured, sendOfferEmailClient } from '../services/emailService';
+import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -75,6 +76,7 @@ export default function RequisitionDetail() {
   const [offerFor, setOfferFor] = useState(null);
   const [offerFile, setOfferFile] = useState(null);
   const [sendingOffer, setSendingOffer] = useState(false);
+  const [onboardingCandidate, setOnboardingCandidate] = useState(null);
   const latestLoadRef = useRef(0);
 
   async function handleSendOfferLetter(event) {
@@ -835,23 +837,9 @@ export default function RequisitionDetail() {
 
                           <TableCell className="text-right align-middle">
                             <div className="flex items-center justify-end gap-1.5">
-                              <span
-                                className="inline-flex"
-                                title="ClickUp onboarding form delivery is not configured yet. Add the ClickUp form URL when this feature is ready."
-                              >
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  aria-label="Send ClickUp onboarding form"
-                                  className="h-8 w-8 border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                                  disabled
-                                >
-                                  <ClipboardList className="h-4 w-4" />
-                                </Button>
-                              </span>
                               {finalDecision === 'hired' && (
-                                <div className="relative inline-flex">
+                                <>
+                                  <div className="relative inline-flex">
                                   {app.offerLetterDeliveryStatus === 'sent' && (
                                     <Badge
                                       variant="secondary"
@@ -880,6 +868,38 @@ export default function RequisitionDetail() {
                                     </Button>
                                   </span>
                                 </div>
+                                <div className="relative inline-flex">
+                                  {app.onboardingFormDeliveryStatus === 'sent' && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="absolute top-0 left-1/2 z-10 h-4 -translate-x-1/2 -translate-y-1/3 whitespace-nowrap bg-sky-100 px-1.5 text-[9px] font-medium leading-none text-sky-800 hover:bg-sky-100"
+                                      title={`Onboarding form emailed${app.onboardingFormSentAt ? ` on ${new Date(app.onboardingFormSentAt).toLocaleString()}` : ''}.`}
+                                    >
+                                      Sent
+                                    </Badge>
+                                  )}
+                                  <span
+                                    className="inline-flex"
+                                    title={`Send ClickUp Onboarding Form to ${app.candidateId?.name || 'this candidate'}.`}
+                                  >
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label="Send ClickUp onboarding form"
+                                      className="h-8 w-8 border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                                      onClick={() => setOnboardingCandidate({
+                                        applicationId: app._id,
+                                        name: app.candidateId?.name || app.candidateName || 'Candidate',
+                                        email: app.candidateId?.email || app.candidateEmail || '',
+                                        requisitionTitle: data?.requisition?.title || 'Job opening',
+                                      })}
+                                    >
+                                      <ClipboardList className="h-4 w-4" />
+                                    </Button>
+                                  </span>
+                                </div>
+                              </>
                               )}
                               <Button
                                 type="button"
@@ -1062,6 +1082,12 @@ export default function RequisitionDetail() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <SendOnboardingFormModal
+            open={!!onboardingCandidate}
+            onOpenChange={(open) => !open && setOnboardingCandidate(null)}
+            candidate={onboardingCandidate}
+            onSuccess={load}
+          />
         </div>
         );
 }

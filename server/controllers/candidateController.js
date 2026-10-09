@@ -11,6 +11,7 @@ const { assertRequisitionOpen } = require('../utils/requisitionStatus');
 const { uploadBuffer, destroyFile } = require('../config/cloudinary');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
+const { sendOnboardingFormEmail } = require('../services/emailNotifier');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -378,4 +379,52 @@ const remove = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, bulkCreate, getOne, update, apply, removeFromRequisition, remove };
+/** POST /api/candidates/send-onboarding-form */
+const sendOnboardingForm = asyncHandler(async (req, res) => {
+  const { candidateEmail, candidateName, onboardingUrl, applicationId } = req.body;
+  if (!candidateEmail) {
+    throw new ValidationError(['candidateEmail'], 'Candidate email is required.');
+  }
+
+  const result = await sendOnboardingFormEmail({
+    candidateEmail,
+    candidateName,
+    onboardingUrl,
+  });
+
+  if (applicationId && mongoose.isValidObjectId(applicationId)) {
+    const application = await Application.findById(applicationId);
+    if (application) {
+      application.onboardingFormDeliveryStatus = result.sent ? 'sent' : 'pending';
+      application.onboardingFormSentAt = result.sent ? new Date() : null;
+      await application.save();
+    }
+  }
+
+  res.json({
+    sent: result.sent,
+    emailReason: result.reason || null,
+  });
+});
+
+/** PATCH /api/candidates/onboarding-form-delivery */
+const recordOnboardingFormDelivery = asyncHandler(async (req, res) => {
+  const { applicationId, deliveryStatus } = req.body;
+  if (!applicationId || !mongoose.isValidObjectId(applicationId)) {
+    throw new ValidationError(['applicationId'], 'Valid applicationId is required.');
+  }
+  const application = await Application.findById(applicationId);
+  if (!application) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  }
+
+  application.onboardingFormDeliveryStatus = deliveryStatus === 'sent' ? 'sent' : 'pending';
+  application.onboardingFormSentAt = deliveryStatus === 'sent' ? new Date() : null;
+  await application.save();
+
+  res.json({ application });
+});
+
+module.exports = { list, create, bulkCreate, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm, recordOnboardingFormDelivery };
+
+

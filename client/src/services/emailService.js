@@ -284,3 +284,58 @@ export async function sendAvailabilityEmailClient({ candidateEmail, candidateNam
     return { sent: false, reason: err?.text || err?.message || 'Failed to send availability email via browser EmailJS.' };
   }
 }
+
+/**
+ * Sends a ClickUp onboarding form email directly from the browser via EmailJS HTTPS API as a fallback.
+ * @param {{candidateEmail: string, candidateName?: string, onboardingUrl?: string}} params
+ * @returns {Promise<{sent: boolean, reason?: string}>}
+ */
+export async function sendOnboardingFormEmailClient({ candidateEmail, candidateName, onboardingUrl }) {
+  if (!isBrowserEmailJSConfigured()) {
+    return { sent: false, reason: 'Client EmailJS environment variables are not configured.' };
+  }
+
+  if (!candidateEmail) {
+    return { sent: false, reason: 'No candidate email address found on file.' };
+  }
+
+  const url = onboardingUrl || 'https://forms.clickup.com/9018918616/f/8ct3hpr-11198/JXG8EGK3RD18TR60TO';
+  const subject = 'ON BOARDING FORM — Red Star Technologies';
+  const message = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    'ON BOARDING FORM',
+    'Welcome to Red Star Technologies! We are thrilled to have you join our team. This onboarding document outlines the key information, policies, and tools you need to integrate smoothly into our work environment. We are committed to supporting your success.',
+    '',
+    'Please complete your onboarding form using the link below:',
+    url,
+    '',
+    'Best regards,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  try {
+    await emailjs.send(
+      SERVICE_ID,
+      TEMPLATE_ID,
+      {
+        to_email: candidateEmail,
+        email_to: candidateEmail,
+        recipient: candidateEmail,
+        to_name: candidateName || 'Candidate',
+        candidate_name: candidateName || 'Candidate',
+        onboarding_url: url,
+        link: url,
+        subject,
+        message,
+        body: message,
+      },
+      PUBLIC_KEY
+    );
+    console.log(`[EmailJS Browser] Successfully sent onboarding form email to ${candidateEmail} via EmailJS Browser API.`);
+    return { sent: true };
+  } catch (err) {
+    console.warn('[EmailJS Browser] Failed to send onboarding form email from client:', err);
+    return { sent: false, reason: err?.text || err?.message || 'Failed to send email via browser EmailJS.' };
+  }
+}

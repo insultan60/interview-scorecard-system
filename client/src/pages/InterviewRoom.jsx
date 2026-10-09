@@ -103,29 +103,29 @@ export default function InterviewRoom() {
   const rawStageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
   const stageAttributes = (rawStageAttributes.length > 0 && (rawStageAttributes[0]?.question || rawStageAttributes[0]?.name))
     ? rawStageAttributes.map((attr) => ({
-        ...attr,
-        name: attr.name && !attr.name.startsWith('resume_screen') ? attr.name : 'Overall Resume & Qualification Evaluation',
-      }))
+      ...attr,
+      name: attr.name && !attr.name.startsWith('resume_screen') ? attr.name : 'Overall Resume & Qualification Evaluation',
+    }))
     : (interview?.stageKey === 'hr_screen' || interview?.stageKey === 'hr_interview') && requisition?.questionnaire?.length > 0
       ? requisition.questionnaire.map((qItem, idx) => {
-          const qText = typeof qItem === 'string' ? qItem : qItem.question;
-          const ideal = typeof qItem === 'object' ? qItem.idealAnswer : '';
-          return {
-            attributeId: `${interview.stageKey}_question_${idx + 1}`,
-            name: `Question ${idx + 1}`,
-            question: qText,
-            anchor5: ideal ? `Ideal answer benchmark: ${ideal}` : 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.',
-            redFlags: ideal ? `Does not address or match the required ideal answer benchmark: "${ideal}".` : 'Does not answer the question, or provides an unclear or irrelevant response.',
-          };
-        })
+        const qText = typeof qItem === 'string' ? qItem : qItem.question;
+        const ideal = typeof qItem === 'object' ? qItem.idealAnswer : '';
+        return {
+          attributeId: `${interview.stageKey}_question_${idx + 1}`,
+          name: `Question ${idx + 1}`,
+          question: qText,
+          anchor5: ideal ? `Ideal answer benchmark: ${ideal}` : 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.',
+          redFlags: ideal ? `Does not address or match the required ideal answer benchmark: "${ideal}".` : 'Does not answer the question, or provides an unclear or irrelevant response.',
+        };
+      })
       : interview?.stageKey === 'resume_screen'
         ? [{
-            attributeId: 'resume_screen_1',
-            name: 'Overall Resume & Qualification Evaluation',
-            question: 'Assessing whether the candidate\'s CV meets the Job Description and Initial Screening Criteria.',
-            anchor5: 'CV demonstrates strong alignment with all key experience, skills, and qualifications required for the role.',
-            redFlags: 'CV lacks required core experience, qualifications, or key skills specified in the job posting.',
-          }]
+          attributeId: 'resume_screen_1',
+          name: 'Overall Resume & Qualification Evaluation',
+          question: 'Assessing whether the candidate\'s CV meets the Job Description and Initial Screening Criteria.',
+          anchor5: 'CV demonstrates strong alignment with all key experience, skills, and qualifications required for the role.',
+          redFlags: 'CV lacks required core experience, qualifications, or key skills specified in the job posting.',
+        }]
         : rawStageAttributes;
 
   const enabledStages = requisition?.stages?.filter((s) => s.enabled) || [];
@@ -753,49 +753,49 @@ export default function InterviewRoom() {
       {/* Requisition criteria shown only for the résumé screen. */}
       {(interview?.stageKey === 'resume_screen' || stageConfig?.stageType === 'resume_screen') &&
         (requisition?.jobDescription || requisition?.initialScreeningCriteria) && (
-        <Card className="mt-4 overflow-hidden border-slate-200 bg-white shadow-sm">
-          <CardHeader
-            onClick={() => setScreeningInfoOpen((open) => !open)}
-            className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
-          >
-            <CardTitle>Job Description & Initial Screening Criteria</CardTitle>
-            <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${screeningInfoOpen ? 'rotate-180' : ''}`} />
-          </CardHeader>
-          {screeningInfoOpen && <CardContent className="space-y-4 border-t pt-4 text-sm">
-            {requisition.jobDescription && (
-              <div>
-                <span className="font-semibold text-foreground">Job Description:</span>
-                <div className="mt-1 text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
-                  <RichTextViewer content={requisition.jobDescription} />
-                </div>
-              </div>
-            )}
-            {requisition.initialScreeningCriteria && (
-              <div>
-                <span className="font-semibold text-foreground">Initial Screening Criteria & Requirements:</span>
-                {Array.isArray(requisition.initialScreeningCriteria) ? (
-                  <div className="mt-1 space-y-1.5 rounded border bg-card p-2.5">
-                    {requisition.initialScreeningCriteria.map((item, idx) => {
-                      const cName = typeof item === 'string' ? item : item.criteria;
-                      const reqDetail = typeof item === 'object' ? item.requirement : '';
-                      return (
-                        <div key={idx} className="text-muted-foreground leading-relaxed">
-                          <span className="font-medium text-foreground">• {cName}</span>
-                          {reqDetail ? `: ${reqDetail}` : ''}
-                        </div>
-                      );
-                    })}
+          <Card className="mt-4 overflow-hidden border-slate-200 bg-white shadow-sm">
+            <CardHeader
+              onClick={() => setScreeningInfoOpen((open) => !open)}
+              className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
+            >
+              <CardTitle>Job Description & Initial Screening Criteria</CardTitle>
+              <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${screeningInfoOpen ? 'rotate-180' : ''}`} />
+            </CardHeader>
+            {screeningInfoOpen && <CardContent className="space-y-4 border-t pt-4 text-sm">
+              {requisition.jobDescription && (
+                <div>
+                  <span className="font-semibold text-foreground">Job Description:</span>
+                  <div className="mt-1 text-muted-foreground leading-relaxed rounded border bg-card p-2.5">
+                    <RichTextViewer content={requisition.jobDescription} />
                   </div>
-                ) : (
-                  <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
-                    {requisition.initialScreeningCriteria}
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>}
-        </Card>
-      )}
+                </div>
+              )}
+              {requisition.initialScreeningCriteria && (
+                <div>
+                  <span className="font-semibold text-foreground">Initial Screening Criteria & Requirements:</span>
+                  {Array.isArray(requisition.initialScreeningCriteria) ? (
+                    <div className="mt-1 space-y-1.5 rounded border bg-card p-2.5">
+                      {requisition.initialScreeningCriteria.map((item, idx) => {
+                        const cName = typeof item === 'string' ? item : item.criteria;
+                        const reqDetail = typeof item === 'object' ? item.requirement : '';
+                        return (
+                          <div key={idx} className="text-muted-foreground leading-relaxed">
+                            <span className="font-medium text-foreground">• {cName}</span>
+                            {reqDetail ? `: ${reqDetail}` : ''}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground leading-relaxed whitespace-pre-wrap rounded border bg-card p-2.5">
+                      {requisition.initialScreeningCriteria}
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>}
+          </Card>
+        )}
 
       {stageAttributes.length > 0 && (
         <Card className="mt-4">

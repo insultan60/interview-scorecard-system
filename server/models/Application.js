@@ -42,6 +42,9 @@ const applicationSchema = new mongoose.Schema({
   offerLetterUploadedAt: Date,
   offerLetterDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
   offerLetterSentAt: Date,
+
+  onboardingFormDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
+  onboardingFormSentAt: Date,
 }, { timestamps: true });
 
 applicationSchema.index({ requisitionId: 1, weightedTotal: -1 });

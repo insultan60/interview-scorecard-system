@@ -670,10 +670,10 @@ export default function Candidates() {
       </Card>
 
       {/* ---------- pagination ---------- */}
-       {!loading && pagination.total > PAGE_SIZE && (
+      {!loading && pagination.total > PAGE_SIZE && (
         <div className="mt-3 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-             Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+            Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => loadCandidates(pagination.page - 1)} disabled={fetchingCandidates || pagination.page <= 1}>

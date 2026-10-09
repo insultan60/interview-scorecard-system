@@ -165,4 +165,24 @@ async function sendAvailabilityRequestEmail({ candidateEmail, candidateName, req
   return sendEmail({ to: candidateEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail, sendAvailabilityRequestEmail };
+/** Emails a candidate their ClickUp Onboarding Form link. */
+async function sendOnboardingFormEmail({ candidateEmail, candidateName, onboardingUrl }) {
+  const url = onboardingUrl || 'https://forms.clickup.com/9018918616/f/8ct3hpr-11198/JXG8EGK3RD18TR60TO';
+  const subject = 'ON BOARDING FORM — Red Star Technologies';
+  const text = [
+    `Hi ${candidateName || 'there'},`,
+    '',
+    'ON BOARDING FORM',
+    'Welcome to Red Star Technologies! We are thrilled to have you join our team. This onboarding document outlines the key information, policies, and tools you need to integrate smoothly into our work environment. We are committed to supporting your success.',
+    '',
+    'Please complete your onboarding form using the link below:',
+    url,
+    '',
+    'Best regards,',
+    'Red Star Technologies Hiring Team',
+  ].join('\n');
+
+  return sendEmail({ to: candidateEmail, subject, text });
+}
+
+module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail, sendAvailabilityRequestEmail, sendOnboardingFormEmail };
