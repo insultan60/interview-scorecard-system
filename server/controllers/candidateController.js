@@ -425,6 +425,64 @@ const recordOnboardingFormDelivery = asyncHandler(async (req, res) => {
   res.json({ application });
 });
 
-module.exports = { list, create, bulkCreate, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm, recordOnboardingFormDelivery };
+/**
+ * POST /api/candidates/bulk-attach
+ * Attaches multiple candidates to a single requisition.
+ * Skips candidates who are already attached to that requisition without throwing error.
+ */
+const bulkAttach = asyncHandler(async (req, res) => {
+  const { candidateIds, requisitionId } = req.body;
+  if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+    throw new ValidationError(['candidateIds'], 'Select at least one candidate.');
+  }
+  if (!requisitionId) {
+    throw new ValidationError(['requisitionId'], 'Requisition ID is required.');
+  }
+
+  const requisition = await Requisition.findById(requisitionId);
+  if (!requisition) throw new ValidationError(['requisitionId'], 'Job opening not found.');
+
+  const candidates = await Candidate.find({ _id: { $in: candidateIds } }).select('_id name').lean();
+  if (candidates.length === 0) throw new ValidationError(['candidateIds'], 'No valid candidates found.');
+
+  const existingApps = await Application.find({
+    candidateId: { $in: candidates.map((c) => c._id) },
+    requisitionId,
+  }).select('candidateId').lean();
+
+  const existingCandidateIds = new Set(existingApps.map((a) => String(a.candidateId)));
+
+  const enabledStages = (requisition.stages || []).filter((s) => s.enabled).sort((a, b) => a.order - b.order);
+  const firstStageKey = enabledStages[0]?.key || null;
+
+  const toCreate = [];
+  let skippedCount = 0;
+
+  candidates.forEach((c) => {
+    if (existingCandidateIds.has(String(c._id))) {
+      skippedCount += 1;
+    } else {
+      toCreate.push({
+        candidateId: c._id,
+        requisitionId,
+        currentStageKey: firstStageKey,
+        source: 'manual',
+        stageProgress: enabledStages.map((s) => ({ stageKey: s.key, status: 'pending' })),
+      });
+    }
+  });
+
+  const created = toCreate.length > 0 ? await Application.insertMany(toCreate) : [];
+
+  logger.info(`[Candidate] Bulk attach to ${requisitionId}: attached=${created.length}, skipped=${skippedCount}.`);
+  res.status(200).json({
+    attachedCount: created.length,
+    skippedCount,
+    requisitionTitle: requisition.title,
+    message: `Attached ${created.length} candidate${created.length === 1 ? '' : 's'} to "${requisition.title}"${skippedCount > 0 ? ` (${skippedCount} already attached and skipped)` : ''}.`,
+  });
+});
+
+module.exports = { list, create, bulkCreate, bulkAttach, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm, recordOnboardingFormDelivery };
 
 

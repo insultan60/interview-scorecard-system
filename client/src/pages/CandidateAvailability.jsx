@@ -14,6 +14,23 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { TimePicker } from '@/components/ui/time-picker';
 import redstarIcon from '../assets/redstar-icon.png';
 
+function formatStageLabel(label) {
+  if (!label) return '';
+  const KNOWN_STAGES = {
+    initial_screening: 'Initial Screening',
+    hr_screen: 'HR Screening',
+    hr_interview: 'HR Interview',
+    sales_simulation: 'Sales Simulation',
+    technical_ops: 'Technical / Ops Interview',
+    final_ceo: 'Final / CEO Interview',
+    resume_screen: 'Resume Screening',
+  };
+  if (KNOWN_STAGES[label]) return KNOWN_STAGES[label];
+  return String(label)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function CandidateAvailability() {
   const { id } = useParams();
 
@@ -63,6 +80,20 @@ export default function CandidateAvailability() {
     e.preventDefault();
     if (!preferredDateStr) {
       toast.error('Please select your preferred date.');
+      return;
+    }
+
+    const timeToMinutes = (t) => {
+      if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const startMins = timeToMinutes(startTime);
+    const endMins = timeToMinutes(endTime);
+
+    if (startTime && endTime && endMins <= startMins) {
+      toast.error('End time must be after start time.');
       return;
     }
 
@@ -130,14 +161,22 @@ export default function CandidateAvailability() {
               <CheckCircle2 className="h-14 w-14 text-green-600 mx-auto mb-3" />
               <CardTitle className="text-2xl font-bold text-slate-900">Availability Submitted!</CardTitle>
               <CardDescription className="text-slate-600 text-sm mt-1">
-                Thank you, <span className="font-semibold text-slate-800">{data.candidateName}</span>. Your availability for the <span className="font-semibold text-slate-800">{data.stageLabel}</span> stage has been sent to our recruitment team.
+                Thank you, <span className="font-semibold text-slate-800">{data.candidateName}</span>. Your availability for the <span className="font-semibold text-slate-800">{formatStageLabel(data.stageLabel)}</span> stage has been sent to our recruitment team.
               </CardDescription>
             </CardHeader>
             <CardContent className="pb-8 space-y-4">
               <div className="rounded-lg bg-slate-50 p-4 border border-slate-200 text-left text-sm space-y-1.5">
                 <p><span className="font-medium text-slate-700">Position:</span> {data.requisitionTitle}</p>
                 <p><span className="font-medium text-slate-700">Preferred Date:</span> {selectedDate ? dayjs(selectedDate).format('dddd, MMMM D, YYYY') : preferredDateStr}</p>
-                {startTime && <p><span className="font-medium text-slate-700">Time Window:</span> {startTime} – {endTime}</p>}
+                {startTime && (
+                  <p>
+                    <span className="font-medium text-slate-700">Time Window:</span>{' '}
+                    {(() => {
+                      const formatTime = (t) => (t && t.includes(':') ? dayjs(`2000-01-01T${t}`).format('h:mm A') : t);
+                      return endTime ? `${formatTime(startTime)} – ${formatTime(endTime)}` : formatTime(startTime);
+                    })()}
+                  </p>
+                )}
                 {notes && <p><span className="font-medium text-slate-700">Notes:</span> {notes}</p>}
               </div>
               <p className="text-xs text-slate-500">
@@ -152,7 +191,7 @@ export default function CandidateAvailability() {
                 Select Interview Availability
               </CardTitle>
               <CardDescription className="text-sm">
-                Position: <span className="font-semibold text-slate-800">{data.requisitionTitle}</span> · Stage: <span className="font-semibold text-[#d21e2b]">{data.stageLabel}</span>
+                Position: <span className="font-semibold text-slate-800">{data.requisitionTitle}</span> · Stage: <span className="font-semibold text-[#d21e2b]">{formatStageLabel(data.stageLabel)}</span>
               </CardDescription>
             </CardHeader>
 
@@ -184,25 +223,42 @@ export default function CandidateAvailability() {
                   </Popover>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-slate-400" /> Start Time
-                    </Label>
-                    <TimePicker
-                      value={startTime}
-                      onChange={(val) => setStartTime(val)}
-                    />
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-slate-400" /> Start Time
+                      </Label>
+                      <TimePicker
+                        value={startTime}
+                        onChange={(val) => setStartTime(val)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-slate-400" /> End Time
+                      </Label>
+                      <TimePicker
+                        value={endTime}
+                        onChange={(val) => setEndTime(val)}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-slate-400" /> End Time
-                    </Label>
-                    <TimePicker
-                      value={endTime}
-                      onChange={(val) => setEndTime(val)}
-                    />
-                  </div>
+                  {(() => {
+                    const toMins = (t) => {
+                      if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+                      const [h, m] = t.split(':').map(Number);
+                      return h * 60 + m;
+                    };
+                    if (startTime && endTime && toMins(endTime) <= toMins(startTime)) {
+                      return (
+                        <p className="text-xs font-medium text-red-500">
+                          End time must be after start time.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 <div className="space-y-1.5">

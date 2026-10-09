@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -113,6 +114,12 @@ export default function Candidates() {
   const [reqPickerOpen, setReqPickerOpen] = useState(false);
   const [deleteFor, setDeleteFor] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
+  const [bulkAttachOpen, setBulkAttachOpen] = useState(false);
+  const [bulkAttachTarget, setBulkAttachTarget] = useState('');
+  const [bulkAttaching, setBulkAttaching] = useState(false);
+  const [bulkReqPickerOpen, setBulkReqPickerOpen] = useState(false);
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -292,6 +299,46 @@ export default function Candidates() {
       }
     } finally {
       setAttaching(false);
+    }
+  }
+
+  function toggleSelectCandidate(id, event) {
+    if (event) event.stopPropagation();
+    setSelectedCandidateIds((current) => (
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    ));
+  }
+
+  function toggleSelectAllOnPage() {
+    const pageIds = candidates.map((c) => c._id);
+    const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedCandidateIds.includes(id));
+    if (allSelected) {
+      setSelectedCandidateIds((current) => current.filter((id) => !pageIds.includes(id)));
+    } else {
+      setSelectedCandidateIds((current) => Array.from(new Set([...current, ...pageIds])));
+    }
+  }
+
+  async function handleBulkAttach() {
+    if (!bulkAttachTarget) {
+      toast.error('Pick a job opening first.');
+      return;
+    }
+    setBulkAttaching(true);
+    try {
+      const res = await api.post('/candidates/bulk-attach', {
+        candidateIds: selectedCandidateIds,
+        requisitionId: bulkAttachTarget,
+      });
+      toast.success(res.data?.message || 'Candidates attached successfully.');
+      setBulkAttachOpen(false);
+      setSelectedCandidateIds([]);
+      setBulkAttachTarget('');
+      loadCandidates();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not attach candidates.');
+    } finally {
+      setBulkAttaching(false);
     }
   }
 
@@ -481,6 +528,27 @@ export default function Candidates() {
       {/* ---------- list ---------- */}
       <Card className="mt-4">
         <CardContent className="p-0">
+          {selectedCandidateIds.length > 0 && (
+            <div className="mb-4 flex flex-col gap-2 rounded-lg border border-[#d21e2b]/30 bg-[#d21e2b]/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 font-medium text-foreground">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#d21e2b] text-[11px] font-bold text-white">
+                  {selectedCandidateIds.length}
+                </span>
+                <span>candidate{selectedCandidateIds.length === 1 ? '' : 's'} selected</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+                  onClick={() => { setBulkAttachTarget(''); setBulkReqPickerOpen(false); setBulkAttachOpen(true); }}
+                >
+                  <Link2 className="h-4 w-4" />
+                  Attach to Job Opening
+                </Button>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="space-y-3 p-4">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -531,6 +599,13 @@ export default function Candidates() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={candidates.length > 0 && candidates.every((c) => selectedCandidateIds.includes(c._id))}
+                      onCheckedChange={toggleSelectAllOnPage}
+                      aria-label="Select all candidates on this page"
+                    />
+                  </TableHead>
                   <TableHead>Candidate</TableHead>
                   <TableHead className="hidden md:table-cell">Phone</TableHead>
                   <TableHead>Attached to</TableHead>
@@ -554,6 +629,13 @@ export default function Candidates() {
                     className="cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
                     title={`View ${c.name}`}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()} className="w-10">
+                      <Checkbox
+                        checked={selectedCandidateIds.includes(c._id)}
+                        onCheckedChange={() => toggleSelectCandidate(c._id)}
+                        aria-label={`Select ${c.name}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <div
                         className="flex items-center gap-3"
@@ -601,7 +683,7 @@ export default function Candidates() {
                             <Link key={a.applicationId} to={`/requisitions/${a.requisitionId}`} onClick={(event) => event.stopPropagation()}>
                               <Badge
                                 variant="secondary"
-                                className={`font-normal ${a.disposition ? DISPOSITION_BADGE[a.disposition] || '' : ''}`}
+                                className={`text-[11px] py-0.5 px-2 font-normal ${a.disposition ? DISPOSITION_BADGE[a.disposition] || '' : ''}`}
                                 title={a.disposition ? formatDisposition(a.disposition) : 'In progress'}
                               >
                                 {a.title}
@@ -754,6 +836,81 @@ export default function Candidates() {
         </DialogContent>
       </Dialog>
 
+      {/* ---------- bulk attach dialog ---------- */}
+      <Dialog open={bulkAttachOpen} onOpenChange={(open) => !open && setBulkAttachOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Attach {selectedCandidateIds.length} candidate{selectedCandidateIds.length === 1 ? '' : 's'}</DialogTitle>
+            <DialogDescription>
+              Select a job opening to attach all selected candidates at once. Candidates already attached to this job opening will be safely skipped.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Target Job Opening <span className="text-red-500">*</span></Label>
+              <Popover open={bulkReqPickerOpen} onOpenChange={setBulkReqPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={bulkReqPickerOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    <span className="truncate">
+                      {bulkAttachTarget
+                        ? requisitions.find((r) => r._id === bulkAttachTarget)?.title || 'Select job opening...'
+                        : 'Select job opening...'}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search job openings..." />
+                    <CommandList>
+                      <CommandEmpty>No active job opening found.</CommandEmpty>
+                      <CommandGroup>
+                        {requisitions.map((req) => (
+                          <CommandItem
+                            key={req._id}
+                            value={`${req.title} ${req._id}`}
+                            onSelect={() => {
+                              setBulkAttachTarget(req._id);
+                              setBulkReqPickerOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${bulkAttachTarget === req._id ? 'opacity-100' : 'opacity-0'}`}
+                            />
+                            <span className="flex-1 truncate">{req.title}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBulkAttachOpen(false)} disabled={bulkAttaching}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={bulkAttaching || !bulkAttachTarget}
+              onClick={handleBulkAttach}
+              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+            >
+              <Link2 className="h-4 w-4" />
+              {bulkAttaching ? 'Attaching…' : `Attach ${selectedCandidateIds.length} Candidates`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!viewFor} onOpenChange={(open) => !open && setViewFor(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -798,7 +955,7 @@ export default function Candidates() {
                 {(viewFor.applications || []).length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {viewFor.applications.map((application) => (
-                      <Badge key={application.applicationId} variant="secondary" className="font-normal">
+                      <Badge key={application.applicationId} variant="secondary" className="text-[11px] py-0.5 px-2 font-normal">
                         {application.title}
                       </Badge>
                     ))}

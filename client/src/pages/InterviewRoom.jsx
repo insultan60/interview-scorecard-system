@@ -110,6 +110,34 @@ export default function InterviewRoom() {
     load().finally(() => setLoading(false));
   }, [load]);
 
+  useEffect(() => {
+    if (!id) return;
+    const intervalId = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/interviews/${id}`);
+        if (data?.interview) {
+          setInterview((prev) => {
+            const prevAvail = JSON.stringify(prev?.candidateAvailability);
+            const nextAvail = JSON.stringify(data.interview.candidateAvailability);
+            if (
+              prevAvail !== nextAvail ||
+              prev?.calendarEventId !== data.interview.calendarEventId ||
+              prev?.status !== data.interview.status ||
+              prev?.transcriptStatus !== data.interview.transcriptStatus
+            ) {
+              return data.interview;
+            }
+            return prev;
+          });
+        }
+      } catch {
+        // Silently ignore background polling errors
+      }
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [id]);
+
   const stageConfig = requisition?.stages.find((s) => s.key === interview?.stageKey);
   const candidate = application?.candidateId || application?.candidate || {};
   const rawStageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
@@ -168,6 +196,17 @@ export default function InterviewRoom() {
       let startDateObj, endDateObj;
       let localStartTime, localEndTime;
       if (useProvider) {
+        const timeToMins = (t) => {
+          if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+          const [h, m] = t.split(':').map(Number);
+          return h * 60 + m;
+        };
+        if (selectedStartTime && selectedEndTime && timeToMins(selectedEndTime) <= timeToMins(selectedStartTime)) {
+          toast.error('Meeting end time must be after start time.');
+          setCreatingMeeting(false);
+          return;
+        }
+
         const baseDate = selectedMeetingDate || new Date();
         const year = baseDate.getFullYear();
         const month = baseDate.getMonth();
@@ -177,10 +216,6 @@ export default function InterviewRoom() {
 
         const [endH, endM] = (selectedEndTime || '10:30').split(':').map(Number);
         endDateObj = new Date(year, month, day, endH, endM, 0, 0);
-
-        if (endDateObj <= startDateObj) {
-          endDateObj = new Date(startDateObj.getTime() + 30 * 60 * 1000);
-        }
         localStartTime = formatLocalDateTime(startDateObj);
         localEndTime = formatLocalDateTime(endDateObj);
       }
@@ -411,7 +446,16 @@ export default function InterviewRoom() {
 
     setSelectedMeetingDate(preferredDateObj);
     const startTimeStr = avail.startTime || '10:00';
-    const endTimeStr = avail.endTime || '10:30';
+    let endTimeStr = avail.endTime || '10:30';
+
+    if (startTimeStr && endTimeStr && endTimeStr <= startTimeStr) {
+      const [sh, sm] = startTimeStr.split(':').map(Number);
+      const endMins = sh * 60 + sm + 30;
+      const eh = Math.floor(endMins / 60) % 24;
+      const em = endMins % 60;
+      endTimeStr = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+    }
+
     setSelectedStartTime(startTimeStr);
     setSelectedEndTime(endTimeStr);
     const dateStr = dayjs(preferredDateObj).format('YYYY-MM-DD');
@@ -884,13 +928,13 @@ export default function InterviewRoom() {
         <Card className="mt-4">
           <CardHeader
             onClick={() => setGuideOpen((v) => !v)}
-            className="cursor-pointer flex-row items-center justify-between space-y-0"
+            className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
           >
             <CardTitle>Interview Guide — {stageConfig?.label}</CardTitle>
             <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${guideOpen ? 'rotate-180' : ''}`} />
           </CardHeader>
           {guideOpen && (
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 border-t pt-4">
               {stageAttributes.map((attr) => {
                 const isOpen = openAttrs.has(attr.attributeId);
                 return (
@@ -945,7 +989,7 @@ export default function InterviewRoom() {
                   <div className="flex items-center justify-between font-semibold text-slate-900 mb-1">
                     <span className="flex items-center gap-1.5 text-[#d21e2b]">
                       <CalendarIcon className="h-4 w-4" />
-                      Candidate Preferred Availability Submitted
+                      Candidate Availability Submitted
                     </span>
                     <span className="text-xs text-muted-foreground font-normal">
                       {dayjs(interview.candidateAvailability.submittedAt).format('MMM D, h:mm A')}
@@ -965,7 +1009,12 @@ export default function InterviewRoom() {
                     </p>
                     <p>
                       <strong className="text-slate-900">Time Window:</strong>{' '}
-                      {interview.candidateAvailability.startTime} - {interview.candidateAvailability.endTime}
+                      {(() => {
+                        const st = interview.candidateAvailability.startTime;
+                        const et = interview.candidateAvailability.endTime;
+                        const formatTime = (t) => (t && t.includes(':') ? dayjs(`2000-01-01T${t}`).format('h:mm A') : t);
+                        return st && et ? `${formatTime(st)} – ${formatTime(et)}` : st ? formatTime(st) : 'Flex';
+                      })()}
                     </p>
                     {interview.candidateAvailability.notes && (
                       <p>
@@ -1131,6 +1180,21 @@ export default function InterviewRoom() {
                         />
                       </div>
                     </div>
+                    {(() => {
+                      const toMins = (t) => {
+                        if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+                        const [h, m] = t.split(':').map(Number);
+                        return h * 60 + m;
+                      };
+                      if (selectedStartTime && selectedEndTime && toMins(selectedEndTime) <= toMins(selectedStartTime)) {
+                        return (
+                          <p className="text-xs font-medium text-red-500">
+                            Meeting end time must be after start time.
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                     <div className="space-y-1">
                       <label htmlFor="additional-invitees" className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         Additional Invitees <span className="normal-case font-normal text-slate-400">(optional)</span>

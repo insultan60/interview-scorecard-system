@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Search, Users, X } from 'lucide-react';
+import { ArrowLeft, Search, Users, X, ChevronDown } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 const DISPOSITION_LABEL = { HIRE: 'Hire', MAYBE: 'Maybe', NO_HIRE: 'No Hire' };
 
@@ -29,11 +31,19 @@ export default function RequisitionCandidates() {
   const [fetchingCandidates, setFetchingCandidates] = useState(false);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const ALL_DISPOSITIONS = ['in_progress', 'HIRE', 'MAYBE', 'NO_HIRE'];
+  const [dispositionFilters, setDispositionFilters] = useState(ALL_DISPOSITIONS);
   const [stageFilter, setStageFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
   const latestLoadRef = useRef(0);
+
+  function toggleDispositionFilter(value) {
+    setDispositionFilters((current) => (
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    ));
+    setPage(1);
+  }
 
   async function load(targetPage = page) {
     const requestId = ++latestLoadRef.current;
@@ -47,7 +57,7 @@ export default function RequisitionCandidates() {
           page: targetPage,
           limit: PAGE_SIZE,
           search: debouncedSearch.trim() || undefined,
-          disposition: statusFilter === 'IN_PROGRESS' ? 'in_progress' : statusFilter !== 'all' ? statusFilter : undefined,
+          disposition: dispositionFilters.length === 0 ? 'none' : dispositionFilters.length === 4 ? undefined : dispositionFilters.join(','),
           stageKey: stageFilter !== 'all' ? stageFilter : undefined,
         },
       });
@@ -70,13 +80,13 @@ export default function RequisitionCandidates() {
 
   useEffect(() => {
     load(1);
-  }, [id, debouncedSearch, statusFilter, stageFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, debouncedSearch, dispositionFilters, stageFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applications = data?.applications || [];
   const stageLabels = useMemo(() => Object.fromEntries((data?.requisition?.stages || []).map((stage) => [stage.key, stage.label])), [data]);
   const statusCounts = data?.applicationStats || { total: 0, IN_PROGRESS: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 };
 
-  const hasActiveFilters = Boolean(search || statusFilter !== 'all' || stageFilter !== 'all');
+  const hasActiveFilters = Boolean(search || dispositionFilters.length < 4 || stageFilter !== 'all');
 
   if (loading) return <div className="space-y-3"><Skeleton className="h-9 w-64" /><Skeleton className="h-64 w-full" /></div>;
   if (!data) return <div className="text-sm text-muted-foreground">Job opening not found.</div>;
@@ -116,18 +126,27 @@ export default function RequisitionCandidates() {
           )}
         </div>
 
-        <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses ({statusCounts.total})</SelectItem>
-            <SelectItem value="IN_PROGRESS">In progress ({statusCounts.IN_PROGRESS})</SelectItem>
-            <SelectItem value="HIRE">Hire ({statusCounts.HIRE})</SelectItem>
-            <SelectItem value="MAYBE">Maybe ({statusCounts.MAYBE})</SelectItem>
-            <SelectItem value="NO_HIRE">No Hire ({statusCounts.NO_HIRE})</SelectItem>
-          </SelectContent>
-        </Select>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-9 w-full justify-between text-xs sm:w-44 border-input bg-background font-normal">
+              Disposition ({dispositionFilters.length}/4)
+              <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44 p-2">
+            {[
+              ['in_progress', 'In Progress'],
+              ['HIRE', 'Hire'],
+              ['MAYBE', 'Maybe'],
+              ['NO_HIRE', 'No Hire'],
+            ].map(([value, label]) => (
+              <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted">
+                <Checkbox checked={dispositionFilters.includes(value)} onCheckedChange={() => toggleDispositionFilter(value)} />
+                {label}
+              </label>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {(data?.requisition?.stages || []).length > 0 && (
           <Select value={stageFilter} onValueChange={(value) => { setStageFilter(value); setPage(1); }}>

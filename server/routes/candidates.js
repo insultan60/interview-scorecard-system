@@ -10,6 +10,7 @@ router.use(requireAuth);
 router.get('/', candidateController.list);
 router.post('/', upload.single('resume'), candidateController.create);
 router.post('/bulk', candidateController.bulkCreate);
+router.post('/bulk-attach', candidateController.bulkAttach);
 router.post('/send-onboarding-form', candidateController.sendOnboardingForm);
 router.patch('/onboarding-form-delivery', candidateController.recordOnboardingFormDelivery);
 router.get('/:id', candidateController.getOne);

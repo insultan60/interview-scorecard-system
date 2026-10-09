@@ -76,7 +76,7 @@ async function seedDefaultPipeline() {
   }
 
   const template = await PipelineTemplate.create({
-    name: "Standard Hiring Process",
+    name: "Standard Hiring Stages",
     description:
       "Initial Screening (10%) -> HR Interview (15%) -> Sales Simulation (25%) -> Technical/Ops (25%) -> Final/CEO (15%).",
     isDefault: true,
@@ -84,7 +84,7 @@ async function seedDefaultPipeline() {
   });
 
   logger.info(
-    '[Seed] Created default hiring process template "Standard Hiring Process".',
+    '[Seed] Created default hiring process template "Standard Hiring Stages".',
   );
   return template;
 }
