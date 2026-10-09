@@ -468,7 +468,7 @@ export default function InterviewRoom() {
         setInterview(res.data.interview);
         toast.success('Transcript ready.');
       } else if (res.status === 202) {
-        toast('Transcript is not ready yet. Please try again later.', { icon: '⏳' });
+        toast('Transcript is not ready yet. Google Meet processing can take up to 5 minutes after the meeting ends. Please try again shortly.', { icon: '⏳' });
       } else {
         toast.error(res.data?.message || 'Could not fetch transcript.');
       }
