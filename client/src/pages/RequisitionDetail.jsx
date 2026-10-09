@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -758,27 +758,31 @@ export default function RequisitionDetail() {
                           <TableCell className="align-middle">
                             {finalDecision && openDecisionRowId !== app._id ? (
                               <div className="flex flex-col gap-1">
-                                <Badge variant="secondary" className={`font-normal w-fit ${DECISION_BADGE[finalDecision] || ''}`}>
-                                  {DECISION_LABEL[finalDecision] || finalDecision}
-                                </Badge>
+                                <div className="flex items-center gap-1.5">
+                                  <Badge variant="secondary" className={`font-normal w-fit ${DECISION_BADGE[finalDecision] || ''}`}>
+                                    {DECISION_LABEL[finalDecision] || finalDecision}
+                                  </Badge>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label="Change decision"
+                                    title="Change decision"
+                                    onClick={() => {
+                                      setOpenDecisionRowId(app._id);
+                                      setDecisionDraft(finalDecision);
+                                      setDecisionReasonDraft(app.rejectionReason || '');
+                                    }}
+                                    className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-slate-100"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                                 {finalDecisionReason && (
                                   <span className="text-[11px] text-muted-foreground truncate max-w-[140px]" title={finalDecisionReason}>
                                     {finalDecisionReason}
                                   </span>
                                 )}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setOpenDecisionRowId(app._id);
-                                    setDecisionDraft(finalDecision);
-                                    setDecisionReasonDraft(app.rejectionReason || '');
-                                  }}
-                                  className="h-5 w-fit px-0 text-[11px] text-[#d21e2b] hover:bg-transparent hover:text-[#a41420]"
-                                >
-                                  Change decision
-                                </Button>
                               </div>
                             ) : openDecisionRowId === app._id ? (
                               <div className="flex flex-col gap-1.5 py-1 min-w-[140px]">
