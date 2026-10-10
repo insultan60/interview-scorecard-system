@@ -683,7 +683,7 @@ export default function Candidates() {
                             <Link key={a.applicationId} to={`/requisitions/${a.requisitionId}`} onClick={(event) => event.stopPropagation()}>
                               <Badge
                                 variant="secondary"
-                                className={`font-normal ${a.disposition ? DISPOSITION_BADGE[a.disposition] || '' : ''}`}
+                                className={`text-[11px] py-0.5 px-2 font-normal ${a.disposition ? DISPOSITION_BADGE[a.disposition] || '' : ''}`}
                                 title={a.disposition ? formatDisposition(a.disposition) : 'In progress'}
                               >
                                 {a.title}
@@ -955,7 +955,7 @@ export default function Candidates() {
                 {(viewFor.applications || []).length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {viewFor.applications.map((application) => (
-                      <Badge key={application.applicationId} variant="secondary" className="font-normal">
+                      <Badge key={application.applicationId} variant="secondary" className="text-[11px] py-0.5 px-2 font-normal">
                         {application.title}
                       </Badge>
                     ))}
