@@ -989,7 +989,7 @@ export default function InterviewRoom() {
                   <div className="flex items-center justify-between font-semibold text-slate-900 mb-1">
                     <span className="flex items-center gap-1.5 text-[#d21e2b]">
                       <CalendarIcon className="h-4 w-4" />
-                      Candidate Preferred Availability Submitted
+                      Candidate Availability Submitted
                     </span>
                     <span className="text-xs text-muted-foreground font-normal">
                       {dayjs(interview.candidateAvailability.submittedAt).format('MMM D, h:mm A')}
