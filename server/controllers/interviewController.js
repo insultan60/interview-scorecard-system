@@ -174,13 +174,17 @@ async function assertInterviewMutable(interview, action) {
  * interview's id once you've navigated away from it.
  */
 const list = asyncHandler(async (req, res) => {
-  const { applicationId, requisitionId } = req.query;
-  if (!applicationId && !requisitionId) {
-    throw new ValidationError(['applicationId'], 'applicationId or requisitionId query param is required.');
+  const { applicationId, requisitionId, applicationIds } = req.query;
+  if (!applicationId && !requisitionId && !applicationIds) {
+    throw new ValidationError(['applicationId'], 'applicationId, applicationIds, or requisitionId query param is required.');
   }
   const filter = {};
   if (applicationId) filter.applicationId = applicationId;
   if (requisitionId) filter.requisitionId = requisitionId;
+  if (applicationIds) {
+    const ids = String(applicationIds).split(',').map((id) => id.trim()).filter(Boolean);
+    if (ids.length > 0) filter.applicationId = { $in: ids };
+  }
   const interviews = await Interview.find(filter).select('_id applicationId stageKey status stageAverage');
   res.json({ interviews });
 });

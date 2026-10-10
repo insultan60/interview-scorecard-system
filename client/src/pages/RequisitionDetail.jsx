@@ -304,10 +304,14 @@ export default function RequisitionDetail() {
         setPage(res.data.pagination.page);
       }
 
-      const { data: interviewData } = await api.get('/interviews', { params: { requisitionId: id } });
+      const appIds = (res.data?.applications || []).map((app) => app._id).filter(Boolean).join(',');
+      const interviewParams = { requisitionId: id };
+      if (appIds) interviewParams.applicationIds = appIds;
+
+      const { data: interviewData } = await api.get('/interviews', { params: interviewParams });
       if (requestId !== latestLoadRef.current) return;
       const byApp = {};
-      interviewData.interviews.forEach((iv) => {
+      (interviewData.interviews || []).forEach((iv) => {
         if (!byApp[iv.applicationId]) byApp[iv.applicationId] = {};
         byApp[iv.applicationId][iv.stageKey] = iv._id;
       });
