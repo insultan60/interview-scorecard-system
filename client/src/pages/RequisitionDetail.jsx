@@ -176,6 +176,22 @@ export default function RequisitionDetail() {
     }
   }
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingRequisition, setDeletingRequisition] = useState(false);
+
+  async function handleDeleteRequisition() {
+    setDeletingRequisition(true);
+    try {
+      const res = await api.delete(`/requisitions/${id}`);
+      toast.success(res.data?.message || `Job Opening "${requisition.title}" deleted.`);
+      navigate('/requisitions');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not delete job opening.');
+    } finally {
+      setDeletingRequisition(false);
+    }
+  }
+
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
@@ -445,6 +461,17 @@ export default function RequisitionDetail() {
         >
           <Link2 className="h-3.5 w-3.5 text-[#d21e2b]" />
           Copy Candidate Apply Link
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setDeleteOpen(true)}
+          className="h-8 text-xs gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+        >
+          <Trash2 className="h-3.5 w-3.5 text-red-600" />
+          Delete Job Opening
         </Button>
 
         {/* <Button
@@ -1086,6 +1113,27 @@ export default function RequisitionDetail() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {requisition?.title}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently deletes the Job Opening, cancels any active scheduled Google Calendar meeting events, deletes attached applications, scorecard, and files. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deletingRequisition}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={deletingRequisition}
+                  onClick={(event) => { event.preventDefault(); handleDeleteRequisition(); }}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                >
+                  {deletingRequisition ? 'Deleting…' : 'Delete Job Opening'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <SendOnboardingFormModal
             open={!!onboardingCandidate}
             onOpenChange={(open) => !open && setOnboardingCandidate(null)}

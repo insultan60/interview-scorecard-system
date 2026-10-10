@@ -22,6 +22,10 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { formatDate } from '../utils/formatters';
@@ -248,6 +252,24 @@ export default function Requisitions() {
       toast.error(error?.response?.data?.message || 'Failed to duplicate job opening.');
     } finally {
       setDuplicatingId(null);
+    }
+  }
+
+  const [deleteFor, setDeleteFor] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDeleteRequisition() {
+    if (!deleteFor) return;
+    setDeleting(true);
+    try {
+      const res = await api.delete(`/requisitions/${deleteFor._id}`);
+      toast.success(res.data?.message || `Job Opening "${deleteFor.title}" deleted.`);
+      setDeleteFor(null);
+      loadRequisitions();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not delete job opening.');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -648,6 +670,13 @@ export default function Requisitions() {
                                 <ChevronRight className="h-4 w-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => { e.stopPropagation(); setDeleteFor(r); }}
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Job Opening
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                           <Button
@@ -692,6 +721,27 @@ export default function Requisitions() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!deleteFor} onOpenChange={(open) => !open && setDeleteFor(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteFor?.title}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the Job Opening, cancels any active scheduled Google Calendar meeting events, deletes attached applications, scorecard, and files. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => { event.preventDefault(); handleDeleteRequisition(); }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {deleting ? 'Deleting…' : 'Delete Job Opening'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
         </>
       )}

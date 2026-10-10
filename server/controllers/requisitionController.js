@@ -5,6 +5,8 @@ const PipelineTemplate = require('../models/PipelineTemplate');
 const Scorecard = require('../models/Scorecard');
 const Application = require('../models/Application');
 const Candidate = require('../models/Candidate');
+const Interview = require('../models/Interview');
+const transcriptProvider = require('../services/transcriptProvider');
 const Setting = require('../models/Setting');
 const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
@@ -733,17 +735,70 @@ const update = asyncHandler(async (req, res) => {
 
 /**
  * DELETE /api/requisitions/:id
- * Deletes the requisition document only — does not cascade-delete
- * candidates/applications/interviews/audit history, since those are
- * historical records the system is designed to never silently lose.
+ * Permanently deletes the requisition and cleans up all related records:
+ * - Cancels all active scheduled Google Calendar meetings (notifying attendees).
+ * - Cleans up attached Cloudinary artifact/evidence files.
+ * - Deletes associated Scorecard, Applications, and Interview records.
+ * - Records audit log entry.
  */
 const remove = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(req.params.id);
-  if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Requisition not found.' });
-  assertRequisitionOpen(requisition, 'delete this requisition');
+  if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
+
+  // Find all applications & interviews for this requisition
+  const applications = await Application.find({ requisitionId: requisition._id }).select('_id').lean();
+  const interviews = await Interview.find({ requisitionId: requisition._id });
+
+  // 1. Cancel all scheduled Google Calendar meetings for all interviews in this requisition
+  const cancellations = await Promise.allSettled(
+    interviews.filter((interview) => interview.calendarEventId).map((interview) => transcriptProvider.cancelMeeting(interview))
+  );
+  if (cancellations.some((result) => result.status === 'rejected')) {
+    const error = new Error('Could not cancel all scheduled Calendar meetings. The Job Opening was not deleted. Please try again.');
+    error.statusCode = 502;
+    throw error;
+  }
+
+  // 2. Collect & clean up any uploaded Cloudinary artifact/evidence files
+  const artifactIds = [...new Set(
+    interviews.map((interview) => interview.artifactFilePublicId).filter(Boolean)
+  )];
+
+  // 3. Delete database records (Scorecard, Interviews, Applications, Audit Logs)
+  if (requisition.scorecardId) {
+    await Scorecard.findByIdAndDelete(requisition.scorecardId);
+  }
+  await Scorecard.deleteMany({ requisitionId: requisition._id });
+  const interviewResult = await Interview.deleteMany({ requisitionId: requisition._id });
+  const applicationResult = await Application.deleteMany({ requisitionId: requisition._id });
+  await AuditLog.deleteMany({ requisitionId: requisition._id });
+
+  // 4. Clean up Cloudinary files
+  const cleanupResults = await Promise.allSettled(artifactIds.map(destroyFileIfUnreferenced));
+  const deletedFiles = cleanupResults.filter((result) => result.status === 'fulfilled' && result.value).length;
+
+  // 5. Delete the requisition itself
+  const reqTitle = requisition.title;
   await requisition.deleteOne();
-  logger.info(`[Requisition] Deleted ${requisition._id} by user=${req.user._id}`);
-  res.json({ message: 'Requisition deleted.' });
+
+  await AuditLog.create({
+    action: 'requisition_deleted',
+    userId: req.user._id,
+    targetType: 'requisition',
+    targetId: req.params.id,
+    reason: `Deleted Job Opening "${reqTitle}" (${req.params.id}) and all attached records.`,
+  });
+
+  logger.info(`[Requisition] Permanently deleted "${reqTitle}" (${req.params.id}): applications=${applicationResult.deletedCount}, interviews=${interviewResult.deletedCount}, files=${deletedFiles} by user=${req.user._id}`);
+
+  res.json({
+    message: `Job Opening "${reqTitle}" and all related data deleted cleanly.`,
+    deleted: {
+      applications: applicationResult.deletedCount,
+      interviews: interviewResult.deletedCount,
+      files: deletedFiles,
+    },
+  });
 });
 
 /**
