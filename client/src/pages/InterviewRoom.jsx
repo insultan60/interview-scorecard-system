@@ -884,13 +884,13 @@ export default function InterviewRoom() {
         <Card className="mt-4">
           <CardHeader
             onClick={() => setGuideOpen((v) => !v)}
-            className="cursor-pointer flex-row items-center justify-between space-y-0"
+            className="cursor-pointer flex-row items-center justify-between space-y-0 py-4"
           >
             <CardTitle>Interview Guide — {stageConfig?.label}</CardTitle>
             <ChevronDown className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${guideOpen ? 'rotate-180' : ''}`} />
           </CardHeader>
           {guideOpen && (
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 border-t pt-4">
               {stageAttributes.map((attr) => {
                 const isOpen = openAttrs.has(attr.attributeId);
                 return (
