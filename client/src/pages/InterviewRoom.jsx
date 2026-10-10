@@ -110,6 +110,34 @@ export default function InterviewRoom() {
     load().finally(() => setLoading(false));
   }, [load]);
 
+  useEffect(() => {
+    if (!id) return;
+    const intervalId = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/interviews/${id}`);
+        if (data?.interview) {
+          setInterview((prev) => {
+            const prevAvail = JSON.stringify(prev?.candidateAvailability);
+            const nextAvail = JSON.stringify(data.interview.candidateAvailability);
+            if (
+              prevAvail !== nextAvail ||
+              prev?.calendarEventId !== data.interview.calendarEventId ||
+              prev?.status !== data.interview.status ||
+              prev?.transcriptStatus !== data.interview.transcriptStatus
+            ) {
+              return data.interview;
+            }
+            return prev;
+          });
+        }
+      } catch {
+        // Silently ignore background polling errors
+      }
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [id]);
+
   const stageConfig = requisition?.stages.find((s) => s.key === interview?.stageKey);
   const candidate = application?.candidateId || application?.candidate || {};
   const rawStageAttributes = scorecard?.stages?.find((s) => s.stageKey === interview?.stageKey)?.attributes || [];
