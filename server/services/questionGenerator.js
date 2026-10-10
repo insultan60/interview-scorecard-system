@@ -88,7 +88,8 @@ async function generateScorecard(requisition) {
 
   const isSeniorRole = SENIOR_ROLE_PATTERN.test(requisition.title || '') || SENIOR_ROLE_PATTERN.test((requisition.jobDescription || '').slice(0, 500));
   const models = await getModelIds();
-  const model = isSeniorRole ? models.deep : models.default;
+  //const model = isSeniorRole ? models.deep : models.default;
+  const model = models.default;
 
   const batches = chunk(scoredStages, STAGES_PER_CALL);
   logger.info(`[QuestionGenerator] Generating scorecard for "${requisition.title}" model=${model} stages=${scoredStages.map((s) => s.key).join(',')} batches=${batches.length}`);
@@ -96,10 +97,10 @@ async function generateScorecard(requisition) {
   const hasQuestionnaire = Array.isArray(requisition.questionnaire) && requisition.questionnaire.length > 0;
   const questionnaireBlock = hasQuestionnaire
     ? `\nApplication Questionnaire Items:\n${requisition.questionnaire.map((q) => {
-        if (typeof q === 'string') return `- ${q}`;
-        const idealStr = q.idealAnswer ? ` | Ideal Answer: ${q.idealAnswer}` : '';
-        return `- Question: ${q.question}${idealStr}`;
-      }).join('\n')}\n`
+      if (typeof q === 'string') return `- ${q}`;
+      const idealStr = q.idealAnswer ? ` | Ideal Answer: ${q.idealAnswer}` : '';
+      return `- Question: ${q.question}${idealStr}`;
+    }).join('\n')}\n`
     : '';
 
   const hasCriteria = Array.isArray(requisition.initialScreeningCriteria)
@@ -107,14 +108,13 @@ async function generateScorecard(requisition) {
     : Boolean(requisition.initialScreeningCriteria && requisition.initialScreeningCriteria.trim());
 
   const criteriaBlock = hasCriteria
-    ? `\nInitial Screening Criteria:\n${
-        Array.isArray(requisition.initialScreeningCriteria)
-          ? requisition.initialScreeningCriteria.map((c) => {
-              if (typeof c === 'string') return `- ${c}`;
-              return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
-            }).join('\n')
-          : requisition.initialScreeningCriteria
-      }\n`
+    ? `\nInitial Screening Criteria:\n${Array.isArray(requisition.initialScreeningCriteria)
+      ? requisition.initialScreeningCriteria.map((c) => {
+        if (typeof c === 'string') return `- ${c}`;
+        return `- Criteria: ${c.criteria}${c.requirement ? ` | Requirement: ${c.requirement}` : ''}`;
+      }).join('\n')
+      : requisition.initialScreeningCriteria
+    }\n`
     : '';
 
   const resultStages = [];
