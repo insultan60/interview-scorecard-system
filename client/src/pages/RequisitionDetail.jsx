@@ -24,7 +24,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { formatDisposition, formatScore } from '../utils/formatters';
+import { Textarea } from '@/components/ui/textarea';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { formatDate, formatDisposition, formatScore } from '../utils/formatters';
 import { isBrowserEmailJSConfigured, sendOfferEmailClient } from '../services/emailService';
 import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
 
@@ -77,7 +79,26 @@ export default function RequisitionDetail() {
   const [offerFile, setOfferFile] = useState(null);
   const [sendingOffer, setSendingOffer] = useState(false);
   const [onboardingCandidate, setOnboardingCandidate] = useState(null);
+
+  const [viewCandidateFor, setViewCandidateFor] = useState(null);
+  const [editCandidateFor, setEditCandidateFor] = useState(null);
+  const [editCandidateForm, setEditCandidateForm] = useState({ name: '', email: '', phone: '', notes: '' });
+  const [editCandidateResumeFile, setEditCandidateResumeFile] = useState(null);
+  const [editingCandidate, setEditingCandidate] = useState(false);
   const latestLoadRef = useRef(0);
+
+  function initials(name) {
+    const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
+  function copyContact(text, label) {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard.`);
+  }
 
   async function handleSendOfferLetter(event) {
     event.preventDefault();
@@ -195,6 +216,50 @@ export default function RequisitionDetail() {
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
+
+  function openEditCandidate(candidate) {
+    if (!candidate) return;
+    setEditCandidateFor(candidate);
+    setEditCandidateForm({
+      name: candidate.name || '',
+      email: candidate.email || '',
+      phone: candidate.phone || '',
+      notes: candidate.notes || '',
+    });
+    setEditCandidateResumeFile(null);
+  }
+
+  async function handleEditCandidate(e) {
+    e.preventDefault();
+    if (!editCandidateForm.name.trim() || !editCandidateForm.email.trim()) {
+      toast.error('Name and Email are required.');
+      return;
+    }
+    if (editCandidateForm.phone && !/^[0-9]{11}$/.test(editCandidateForm.phone)) {
+      toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+
+    setEditingCandidate(true);
+    try {
+      const body = new FormData();
+      body.append('name', editCandidateForm.name.trim());
+      body.append('email', editCandidateForm.email.trim());
+      body.append('phone', editCandidateForm.phone.trim());
+      body.append('notes', editCandidateForm.notes);
+      if (editCandidateResumeFile) body.append('resume', editCandidateResumeFile);
+
+      await api.patch(`/candidates/${editCandidateFor._id}`, body, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(`${editCandidateForm.name.trim()}'s profile was updated.`);
+      setEditCandidateFor(null);
+      setEditCandidateResumeFile(null);
+      load();
+    } catch {
+      // API interceptor handles toast error messaging
+    } finally {
+      setEditingCandidate(false);
+    }
+  }
 
   function handleCandidateSearchChange(value) {
     setCandidateSearch(value);
@@ -698,7 +763,7 @@ export default function RequisitionDetail() {
                   <TableHeader>
                     <TableRow className="bg-slate-50/50">
                       <TableHead className="w-16 font-semibold text-center">Rank</TableHead>
-                      <TableHead className="min-w-[160px] font-semibold text-center">Candidate</TableHead>
+                      <TableHead className="min-w-[220px] font-semibold text-center">Candidate</TableHead>
                       <TableHead className="w-32 font-semibold text-center">Availability</TableHead>
                       <TableHead className="min-w-[260px] font-semibold text-center">Hiring Stages</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
@@ -741,8 +806,17 @@ export default function RequisitionDetail() {
                           </TableCell>
 
                           <TableCell className="align-middle">
-                            <div className="font-medium text-foreground">{app.candidateId?.name || 'Unknown'}</div>
-                            <div className="text-xs text-muted-foreground">{app.candidateId?.email}</div>
+                            <button
+                              type="button"
+                              onClick={() => setViewCandidateFor(app.candidateId)}
+                              className="group flex flex-col text-left cursor-pointer rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-100/80 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
+                              title={`View ${app.candidateId?.name || 'candidate'}'s details`}
+                            >
+                              <div className="font-medium text-foreground group-hover:text-[#d21e2b] transition-colors">
+                                {app.candidateId?.name || app.candidateName || 'Unknown'}
+                              </div>
+                              <div className="text-xs text-muted-foreground break-all">{app.candidateId?.email || app.candidateEmail}</div>
+                            </button>
                           </TableCell>
 
                           <TableCell className="align-middle">
@@ -1140,6 +1214,165 @@ export default function RequisitionDetail() {
             candidate={onboardingCandidate}
             onSuccess={load}
           />
+
+          <Dialog open={!!viewCandidateFor} onOpenChange={(open) => !open && setViewCandidateFor(null)}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Candidate details</DialogTitle>
+                <DialogDescription>Review this candidate’s profile and attachments.</DialogDescription>
+              </DialogHeader>
+
+              {viewCandidateFor && (
+                <div className="space-y-5">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-11 w-11">
+                      <AvatarFallback>{initials(viewCandidateFor.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-foreground">{viewCandidateFor.name}</p>
+                      {viewCandidateFor.createdAt && (
+                        <p className="text-xs text-muted-foreground">Added {formatDate(viewCandidateFor.createdAt)}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 rounded-lg border bg-slate-50/60 p-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Email</p>
+                      <button
+                        type="button"
+                        onClick={() => copyContact(viewCandidateFor.email, 'Email')}
+                        className="mt-0.5 break-all text-left font-medium hover:text-[#d21e2b] hover:underline"
+                      >
+                        {viewCandidateFor.email || '—'}
+                      </button>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Phone</p>
+                      <button
+                        type="button"
+                        onClick={() => copyContact(viewCandidateFor.phone, 'Phone number')}
+                        className="mt-0.5 text-left font-medium hover:text-[#d21e2b] hover:underline"
+                      >
+                        {viewCandidateFor.phone || '—'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm">{viewCandidateFor.notes || 'No notes added.'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Job opening</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{requisition?.title || 'This job opening'}</p>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                {viewCandidateFor?.resumeFileUrl && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => window.open(viewCandidateFor.resumeFileUrl, '_blank', 'noreferrer')}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    View résumé
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const c = viewCandidateFor;
+                    setViewCandidateFor(null);
+                    openEditCandidate(c);
+                  }}
+                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit candidate
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={!!editCandidateFor} onOpenChange={(open) => !open && setEditCandidateFor(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Candidate Profile</DialogTitle>
+                <DialogDescription>
+                  Update candidate contact details, notes, or replace their résumé file.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleEditCandidate} className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-req-cand-name">Name <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="edit-req-cand-name"
+                      value={editCandidateForm.name}
+                      autoFocus
+                      onChange={(e) => setEditCandidateForm({ ...editCandidateForm, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-req-cand-email">Email <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="edit-req-cand-email"
+                      type="email"
+                      value={editCandidateForm.email}
+                      onChange={(e) => setEditCandidateForm({ ...editCandidateForm, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-req-cand-phone">Phone</Label>
+                    <Input
+                      id="edit-req-cand-phone"
+                      value={editCandidateForm.phone}
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]{11}"
+                      maxLength={11}
+                      onChange={(e) => setEditCandidateForm({ ...editCandidateForm, phone: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                      placeholder="03001234567"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-req-cand-resume">Replace résumé <span className="text-muted-foreground">(optional)</span></Label>
+                    <Input
+                      id="edit-req-cand-resume"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={(e) => setEditCandidateResumeFile(e.target.files?.[0] || null)}
+                      className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-req-cand-notes">Notes</Label>
+                  <Textarea
+                    id="edit-req-cand-notes"
+                    rows={3}
+                    value={editCandidateForm.notes}
+                    onChange={(e) => setEditCandidateForm({ ...editCandidateForm, notes: e.target.value })}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setEditCandidateFor(null)} disabled={editingCandidate}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={editingCandidate} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+                    {editingCandidate ? 'Saving…' : 'Save changes'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
         );
 }
