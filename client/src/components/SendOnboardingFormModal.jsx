@@ -66,7 +66,7 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
 
         if (clientRes.sent) {
           if (appId) {
-            await api.patch('/candidates/onboarding-form-delivery', { applicationId: appId, deliveryStatus: 'sent' }).catch(() => {});
+            await api.patch('/candidates/onboarding-form-delivery', { applicationId: appId, deliveryStatus: 'sent' }).catch(() => { });
           }
           toast.success(`Onboarding form sent to ${candidateEmail} via Browser EmailJS!`);
           onOpenChange(false);
@@ -89,7 +89,7 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
           });
           if (clientRes.sent) {
             if (appId) {
-              await api.patch('/candidates/onboarding-form-delivery', { applicationId: appId, deliveryStatus: 'sent' }).catch(() => {});
+              await api.patch('/candidates/onboarding-form-delivery', { applicationId: appId, deliveryStatus: 'sent' }).catch(() => { });
             }
             toast.success(`Onboarding form sent to ${candidateEmail} via Browser EmailJS!`);
             onOpenChange(false);
@@ -141,7 +141,7 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">
-              The candidate receives a professional email with a direct link to complete their onboarding form.
+              The candidate receives an email with a direct link to complete their onboarding form.
             </p>
           </div>
 
