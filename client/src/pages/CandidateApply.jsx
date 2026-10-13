@@ -604,18 +604,18 @@ export default function CandidateApply() {
         {step === 'success' && (
           <Card className="shadow-lg border-slate-200 bg-white max-w-5xl lg:max-w-6xl mx-auto overflow-hidden rounded-2xl">
             <CardContent className="p-0">
-              <div className="grid grid-cols-1 md:grid-cols-12 items-center gap-0">
-                {/* Left Column: Image Media (Zero Padding & Fully Edge-to-Edge) */}
-                <div className="md:col-span-5 p-0 border-b md:border-b-0 md:border-r border-slate-100 overflow-hidden flex self-stretch items-stretch">
+              <div className="flex flex-col md:flex-row items-stretch gap-0">
+                {/* Left Column: Image Media (Fills entire left section, zero empty space) */}
+                <div className="relative w-full h-[320px] md:h-auto md:w-[306px] flex-shrink-0 overflow-hidden border-b md:border-b-0 md:border-r border-slate-100 bg-[#380206]">
                   <img
                     src={applicationSubmittedMedia}
                     alt="Application Submitted"
-                    className="w-full h-full min-h-[351px] object-cover rounded-none block"
+                    className="absolute inset-0 w-full h-full object-cover block"
                   />
                 </div>
 
                 {/* Right Column: Content Section */}
-                <div className="md:col-span-7 p-6 sm:p-8 space-y-6 text-left">
+                <div className="flex-1 p-6 sm:p-8 space-y-6 text-left flex flex-col justify-center">
                   <div className="space-y-3">
                     <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100 px-3 py-1 text-xs font-semibold rounded-full gap-1.5 w-fit">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />
