@@ -646,11 +646,11 @@ export default function RequisitionDetail() {
         </CardContent>}
       </Card>
 
-      {/* ---------- candidates & ranking ---------- */}
+      {/* ---------- candidates ---------- */}
       <Card className="order-1 mt-6">
         <CardHeader className="space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
           <div>
-            <CardTitle>Candidates & Ranking</CardTitle>
+            <CardTitle>Candidates</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
               {pagination.total} candidate{pagination.total === 1 ? '' : 's'} {hasActiveCandidateFilter ? 'match the current filters' : 'attached to this job opening'}
             </p>
