@@ -753,8 +753,15 @@ const getPublicAvailability = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found or expired.' });
 
+  const requisition = await Requisition.findById(interview.requisitionId).select('title employmentType location status');
+  if (!requisition || requisition.status !== 'open') {
+    const statusMsg = requisition?.status === 'closed'
+      ? 'This position is closed and is no longer accepting availability.'
+      : 'This position is currently not active and is not accepting availability.';
+    return res.status(400).json({ error: 'REQUISITION_NOT_OPEN', message: statusMsg });
+  }
+
   const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
-  const requisition = await Requisition.findById(interview.requisitionId).select('title employmentType location');
   const stageConfig = (requisition?.stages || []).find((s) => s.key === interview.stageKey);
 
   res.json({
@@ -772,6 +779,14 @@ const getPublicAvailability = asyncHandler(async (req, res) => {
 const submitPublicAvailability = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+
+  const requisition = await Requisition.findById(interview.requisitionId).select('status');
+  if (!requisition || requisition.status !== 'open') {
+    const statusMsg = requisition?.status === 'closed'
+      ? 'This position is closed and is no longer accepting availability.'
+      : 'This position is currently not active and is not accepting availability.';
+    return res.status(400).json({ error: 'REQUISITION_NOT_OPEN', message: statusMsg });
+  }
 
   const captchaResult = await verifyCaptcha(req.body?.captchaToken, req.ip);
   if (!captchaResult.valid) {
