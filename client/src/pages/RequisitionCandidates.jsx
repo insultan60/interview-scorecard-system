@@ -129,7 +129,7 @@ export default function RequisitionCandidates() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="outline" size="sm" className="h-9 w-full justify-between text-xs sm:w-44 border-input bg-background font-normal">
-              Disposition ({dispositionFilters.length}/4)
+              AI Decision ({dispositionFilters.length}/4)
               <ChevronDown className="h-3.5 w-3.5 opacity-50" />
             </Button>
           </DropdownMenuTrigger>

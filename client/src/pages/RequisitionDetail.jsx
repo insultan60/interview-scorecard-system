@@ -658,8 +658,8 @@ export default function RequisitionDetail() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-40">
-                    Disposition ({dispositionFilters.length}/4)
+                  <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-44">
+                    AI Decision ({dispositionFilters.length}/4)
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -770,7 +770,7 @@ export default function RequisitionDetail() {
                       <TableHead className="w-32 font-semibold text-center">Availability</TableHead>
                       <TableHead className="min-w-[260px] font-semibold text-center">Hiring Stages</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
-                      <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
+                      <TableHead className="min-w-[135px] w-36 text-center font-semibold whitespace-nowrap">AI Decision</TableHead>
                       <TableHead className="min-w-[150px] font-semibold text-center">Final Decision</TableHead>
                       <TableHead className="w-24 text-center font-semibold">Actions</TableHead>
                     </TableRow>
@@ -849,7 +849,7 @@ export default function RequisitionDetail() {
                             {formatScore(weightedTotal)}
                           </TableCell>
 
-                          <TableCell className="text-center align-middle">
+                          <TableCell className="text-center align-middle whitespace-nowrap">
                             {disposition ? (
                               <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
                                 {formatDisposition(disposition)}
