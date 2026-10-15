@@ -302,29 +302,29 @@ function syncHrQuestionnaireRubric(scorecard, requisition) {
     const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === stageKey);
     if (!hrStage) return;
 
-  const attributes = (requisition.questionnaire || []).map((item, index) => {
-    const question = typeof item === 'string' ? item : item.question;
-    const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
-    const requireIdealAnswer = typeof item === 'object' ? Boolean(item.requireIdealAnswer) : false;
+    const attributes = (requisition.questionnaire || []).map((item, index) => {
+      const question = typeof item === 'string' ? item : item.question;
+      const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
+      const requireIdealAnswer = typeof item === 'object' ? Boolean(item.requireIdealAnswer) : false;
 
-    let anchor5 = 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.';
-    let redFlags = 'Does not answer the question, or provides an unclear or irrelevant response.';
+      let anchor5 = 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.';
+      let redFlags = 'Does not answer the question, or provides an unclear or irrelevant response.';
 
-    if (idealAnswer) {
-      anchor5 = `Ideal answer benchmark: ${idealAnswer}`;
-      redFlags = `Does not address or match the required ideal answer benchmark: "${idealAnswer}".`;
-    }
+      if (idealAnswer) {
+        anchor5 = `Ideal answer benchmark: ${idealAnswer}`;
+        redFlags = `Does not address or match the required ideal answer benchmark: "${idealAnswer}".`;
+      }
 
-    return {
-      attributeId: `${hrStage.stageKey || 'hr_screen'}_question_${index + 1}`,
-      name: `Question ${index + 1}`,
-      question,
-      anchor5,
-      redFlags,
-      requireIdealAnswer,
-      idealAnswer,
-    };
-  });
+      return {
+        attributeId: `${hrStage.stageKey || 'hr_screen'}_question_${index + 1}`,
+        name: `Question ${index + 1}`,
+        question,
+        anchor5,
+        redFlags,
+        requireIdealAnswer,
+        idealAnswer,
+      };
+    });
 
     if (JSON.stringify(hrStage.attributes) !== JSON.stringify(attributes)) {
       hrStage.attributes = attributes;
@@ -353,7 +353,7 @@ const create = asyncHandler(async (req, res) => {
   const {
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status, departmentId,
   } = req.body;
 
   const missingFields = [];
@@ -432,6 +432,7 @@ const create = asyncHandler(async (req, res) => {
     applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
     aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
     status: status || 'open',
+    departmentId: departmentId && mongoose.isValidObjectId(departmentId) ? departmentId : undefined,
     closedAt: status === 'closed' ? new Date() : undefined,
     createdBy: req.user._id,
   });
@@ -440,7 +441,7 @@ const create = asyncHandler(async (req, res) => {
   res.status(201).json({
     requisition,
     warning: duplicateActiveOpening
-      ? `An active job opening named "${duplicateActiveOpening.title}" already exists.`
+      ? `A job opening named "${duplicateActiveOpening.title}" already exists.`
       : undefined,
   });
 });
@@ -459,7 +460,13 @@ const list = asyncHandler(async (req, res) => {
     // Include legacy `on_hold` records in the new Paused filter.
     filter.status = req.query.status === 'paused' ? { $in: ['paused', 'on_hold'] } : req.query.status;
   }
-  const requisitions = await Requisition.find(filter).sort({ createdAt: -1 }).lean();
+  if (req.query.departmentId && req.query.departmentId !== 'all') {
+    filter.departmentId = req.query.departmentId;
+  }
+  const requisitions = await Requisition.find(filter)
+    .populate('departmentId', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
 
   const applications = await Application.find({ requisitionId: { $in: requisitions.map((r) => r._id) } })
     .select('requisitionId disposition')
@@ -494,7 +501,8 @@ const list = asyncHandler(async (req, res) => {
  * Supports ?page=1&limit=10&search=john&disposition=HIRE|MAYBE|NO_HIRE|in_progress&finalDecision=hired|rejected|withdrawn|undecided&stageKey=...&candidateId=...
  */
 const getOne = asyncHandler(async (req, res) => {
-  const requisition = await Requisition.findById(req.params.id);
+  const requisition = await Requisition.findById(req.params.id)
+    .populate('departmentId', 'name description');
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
 
   // The scorecard is loaded separately when its tab is opened.
@@ -628,13 +636,13 @@ const update = asyncHandler(async (req, res) => {
   const {
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId,
   } = req.body;
 
   const hasNonStatusChanges = [
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
-    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled,
+    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId,
   ].some((value) => value !== undefined);
   if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
     const error = new ValidationError(['status'], 'This requisition is closed and read-only. Reopen it before making changes.');
@@ -688,6 +696,9 @@ const update = asyncHandler(async (req, res) => {
   }
   if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
   if (aiScreeningEnabled !== undefined) requisition.aiScreeningEnabled = Boolean(aiScreeningEnabled);
+  if (departmentId !== undefined) {
+    requisition.departmentId = departmentId && mongoose.isValidObjectId(departmentId) ? departmentId : null;
+  }
 
   let statusChange = null;
   if (status !== undefined && status !== requisition.status) {
@@ -871,7 +882,7 @@ const duplicate = asyncHandler(async (req, res) => {
     requisition: newReq,
     message: 'Job Opening duplicated successfully.',
     warning: duplicateActiveOpening
-      ? `An active job opening named "${duplicateActiveOpening.title}" already exists.`
+      ? `A job opening named "${duplicateActiveOpening.title}" already exists.`
       : undefined,
   });
 });

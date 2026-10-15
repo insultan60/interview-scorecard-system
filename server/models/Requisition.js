@@ -95,6 +95,7 @@ const requisitionSchema = new mongoose.Schema({
     default: 'open',
     index: true,
   },
+  departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', index: true },
   pipelineTemplateId: { type: mongoose.Schema.Types.ObjectId, ref: 'PipelineTemplate' },
   pipelineTemplateName: { type: String },
   // Snapshot of stages at creation, so later template edits don't mutate an open req

@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil, Building2 } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -529,7 +529,15 @@ export default function RequisitionDetail() {
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold leading-tight text-foreground sm:text-2xl">{requisition.title}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-semibold leading-tight text-foreground sm:text-2xl">{requisition.title}</h1>
+            {requisition.departmentId?.name && (
+              <Badge variant="outline" className="text-xs font-normal text-slate-600 bg-slate-50 border-slate-200">
+                <Building2 className="h-3 w-3 mr-1 text-slate-400" />
+                {requisition.departmentId.name}
+              </Badge>
+            )}
+          </div>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {enabledStages} stage{enabledStages === 1 ? '' : 's'} · {applications.length} candidate{applications.length === 1 ? '' : 's'}
           </p>
@@ -549,6 +557,17 @@ export default function RequisitionDetail() {
             </SelectContent>
           </Select>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/requisitions/${requisition._id}/edit`)}
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-slate-900 border-slate-300"
+        >
+          <Pencil className="h-3.5 w-3.5 text-slate-500" />
+          Edit Job Opening
+        </Button>
 
         <Button
           type="button"
@@ -612,6 +631,12 @@ export default function RequisitionDetail() {
             <h3 className="text-sm font-semibold">Employment details</h3>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Employment type</p><p className="mt-1 text-sm font-medium">{EMPLOYMENT_LABEL[requisition.employmentType] || requisition.employmentType}</p></div>
+              {requisition.departmentId?.name && (
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Department</p>
+                  <p className="mt-1 text-sm font-medium">{requisition.departmentId.name}</p>
+                </div>
+              )}
               {employmentDetails.filter(([, value]) => value).map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>)}
             </div>
           </section>

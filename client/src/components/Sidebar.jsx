@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Briefcase, GitBranch, Users, ScrollText,
+  LayoutDashboard, Briefcase, Building2, GitBranch, Users, ScrollText,
   Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight, User,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +10,7 @@ import redstarIcon from '../assets/redstar-icon.png';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/requisitions', label: 'Job Openings', icon: Briefcase },
+  { to: '/departments', label: 'Departments', icon: Building2 },
   { to: '/pipelines', label: 'Hiring Stages', icon: GitBranch },
   { to: '/candidates', label: 'Candidates', icon: Users },
   { to: '/audit-log', label: 'Audit Log', icon: ScrollText },
