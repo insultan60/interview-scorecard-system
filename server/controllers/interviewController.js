@@ -18,6 +18,7 @@ const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
 const { getSecrets } = require('../utils/secrets');
 const { extractArtifactText } = require('../utils/textExtractor');
+const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
 const { recomputeAndPersist, getOrCreateNextInterview } = require('./scoringController');
 
 /** Temporary diagnostic: remove after transcript parsing is verified. */
@@ -761,12 +762,24 @@ const getPublicAvailability = asyncHandler(async (req, res) => {
     requisitionTitle: requisition?.title || 'Job Opening',
     stageLabel: stageConfig?.label || interview.stageKey,
     candidateAvailability: interview.candidateAvailability || null,
+    captcha: (() => {
+      const { enabled, siteKey } = getCaptchaConfig();
+      return { enabled, siteKey: enabled ? siteKey : undefined };
+    })(),
   });
 });
 
 const submitPublicAvailability = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
+
+  const captchaResult = await verifyCaptcha(req.body?.captchaToken, req.ip);
+  if (!captchaResult.valid) {
+    return res.status(400).json({
+      error: 'CAPTCHA_FAILED',
+      message: 'Please complete the security check and submit your availability again.',
+    });
+  }
 
   const { preferredDate, startTime, endTime, notes } = req.body;
   if (!preferredDate) {
