@@ -636,13 +636,13 @@ const update = asyncHandler(async (req, res) => {
   const {
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId,
+    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId, pipelineTemplateId,
   } = req.body;
 
   const hasNonStatusChanges = [
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
-    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId,
+    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId, pipelineTemplateId,
   ].some((value) => value !== undefined);
   if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
     const error = new ValidationError(['status'], 'This requisition is closed and read-only. Reopen it before making changes.');
@@ -654,6 +654,13 @@ const update = asyncHandler(async (req, res) => {
   }
 
   if (title !== undefined) requisition.title = normalizeJobTitle(title);
+  if (pipelineTemplateId !== undefined && mongoose.isValidObjectId(pipelineTemplateId)) {
+    const template = await PipelineTemplate.findById(pipelineTemplateId);
+    if (template) {
+      requisition.pipelineTemplateId = template._id;
+      requisition.pipelineTemplateName = template.name;
+    }
+  }
   if (employmentType !== undefined) requisition.employmentType = employmentType;
   const employmentDetailInputs = { fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails };
   const hasEmploymentDetailsChanges = Object.values(employmentDetailInputs).some((value) => value !== undefined);
@@ -693,6 +700,16 @@ const update = asyncHandler(async (req, res) => {
   }
   if (questionnaire !== undefined) {
     requisition.questionnaire = normalizeQuestionnaire(questionnaire);
+    if (requisition.scorecardId) {
+      try {
+        const scorecard = await Scorecard.findById(requisition.scorecardId);
+        if (scorecard && syncHrQuestionnaireRubric(scorecard, requisition)) {
+          await scorecard.save();
+        }
+      } catch (scErr) {
+        logger.warn(`[Requisition] Questionnaire scorecard sync error: ${scErr.message}`);
+      }
+    }
   }
   if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
   if (aiScreeningEnabled !== undefined) requisition.aiScreeningEnabled = Boolean(aiScreeningEnabled);
@@ -731,6 +748,16 @@ const update = asyncHandler(async (req, res) => {
     });
   }
 
+  const effectiveStatus = requisition.status;
+  let duplicateActiveOpening = null;
+  if (effectiveStatus === 'open') {
+    duplicateActiveOpening = await Requisition.findOne({
+      _id: { $ne: requisition._id },
+      title: { $regex: `^${escapeRegex(requisition.title)}$`, $options: 'i' },
+      status: 'open',
+    }).select('_id title').lean();
+  }
+
   await requisition.save();
   if (statusChange) {
     await AuditLog.create({
@@ -741,7 +768,12 @@ const update = asyncHandler(async (req, res) => {
     });
   }
   logger.info(`[Requisition] Updated ${requisition._id} by user=${req.user._id}`);
-  res.json({ requisition });
+  res.json({
+    requisition,
+    warning: duplicateActiveOpening
+      ? `A job opening named "${duplicateActiveOpening.title}" already exists.`
+      : undefined,
+  });
 });
 
 /**

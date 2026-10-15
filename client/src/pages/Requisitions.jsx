@@ -467,7 +467,8 @@ export default function Requisitions() {
     setCreating(true);
     try {
       if (isEditPage) {
-        await api.patch(`/requisitions/${editId}`, { ...form, title: normalizedTitle });
+        const updateRes = await api.patch(`/requisitions/${editId}`, { ...form, title: normalizedTitle });
+        if (updateRes.data?.warning) toast(updateRes.data.warning, { icon: '⚠️' });
         toast.success('Job Opening updated successfully!');
         loadRequisitions();
         navigate(`/requisitions/${editId}`);
@@ -515,7 +516,9 @@ export default function Requisitions() {
   const selectedTemplate = templates.find((t) => t._id === form.pipelineTemplateId);
   const normalizedFormTitle = normalizeJobTitle(form.title);
   const duplicateActiveOpening = form.status === 'open' && normalizedFormTitle && requisitions.some((r) => (
-    r.status === 'open' && normalizeJobTitle(r.title || '').toLowerCase() === normalizedFormTitle.toLowerCase()
+    (!isEditPage || String(r._id) !== String(editId)) &&
+    r.status === 'open' &&
+    normalizeJobTitle(r.title || '').toLowerCase() === normalizedFormTitle.toLowerCase()
   ));
 
   return (
