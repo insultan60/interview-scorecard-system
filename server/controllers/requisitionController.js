@@ -830,7 +830,7 @@ const duplicate = asyncHandler(async (req, res) => {
   const newReqData = {
     ...sourceData,
     title: newTitle,
-    status: 'open',
+    status: 'draft',
     createdBy: req.user._id,
   };
 
