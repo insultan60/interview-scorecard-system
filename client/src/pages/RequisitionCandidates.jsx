@@ -21,7 +21,30 @@ const DISPOSITION_BADGE = {
   NO_HIRE: 'bg-red-100 text-red-800 border-red-200 hover:bg-red-100',
 };
 
-const PAGE_SIZE = 10;
+const PER_PAGE_OPTIONS = [10, 20, 50, 100];
+const DEFAULT_PAGE_SIZE = 10;
+const PER_PAGE_STORAGE_KEY = 'requisition_candidates_per_page';
+
+function getStoredPageSize() {
+  if (typeof window === 'undefined') return DEFAULT_PAGE_SIZE;
+  try {
+    const saved = localStorage.getItem(PER_PAGE_STORAGE_KEY) || localStorage.getItem('candidates_per_page');
+    const parsed = Number(saved);
+    if (PER_PAGE_OPTIONS.includes(parsed)) return parsed;
+  } catch {
+    // fallback
+  }
+  return DEFAULT_PAGE_SIZE;
+}
+
+function setStoredPageSize(size) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PER_PAGE_STORAGE_KEY, String(size));
+  } catch {
+    // ignore
+  }
+}
 
 export default function RequisitionCandidates() {
   const { id } = useParams();
@@ -34,8 +57,9 @@ export default function RequisitionCandidates() {
   const ALL_DISPOSITIONS = ['in_progress', 'HIRE', 'MAYBE', 'NO_HIRE'];
   const [dispositionFilters, setDispositionFilters] = useState(ALL_DISPOSITIONS);
   const [stageFilter, setStageFilter] = useState('all');
+  const [pageSize, setPageSize] = useState(() => getStoredPageSize());
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+  const [pagination, setPagination] = useState(() => ({ total: 0, page: 1, limit: getStoredPageSize(), totalPages: 1 }));
   const latestLoadRef = useRef(0);
 
   function toggleDispositionFilter(value) {
@@ -45,7 +69,7 @@ export default function RequisitionCandidates() {
     setPage(1);
   }
 
-  async function load(targetPage = page) {
+  async function load(targetPage = page, targetLimit = pageSize) {
     const requestId = ++latestLoadRef.current;
     const isInitialLoad = !data;
     if (isInitialLoad) setLoading(true);
@@ -55,7 +79,7 @@ export default function RequisitionCandidates() {
       const res = await api.get(`/requisitions/${id}`, {
         params: {
           page: targetPage,
-          limit: PAGE_SIZE,
+          limit: targetLimit,
           search: debouncedSearch.trim() || undefined,
           disposition: dispositionFilters.length === 0 ? 'none' : dispositionFilters.length === 4 ? undefined : dispositionFilters.join(','),
           stageKey: stageFilter !== 'all' ? stageFilter : undefined,
@@ -63,7 +87,7 @@ export default function RequisitionCandidates() {
       });
       if (requestId !== latestLoadRef.current) return;
       setData(res.data);
-      setPagination(res.data.pagination || { total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+      setPagination(res.data.pagination || { total: 0, page: 1, limit: targetLimit, totalPages: 1 });
       setPage(res.data.pagination?.page || 1);
     } finally {
       if (requestId === latestLoadRef.current) {
@@ -71,6 +95,15 @@ export default function RequisitionCandidates() {
         setFetchingCandidates(false);
       }
     }
+  }
+
+  function handlePageSizeChange(val) {
+    const nextSize = Number(val);
+    if (!PER_PAGE_OPTIONS.includes(nextSize)) return;
+    setStoredPageSize(nextSize);
+    setPageSize(nextSize);
+    setPage(1);
+    load(1, nextSize);
   }
 
   useEffect(() => {
@@ -243,29 +276,47 @@ export default function RequisitionCandidates() {
         </CardContent>
       </Card>
 
-      {pagination.total > PAGE_SIZE && (
-        <div className="mt-4 flex items-center justify-between">
+      {pagination.total > 0 && (
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} candidates
+            Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} candidate{pagination.total === 1 ? '' : 's'}
           </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => load(pagination.page - 1)}
-              disabled={fetchingCandidates || pagination.page <= 1}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.totalPages}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => load(pagination.page + 1)}
-              disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
-            >
-              Next
-            </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Per page:</span>
+              <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                <SelectTrigger className="h-8 w-[72px] text-xs bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="min-w-[72px] w-[72px]">
+                  {PER_PAGE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={String(opt)} className="text-xs">
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => load(pagination.page - 1)}
+                disabled={fetchingCandidates || pagination.page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">Page {pagination.page} of {Math.max(1, pagination.totalPages)}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => load(pagination.page + 1)}
+                disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </div>
       )}
