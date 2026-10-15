@@ -126,6 +126,7 @@ async function getOrCreateNextInterview(application, requisition, currentStageKe
 
   application.currentStageKey = next.key;
 
+  const isHrInterview = next.key === 'hr_interview' || next.stageType === 'hr_interview' || String(next.key).toLowerCase().includes('hr_interview');
   let existing = await Interview.findOne({ applicationId: application._id, stageKey: next.key });
   if (!existing) {
     existing = await Interview.create({
@@ -135,6 +136,7 @@ async function getOrCreateNextInterview(application, requisition, currentStageKe
       meetingMode: 'online',
       provider: 'google_meet',
       designatedScorerId: userId,
+      candidateAvailability: isHrInterview ? (application.candidateAvailability || undefined) : undefined,
     });
     const nextProgress = application.stageProgress?.find((p) => p.stageKey === next.key);
     if (nextProgress) nextProgress.status = 'scheduled';
@@ -665,6 +667,7 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
     application.currentStageKey = firstStageKey;
     
     const Interview = require('../models/Interview');
+    const isHrStage = firstStageKey === 'hr_interview' || firstStage?.stageType === 'hr_interview' || String(firstStageKey).toLowerCase().includes('hr_interview');
     let existing = await Interview.findOne({ applicationId: application._id, stageKey: firstStageKey });
     if (!existing) {
       existing = await Interview.create({
@@ -674,6 +677,7 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
         meetingMode: 'online',
         provider: 'google_meet',
         status: 'pending',
+        candidateAvailability: isHrStage ? (application.candidateAvailability || undefined) : undefined,
       });
     }
     nextInterviewId = existing._id;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -31,6 +31,55 @@ function formatStageLabel(label) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+const TURNSTILE_SCRIPT_ID = 'cloudflare-turnstile-script';
+
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve(window.turnstile);
+  const existing = document.getElementById(TURNSTILE_SCRIPT_ID);
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(window.turnstile), { once: true });
+      existing.addEventListener('error', reject, { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => resolve(window.turnstile);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function TurnstileCaptcha({ siteKey, onToken }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    let widgetId;
+    let active = true;
+    loadTurnstile()
+      .then((turnstile) => {
+        if (!active || !turnstile || !containerRef.current) return;
+        widgetId = turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          size: 'flexible',
+          callback: onToken,
+          'expired-callback': () => onToken(''),
+          'error-callback': () => onToken(''),
+        });
+      })
+      .catch(() => onToken(''));
+    return () => {
+      active = false;
+      if (widgetId !== undefined && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [siteKey, onToken]);
+
+  return <div ref={containerRef} className="w-full" />;
+}
+
 export default function CandidateAvailability() {
   const { id } = useParams();
 
@@ -45,6 +94,9 @@ export default function CandidateAvailability() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [captcha, setCaptcha] = useState({ enabled: false, siteKey: '' });
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
 
   useEffect(() => {
     async function fetchAvailabilityInfo() {
@@ -53,6 +105,7 @@ export default function CandidateAvailability() {
       try {
         const res = await api.get(`/interviews/${id}/availability/public`);
         setData(res.data);
+        setCaptcha(res.data.captcha || { enabled: false, siteKey: '' });
         if (res.data.candidateAvailability) {
           const avail = res.data.candidateAvailability;
           if (avail.preferredDate) {
@@ -97,6 +150,11 @@ export default function CandidateAvailability() {
       return;
     }
 
+    if (captcha.enabled && !captchaToken) {
+      toast.error('Please complete the security check.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await api.post(`/interviews/${id}/availability/public`, {
@@ -104,12 +162,15 @@ export default function CandidateAvailability() {
         startTime,
         endTime,
         notes,
+        captchaToken,
       });
       console.log('[CandidateAvailability] Submit success:', res.data);
       setSubmitted(true);
       toast.success('Your availability has been submitted to the hiring team!');
     } catch (err) {
       console.error('[CandidateAvailability] Submit error:', err);
+      setCaptchaToken('');
+      setCaptchaResetKey((prev) => prev + 1);
       toast.error(err?.response?.data?.message || 'Could not submit availability.');
     } finally {
       setSubmitting(false);
@@ -274,10 +335,16 @@ export default function CandidateAvailability() {
                   />
                 </div>
 
+                {captcha.enabled && captcha.siteKey && (
+                  <div className="pt-2 w-full flex justify-start">
+                    <TurnstileCaptcha key={captchaResetKey} siteKey={captcha.siteKey} onToken={setCaptchaToken} />
+                  </div>
+                )}
+
                 <div className="pt-2">
                   <Button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || (captcha.enabled && !captchaToken)}
                     className="w-full bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white gap-2 font-medium"
                   >
                     <Send className="h-4 w-4" />

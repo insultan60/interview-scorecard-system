@@ -18,6 +18,7 @@ const scoringRoutes = require('./routes/scoring');
 const settingsRoutes = require('./routes/settings');
 const auditRoutes = require('./routes/audit');
 const userRoutes = require('./routes/users');
+const departmentRoutes = require('./routes/departments');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -66,6 +67,7 @@ app.use('/api/scoring', scoringRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/departments', departmentRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

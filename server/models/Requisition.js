@@ -62,6 +62,15 @@ const temporaryDetailsSchema = new mongoose.Schema({
   workingHours: { type: String, default: '' },
 }, { _id: false });
 
+const interviewAvailabilitySchema = new mongoose.Schema({
+  startDate: { type: Date, default: null },
+  endDate: { type: Date, default: null },
+  startTime: { type: String, default: '10:00' },
+  endTime: { type: String, default: '17:00' },
+  timezone: { type: String, default: 'UTC' },
+  notes: { type: String, default: '' },
+}, { _id: false });
+
 const requisitionSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true, minlength: 5, index: true },   // e.g., "Sales Executive / Closer"
   employmentType: {
@@ -95,6 +104,7 @@ const requisitionSchema = new mongoose.Schema({
     default: 'open',
     index: true,
   },
+  departmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', index: true },
   pipelineTemplateId: { type: mongoose.Schema.Types.ObjectId, ref: 'PipelineTemplate' },
   pipelineTemplateName: { type: String },
   // Snapshot of stages at creation, so later template edits don't mutate an open req
@@ -104,6 +114,7 @@ const requisitionSchema = new mongoose.Schema({
   maybeThreshold: { type: Number, default: 3.0, min: 1, max: 5 },
   initialScreeningCriteria: [screeningCriteriaItemSchema],
   questionnaire: [questionnaireItemSchema],
+  interviewAvailability: { type: interviewAvailabilitySchema, default: undefined },
   applicationDeadline: { type: Date, default: null },
   aiScreeningEnabled: { type: Boolean, default: true },
   closedAt: Date,                                          // Drives retention purge

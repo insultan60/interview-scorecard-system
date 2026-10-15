@@ -2,7 +2,7 @@ import RichTextViewer from '../components/RichTextViewer';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil } from 'lucide-react';
+import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil, Building2 } from 'lucide-react';
 import api from '../hooks/useApi';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
@@ -45,6 +45,31 @@ const DECISION_BADGE = {
 
 const STATUS_LABEL = { open: 'Open', paused: 'Paused', on_hold: 'Paused', closed: 'Closed', draft: 'Draft' };
 const EMPLOYMENT_LABEL = { full_time: 'Full-Time', part_time: 'Part-Time', contract: 'Contract', internship: 'Internship', temporary: 'Temporary' };
+
+const PER_PAGE_OPTIONS = [10, 20, 50, 100];
+const DEFAULT_PAGE_SIZE = 10;
+const PER_PAGE_STORAGE_KEY = 'requisition_candidates_per_page';
+
+function getStoredPageSize() {
+  if (typeof window === 'undefined') return DEFAULT_PAGE_SIZE;
+  try {
+    const saved = localStorage.getItem(PER_PAGE_STORAGE_KEY) || localStorage.getItem('candidates_per_page');
+    const parsed = Number(saved);
+    if (PER_PAGE_OPTIONS.includes(parsed)) return parsed;
+  } catch {
+    // fallback
+  }
+  return DEFAULT_PAGE_SIZE;
+}
+
+function setStoredPageSize(size) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PER_PAGE_STORAGE_KEY, String(size));
+  } catch {
+    // ignore
+  }
+}
 
 export default function RequisitionDetail() {
   const { id } = useParams();
@@ -213,9 +238,9 @@ export default function RequisitionDetail() {
     }
   }
 
-  const PAGE_SIZE = 10;
+  const [pageSize, setPageSize] = useState(() => getStoredPageSize());
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
+  const [pagination, setPagination] = useState(() => ({ total: 0, page: 1, limit: getStoredPageSize(), totalPages: 1 }));
 
   function openEditCandidate(candidate) {
     if (!candidate) return;
@@ -280,7 +305,7 @@ export default function RequisitionDetail() {
     setPage(1);
   }
 
-  async function load(targetPage = page) {
+  async function load(targetPage = page, targetLimit = pageSize) {
     const requestId = ++latestLoadRef.current;
     const isInitialLoad = !data;
     if (isInitialLoad) setLoading(true);
@@ -289,7 +314,7 @@ export default function RequisitionDetail() {
     try {
       const params = {
         page: targetPage,
-        limit: PAGE_SIZE,
+        limit: targetLimit,
         search: debouncedCandidateSearch.trim() || undefined,
         disposition: dispositionFilters.length ? dispositionFilters.join(',') : 'none',
         finalDecision: finalDecisionFilters.length ? finalDecisionFilters.join(',') : 'none',
@@ -323,6 +348,15 @@ export default function RequisitionDetail() {
         setFetchingCandidates(false);
       }
     }
+  }
+
+  function handlePageSizeChange(val) {
+    const nextSize = Number(val);
+    if (!PER_PAGE_OPTIONS.includes(nextSize)) return;
+    setStoredPageSize(nextSize);
+    setPageSize(nextSize);
+    setPage(1);
+    load(1, nextSize);
   }
 
   useEffect(() => {
@@ -495,7 +529,15 @@ export default function RequisitionDetail() {
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold leading-tight text-foreground sm:text-2xl">{requisition.title}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-semibold leading-tight text-foreground sm:text-2xl">{requisition.title}</h1>
+            {requisition.departmentId?.name && (
+              <Badge variant="outline" className="text-xs font-normal text-slate-600 bg-slate-50 border-slate-200">
+                <Building2 className="h-3 w-3 mr-1 text-slate-400" />
+                {requisition.departmentId.name}
+              </Badge>
+            )}
+          </div>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {enabledStages} stage{enabledStages === 1 ? '' : 's'} · {applications.length} candidate{applications.length === 1 ? '' : 's'}
           </p>
@@ -515,6 +557,17 @@ export default function RequisitionDetail() {
             </SelectContent>
           </Select>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/requisitions/${requisition._id}/edit`)}
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-slate-900 border-slate-300"
+        >
+          <Pencil className="h-3.5 w-3.5 text-slate-500" />
+          Edit Job Opening
+        </Button>
 
         <Button
           type="button"
@@ -578,6 +631,12 @@ export default function RequisitionDetail() {
             <h3 className="text-sm font-semibold">Employment details</h3>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Employment type</p><p className="mt-1 text-sm font-medium">{EMPLOYMENT_LABEL[requisition.employmentType] || requisition.employmentType}</p></div>
+              {requisition.departmentId?.name && (
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Department</p>
+                  <p className="mt-1 text-sm font-medium">{requisition.departmentId.name}</p>
+                </div>
+              )}
               {employmentDetails.filter(([, value]) => value).map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>)}
             </div>
           </section>
@@ -658,8 +717,8 @@ export default function RequisitionDetail() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-40">
-                    Disposition ({dispositionFilters.length}/4)
+                  <Button type="button" variant="outline" size="sm" className="h-8 w-full justify-between text-xs sm:w-44">
+                    AI Decision ({dispositionFilters.length}/4)
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -770,7 +829,7 @@ export default function RequisitionDetail() {
                       <TableHead className="w-32 font-semibold text-center">Availability</TableHead>
                       <TableHead className="min-w-[260px] font-semibold text-center">Hiring Stages</TableHead>
                       <TableHead className="w-28 text-center font-semibold">Weighted Total</TableHead>
-                      <TableHead className="w-28 text-center font-semibold">Disposition</TableHead>
+                      <TableHead className="min-w-[135px] w-36 text-center font-semibold whitespace-nowrap">AI Decision</TableHead>
                       <TableHead className="min-w-[150px] font-semibold text-center">Final Decision</TableHead>
                       <TableHead className="w-24 text-center font-semibold">Actions</TableHead>
                     </TableRow>
@@ -822,9 +881,9 @@ export default function RequisitionDetail() {
                             </button>
                           </TableCell>
 
-                          <TableCell className="align-middle">
+                          <TableCell className="text-center align-middle">
                             {app.opportunityDuration ? (
-                              <Badge variant="secondary" className="font-normal text-xs bg-slate-100 text-slate-700 border-slate-200">
+                              <Badge variant="secondary" className="font-normal text-[11px] bg-slate-100 text-slate-700 border-slate-200">
                                 {app.opportunityDuration}
                               </Badge>
                             ) : (
@@ -849,7 +908,7 @@ export default function RequisitionDetail() {
                             {formatScore(weightedTotal)}
                           </TableCell>
 
-                          <TableCell className="text-center align-middle">
+                          <TableCell className="text-center align-middle whitespace-nowrap">
                             {disposition ? (
                               <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
                                 {formatDisposition(disposition)}
@@ -1039,36 +1098,54 @@ export default function RequisitionDetail() {
                 </Table>
               </div>
           )}
-              {!loading && pagination.total > PAGE_SIZE && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+              {!loading && pagination.total > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
                   <p className="text-xs text-muted-foreground">
-                    Showing {(pagination.page - 1) * PAGE_SIZE + 1}–{Math.min(pagination.page * PAGE_SIZE, pagination.total)} of {pagination.total} candidates
+                    Showing {(pagination.page - 1) * pagination.limit + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} candidate{pagination.total === 1 ? '' : 's'}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => load(Math.max(1, pagination.page - 1))}
-                      disabled={fetchingCandidates || pagination.page <= 1}
-                      className="h-7 text-xs"
-                    >
-                      Previous
-                    </Button>
-                    <span className="text-xs text-muted-foreground">Page {pagination.page} of {pagination.totalPages}</span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => load(Math.min(pagination.totalPages, pagination.page + 1))}
-                      disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
-                      className="h-7 text-xs"
-                    >
-                      Next
-                    </Button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span>Per page:</span>
+                      <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                        <SelectTrigger className="h-8 w-[72px] text-xs bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="min-w-[72px] w-[72px]">
+                          {PER_PAGE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt} value={String(opt)} className="text-xs">
+                              {opt}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => load(Math.max(1, pagination.page - 1))}
+                        disabled={fetchingCandidates || pagination.page <= 1}
+                        className="h-8 text-xs"
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs text-muted-foreground">Page {pagination.page} of {Math.max(1, pagination.totalPages)}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => load(Math.min(pagination.totalPages, pagination.page + 1))}
+                        disabled={fetchingCandidates || pagination.page >= pagination.totalPages}
+                        className="h-8 text-xs"
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 </div>
-                )}
+              )}
         </CardContent>
       </Card>
       </div>
