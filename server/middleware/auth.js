@@ -46,10 +46,11 @@ function requireRole(...allowedRoles) {
     if (!req.user) {
       return res.status(401).json({ error: 'AUTH_ERROR', message: 'Not authenticated.' });
     }
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to perform this action.' });
+    // Owner role has unrestricted access across all routes
+    if (req.user.role === 'owner' || allowedRoles.includes(req.user.role)) {
+      return next();
     }
-    return next();
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'You do not have permission to perform this action.' });
   };
 }
 

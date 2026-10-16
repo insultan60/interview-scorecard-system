@@ -13,8 +13,8 @@ const INPUT_TYPES = ['transcript', 'artifact', 'pass_fail', 'status_only', 'manu
 /** Employment types for requisitions. */
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'internship', 'temporary'];
 
-/** User roles (single role field; full RBAC is Phase 2). */
-const USER_ROLES = ['admin', 'hiring_manager', 'recruiter', 'interviewer'];
+/** User roles: owner (super-admin), admin, hiring_manager, recruiter, interviewer. */
+const USER_ROLES = ['owner', 'admin', 'hiring_manager', 'recruiter', 'interviewer'];
 
 /** Application-level per-stage progress status. */
 const STAGE_PROGRESS_STATUS = [

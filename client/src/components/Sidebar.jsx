@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Building2, GitBranch, Users, ScrollText,
-  Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight, User,
+  Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight, User, UserCog,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import redstarIcon from '../assets/redstar-icon.png';
@@ -13,8 +13,9 @@ const NAV_ITEMS = [
   { to: '/departments', label: 'Departments', icon: Building2 },
   { to: '/pipelines', label: 'Hiring Stages', icon: GitBranch },
   { to: '/candidates', label: 'Candidates', icon: Users },
+  { to: '/users', label: 'Users & Roles', icon: UserCog, roles: ['owner', 'admin'] },
   { to: '/audit-log', label: 'Audit Log', icon: ScrollText },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon, roles: ['owner', 'admin'] },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = 'interview_scorecard_sidebar_collapsed';
@@ -34,6 +35,21 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
       return next;
     });
+  };
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (!item.roles) return true;
+    return item.roles.includes(user?.role);
+  });
+
+  const formatRoleLabel = (r) => {
+    if (!r) return 'User';
+    if (r === 'owner') return 'Owner';
+    if (r === 'admin') return 'Admin';
+    if (r === 'hiring_manager') return 'Hiring Manager';
+    if (r === 'recruiter') return 'Recruiter';
+    if (r === 'interviewer') return 'Interviewer';
+    return r.replace('_', ' ');
   };
 
   return (
@@ -86,7 +102,7 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
 
       {/* Nav items */}
       <nav className="flex-1 space-y-1.5 px-2 py-3 overflow-y-auto overflow-x-hidden">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+        {visibleNavItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -114,7 +130,7 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
       {/* Footer / User Profile & Logout */}
       <div className="border-t border-gray-200 p-2.5">
         <div
-          title={isCollapsed ? `${user?.name || 'User'} (${user?.role || 'Admin'})` : undefined}
+          title={isCollapsed ? `${user?.name || 'User'} (${formatRoleLabel(user?.role)})` : undefined}
           className={`flex items-center gap-2.5 rounded-lg p-2 bg-white mb-2 ${isCollapsed ? 'md:justify-center md:px-0' : ''
             }`}
         >
@@ -123,7 +139,15 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
           </div>
           <div className={`min-w-0 flex-1 ${isCollapsed ? 'md:hidden' : 'block'}`}>
             <div className="truncate text-xs font-bold text-gray-900 leading-snug">{user?.name || 'User'}</div>
-            <div className="truncate text-[11px] text-gray-400 capitalize">{user?.role || 'Admin'}</div>
+            <div className="truncate text-[11px] text-gray-500 font-medium">
+              <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+                user?.role === 'owner' ? 'bg-purple-100 text-purple-700' :
+                user?.role === 'admin' ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-600'
+              }`}>
+                {formatRoleLabel(user?.role)}
+              </span>
+            </div>
           </div>
         </div>
 

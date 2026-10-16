@@ -16,25 +16,34 @@ const Setting = require("../models/Setting");
 
 async function seedAdminUser() {
   const email = process.env.SEED_ADMIN_EMAIL || "admin@example.com";
+  const hasOwner = await User.exists({ role: "owner" });
   const existing = await User.findOne({ email });
+
   if (existing) {
-    logger.info(`[Seed] Admin user already exists (${email}), skipping.`);
+    if (!hasOwner && existing.role === "admin") {
+      existing.role = "owner";
+      await existing.save();
+      logger.info(`[Seed] Upgraded default user (${email}) to owner role.`);
+    } else {
+      logger.info(`[Seed] Default user already exists (${email}) with role ${existing.role}, skipping.`);
+    }
     return existing;
   }
 
   const name = process.env.SEED_ADMIN_NAME || "Admin";
   const password = process.env.SEED_ADMIN_PASSWORD || "change_this_password";
   const passwordHash = await bcrypt.hash(password, 10);
+  const initialRole = hasOwner ? "admin" : "owner";
 
   const admin = await User.create({
     name,
     email,
     passwordHash,
-    role: "admin",
+    role: initialRole,
     active: true,
   });
 
-  logger.info(`[Seed] Created default admin user: ${email}`);
+  logger.info(`[Seed] Created default user: ${email} with role: ${initialRole}`);
   return admin;
 }
 
