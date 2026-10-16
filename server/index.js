@@ -8,6 +8,7 @@ const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { startRetentionSchedule } = require('./services/retentionService');
+const { getCaptchaConfig } = require('./services/captchaService');
 
 const authRoutes = require('./routes/auth');
 const requisitionRoutes = require('./routes/requisitions');
@@ -22,6 +23,16 @@ const departmentRoutes = require('./routes/departments');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+/**
+ * Behind a hosting proxy (Render, nginx) every request appears to come from the
+ * proxy unless Express is told to trust it — which would make per-visitor
+ * rate limits (and req.ip generally) meaningless. TRUST_PROXY_HOPS = number of
+ * proxies in front of the app; defaults to 1 in production, off locally so a
+ * client can't spoof its address with an X-Forwarded-For header.
+ */
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? (process.env.NODE_ENV === 'production' ? 1 : 0));
+if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
 
 app.use(helmet());
 
@@ -79,6 +90,9 @@ app.use(errorHandler);
 async function start() {
   try {
     await connectDB();
+    if (process.env.NODE_ENV === 'production' && !getCaptchaConfig().enabled) {
+      logger.warn('[Security] Cloudflare Turnstile is NOT configured (TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY). Public application forms have no bot protection and can be abused to consume AI spend and storage.');
+    }
     startRetentionSchedule();
     app.listen(PORT, () => {
       logger.info(`[Server] Listening on port ${PORT} (env=${process.env.NODE_ENV || 'development'})`);
