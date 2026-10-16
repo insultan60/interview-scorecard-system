@@ -226,6 +226,7 @@ const create = asyncHandler(async (req, res) => {
 
   await assertPriorStagesApproved(requisition, applicationId, stageKey);
 
+  const isHrStage = stageKey === 'hr_interview' || stageConfig?.stageType === 'hr_interview' || String(stageKey).toLowerCase().includes('hr_interview');
   const interview = await Interview.create({
     applicationId,
     requisitionId: requisition._id,
@@ -233,6 +234,7 @@ const create = asyncHandler(async (req, res) => {
     meetingMode: meetingMode || 'online',
     provider: provider || 'google_meet',
     designatedScorerId: req.user._id,
+    candidateAvailability: isHrStage ? (application.candidateAvailability || undefined) : undefined,
   });
 
   application.currentStageKey = stageKey;

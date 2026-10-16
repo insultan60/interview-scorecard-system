@@ -9,6 +9,13 @@ const applicationSchema = new mongoose.Schema({
   source: { type: String, enum: ['public_link', 'manual'], default: 'manual' },
   opportunityDuration: String,
   questionnaireAnswers: mongoose.Schema.Types.Mixed,
+  candidateAvailability: {
+    preferredDate: String,
+    startTime: String,
+    endTime: String,
+    notes: String,
+    submittedAt: Date,
+  },
   stageProgress: [{
     stageKey: String,
     status: { type: String, enum: STAGE_PROGRESS_STATUS, default: 'pending' },

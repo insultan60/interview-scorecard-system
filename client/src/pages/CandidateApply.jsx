@@ -5,8 +5,12 @@ import toast from 'react-hot-toast';
 import api from '@/hooks/useApi';
 import { sendApplicationConfirmationEmailClient } from '../services/emailService';
 import {
-  Briefcase, Calendar, FileText, Upload, AlertCircle, Sparkles, ArrowRight, MapPin, MessageCircle, Globe, ExternalLink, Users,
+  Briefcase, Calendar as CalendarIcon, FileText, Upload, AlertCircle, Sparkles, ArrowRight, MapPin, MessageCircle, Globe, ExternalLink, Users, Clock, CheckCircle2,
 } from 'lucide-react';
+import dayjs from 'dayjs';
+import { TimePicker } from '@/components/ui/time-picker';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +30,42 @@ const formatDeadline = (date) => {
     day: 'numeric',
     timeZone: 'UTC',
   }).format(d);
-}
+};
+
+const formatDisplayTime = (t) => {
+  if (!t || typeof t !== 'string' || !t.includes(':')) return t || '';
+  const [h, m] = t.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m || 0).padStart(2, '0')} ${period}`;
+};
+
+const validateCandidateAvailability = (hrAvail, date, startTime, endTime) => {
+  if (!hrAvail || !hrAvail.startDate || !hrAvail.endDate) return null;
+  if (!date) return 'Please select your preferred interview date.';
+  const hrStartStr = String(hrAvail.startDate).slice(0, 10);
+  const hrEndStr = String(hrAvail.endDate).slice(0, 10);
+  if (date < hrStartStr || date > hrEndStr) {
+    return `Interview date must be within ${hrStartStr} and ${hrEndStr}.`;
+  }
+  if (!startTime || !endTime) {
+    return 'Please select preferred interview start and end time.';
+  }
+  const toMinutes = (t) => {
+    if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+    const [h, m] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  if (toMinutes(endTime) <= toMinutes(startTime)) {
+    return 'Interview end time must be after start time.';
+  }
+  const hrStartTime = hrAvail.startTime || '10:00';
+  const hrEndTime = hrAvail.endTime || '17:00';
+  if (toMinutes(startTime) < toMinutes(hrStartTime) || toMinutes(endTime) > toMinutes(hrEndTime)) {
+    return `Selected interview time must be within available hours (${formatDisplayTime(hrStartTime)} – ${formatDisplayTime(hrEndTime)}).`;
+  }
+  return null;
+};
 
 const TURNSTILE_SCRIPT_ID = 'cloudflare-turnstile-script';
 
@@ -110,6 +149,10 @@ export default function CandidateApply() {
   const [opportunityCustom, setOpportunityCustom] = useState('');
   const [answers, setAnswers] = useState({});
   const [resumeFile, setResumeFile] = useState(null);
+  const [candidateDate, setCandidateDate] = useState('');
+  const [candidateStartTime, setCandidateStartTime] = useState('');
+  const [candidateEndTime, setCandidateEndTime] = useState('');
+  const [candidateNotes, setCandidateNotes] = useState('');
   const [formPart, setFormPart] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -143,6 +186,29 @@ export default function CandidateApply() {
     if (id) fetchPublicRequisition();
   }, [id]);
 
+  useEffect(() => {
+    if (requisition?.interviewAvailability?.startDate) {
+      const hrAvail = requisition.interviewAvailability;
+      const startStr = hrAvail.startDate ? String(hrAvail.startDate).slice(0, 10) : '';
+      if (startStr && !candidateDate) {
+        setCandidateDate(startStr);
+      }
+      const hrStartTime = hrAvail.startTime || '10:00';
+      const hrEndTime = hrAvail.endTime || '17:00';
+      const toMinutes = (t) => {
+        if (!t || typeof t !== 'string' || !t.includes(':')) return null;
+        const [h, m] = t.split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      if (!candidateStartTime || toMinutes(candidateStartTime) < toMinutes(hrStartTime) || toMinutes(candidateStartTime) > toMinutes(hrEndTime)) {
+        setCandidateStartTime(hrStartTime);
+      }
+      if (!candidateEndTime || toMinutes(candidateEndTime) < toMinutes(hrStartTime) || toMinutes(candidateEndTime) > toMinutes(hrEndTime)) {
+        setCandidateEndTime(hrEndTime);
+      }
+    }
+  }, [requisition]);
+
   function handleAnswerChange(question, value) {
     setAnswers((prev) => ({ ...prev, [question]: value }));
   }
@@ -153,6 +219,10 @@ export default function CandidateApply() {
     setPhone('');
     setAnswers({});
     setResumeFile(null);
+    setCandidateDate('');
+    setCandidateStartTime('');
+    setCandidateEndTime('');
+    setCandidateNotes('');
     setFormPart(1);
     setCaptchaToken('');
   }
@@ -167,6 +237,23 @@ export default function CandidateApply() {
       toast.error('Phone number must contain exactly 11 digits.');
       return;
     }
+    if (opportunityOption === 'custom' && !opportunityCustom.trim()) {
+      toast.error('Please enter your custom opportunity availability duration.');
+      return;
+    }
+
+    // Validate interview availability FIRST before resume upload so feedback matches visual order
+    const availError = validateCandidateAvailability(
+      requisition?.interviewAvailability,
+      candidateDate,
+      candidateStartTime,
+      candidateEndTime
+    );
+    if (availError) {
+      toast.error(availError);
+      return;
+    }
+
     if (!resumeFile) {
       toast.error('Please upload your CV / Resume file (PDF).');
       return;
@@ -180,6 +267,7 @@ export default function CandidateApply() {
       toast.error('Your CV / Resume must be 5 MB or smaller.');
       return;
     }
+
     setFormPart(2);
   }
 
@@ -192,6 +280,18 @@ export default function CandidateApply() {
 
     if (!/^\d{11}$/.test(phone)) {
       toast.error('Phone number must contain exactly 11 digits.');
+      return;
+    }
+
+    // Validate interview availability FIRST before questionnaire and CV upload
+    const availError = validateCandidateAvailability(
+      requisition?.interviewAvailability,
+      candidateDate,
+      candidateStartTime,
+      candidateEndTime
+    );
+    if (availError) {
+      toast.error(availError);
       return;
     }
 
@@ -245,6 +345,14 @@ export default function CandidateApply() {
       formData.append('opportunityDuration', durationText);
       formData.append('questionnaireAnswers', JSON.stringify(answers));
       formData.append('resume', resumeFile);
+      if (candidateDate) {
+        formData.append('candidateAvailability', JSON.stringify({
+          preferredDate: candidateDate,
+          startTime: candidateStartTime,
+          endTime: candidateEndTime,
+          notes: candidateNotes.trim(),
+        }));
+      }
       if (captcha.enabled) formData.append('captchaToken', captchaToken);
 
       const res = await api.post(`/requisitions/${id}/apply`, formData, {
@@ -326,7 +434,7 @@ export default function CandidateApply() {
           </div>
           {requisition.applicationDeadline && (
             <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3">
-              <Calendar className="h-3.5 w-3.5" />
+              <CalendarIcon className="h-3.5 w-3.5" />
               {isExpired ? 'Deadline Passed' : `Deadline: ${formatDeadline(requisition.applicationDeadline)}`}
             </Badge>
           )}
@@ -521,6 +629,161 @@ export default function CandidateApply() {
                       />
                     )}
                   </div>
+
+                  {/* Candidate Interview Availability Selection */}
+                  {requisition?.interviewAvailability?.startDate && requisition?.interviewAvailability?.endDate && (
+                    <div className="rounded-xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
+                      {/* Section Header */}
+                      <div className="border-b border-slate-100 pb-3 space-y-0.5">
+                        <h4 className="text-sm font-semibold text-slate-900 leading-snug">
+                          If you are shortlisted, please select your interview availability <span className="text-red-500">*</span>
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Select your preferred date and time slot within the hiring team's available interview window.
+                        </p>
+                      </div>
+
+                      {/* Available Window Info Box */}
+                      <div className="rounded-lg bg-slate-50 border border-slate-200/70 p-3 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            <CalendarIcon className="h-3.5 w-3.5 text-[#d21e2b]" /> Available Window
+                          </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-medium px-2.5 py-0.5 shadow-none">
+                              {dayjs(requisition.interviewAvailability.startDate).format('MMM D, YYYY')} – {dayjs(requisition.interviewAvailability.endDate).format('MMM D, YYYY')}
+                            </Badge>
+                            <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-medium px-2.5 py-0.5 shadow-none">
+                              {formatDisplayTime(requisition.interviewAvailability.startTime || '10:00')} – {formatDisplayTime(requisition.interviewAvailability.endTime || '17:00')}
+                            </Badge>
+                          </div>
+                        </div>
+                        {requisition.interviewAvailability.notes && (
+                          <p className="text-xs text-slate-500 italic bg-white/70 border border-slate-100 rounded px-2.5 py-1">
+                            Note: {requisition.interviewAvailability.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Pickers Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Preferred Date */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold uppercase tracking-wider text-slate-700 block">
+                            Preferred Date <span className="text-red-500">*</span>
+                          </Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start font-normal text-left bg-white border-slate-200 text-sm h-10 shadow-sm hover:bg-slate-50"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4 text-slate-400" />
+                                {candidateDate
+                                  ? dayjs(candidateDate).format('ddd, MMM D, YYYY')
+                                  : 'Pick a preferred date'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={candidateDate ? dayjs(candidateDate).toDate() : undefined}
+                                disabled={(date) => {
+                                  const dStr = dayjs(date).format('YYYY-MM-DD');
+                                  const startStr = String(requisition.interviewAvailability.startDate).slice(0, 10);
+                                  const endStr = String(requisition.interviewAvailability.endDate).slice(0, 10);
+                                  return dStr < startStr || dStr > endStr;
+                                }}
+                                onSelect={(date) => {
+                                  if (date) {
+                                    setCandidateDate(dayjs(date).format('YYYY-MM-DD'));
+                                  }
+                                }}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        {/* Start and End Times */}
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-slate-700 block">
+                              Start Time <span className="text-red-500">*</span>
+                            </Label>
+                            <TimePicker
+                              value={candidateStartTime || requisition.interviewAvailability.startTime || '10:00'}
+                              onChange={(val) => setCandidateStartTime(val)}
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-slate-700 block">
+                              End Time <span className="text-red-500">*</span>
+                            </Label>
+                            <TimePicker
+                              value={candidateEndTime || requisition.interviewAvailability.endTime || '17:00'}
+                              onChange={(val) => setCandidateEndTime(val)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Real-time Status / Validation Feedback */}
+                      {(() => {
+                        const toMins = (t) => {
+                          if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+                          const [h, m] = t.split(':').map(Number);
+                          return h * 60 + m;
+                        };
+                        const hrStart = requisition.interviewAvailability.startTime || '10:00';
+                        const hrEnd = requisition.interviewAvailability.endTime || '17:00';
+                        if (candidateStartTime && candidateEndTime) {
+                          if (toMins(candidateEndTime) <= toMins(candidateStartTime)) {
+                            return (
+                              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5 flex items-center gap-1.5">
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                                <span>Daily start time cannot be after or equal to end time.</span>
+                              </div>
+                            );
+                          }
+                          if (toMins(candidateStartTime) < toMins(hrStart) || toMins(candidateEndTime) > toMins(hrEnd)) {
+                            return (
+                              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex items-center gap-1.5">
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                                <span>Selected time must be within available hours ({formatDisplayTime(hrStart)} – {formatDisplayTime(hrEnd)}).</span>
+                              </div>
+                            );
+                          }
+                        }
+                        if (candidateDate && candidateStartTime && candidateEndTime) {
+                          return (
+                            <div className="text-xs text-emerald-800 bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-2.5 flex items-center gap-1.5">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span>
+                                Selected: <strong>{dayjs(candidateDate).format('dddd, MMM D, YYYY')}</strong> from <strong>{formatDisplayTime(candidateStartTime)}</strong> to <strong>{formatDisplayTime(candidateEndTime)}</strong>
+                              </span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      {/* Availability Notes */}
+                      <div className="space-y-1.5">
+                        <Label htmlFor="candidate-avail-notes" className="text-xs font-semibold uppercase tracking-wider text-slate-700 block">
+                          Availability Notes (Optional)
+                        </Label>
+                        <Input
+                          id="candidate-avail-notes"
+                          type="text"
+                          placeholder="e.g. Morning preferred, or available after 2 PM"
+                          value={candidateNotes}
+                          onChange={(e) => setCandidateNotes(e.target.value)}
+                          className="bg-white text-sm h-10 border-slate-200 shadow-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>}
 
                 {/* Questionnaire Questions */}

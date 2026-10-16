@@ -881,9 +881,9 @@ export default function RequisitionDetail() {
                             </button>
                           </TableCell>
 
-                          <TableCell className="align-middle">
+                          <TableCell className="text-center align-middle">
                             {app.opportunityDuration ? (
-                              <Badge variant="secondary" className="font-normal text-xs bg-slate-100 text-slate-700 border-slate-200">
+                              <Badge variant="secondary" className="font-normal text-[11px] bg-slate-100 text-slate-700 border-slate-200">
                                 {app.opportunityDuration}
                               </Badge>
                             ) : (

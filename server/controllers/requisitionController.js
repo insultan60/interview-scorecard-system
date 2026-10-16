@@ -217,6 +217,39 @@ function normalizeQuestionnaire(raw) {
   return [];
 }
 
+function parseTimeToMinutes(t) {
+  if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function formatTime12h(t) {
+  if (!t || typeof t !== 'string' || !t.includes(':')) return t || '';
+  const [h, m] = t.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m || 0).padStart(2, '0')} ${period}`;
+}
+
+/** Normalizes HR interview availability window. */
+function normalizeInterviewAvailability(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const startDate = raw.startDate ? new Date(raw.startDate) : null;
+  const endDate = raw.endDate ? new Date(raw.endDate) : null;
+  if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return undefined;
+  }
+  return {
+    startDate,
+    endDate,
+    startTime: raw.startTime ? String(raw.startTime).trim() : '10:00',
+    endTime: raw.endTime ? String(raw.endTime).trim() : '17:00',
+    timezone: raw.timezone ? String(raw.timezone).trim() : 'UTC',
+    notes: raw.notes ? String(raw.notes).trim() : '',
+  };
+}
+
+
 /** Normalizes the two supported, structured screening criteria. */
 function normalizeInitialScreeningCriteria(raw) {
   const items = Array.isArray(raw) ? raw : [];
@@ -353,7 +386,7 @@ const create = asyncHandler(async (req, res) => {
   const {
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, status, departmentId,
+    initialScreeningCriteria, questionnaire, interviewAvailability, applicationDeadline, aiScreeningEnabled, status, departmentId,
   } = req.body;
 
   const missingFields = [];
@@ -416,6 +449,16 @@ const create = asyncHandler(async (req, res) => {
   const defaultHire = await getSettingValue('hireThreshold', 3.5);
   const defaultMaybe = await getSettingValue('maybeThreshold', 3.0);
 
+  const normalizedInterviewAvailability = normalizeInterviewAvailability(interviewAvailability);
+  if (normalizedInterviewAvailability) {
+    if (normalizedInterviewAvailability.endDate < normalizedInterviewAvailability.startDate) {
+      throw new ValidationError(['interviewAvailability.endDate'], 'Interview availability end date cannot be earlier than start date.');
+    }
+    if (parseTimeToMinutes(normalizedInterviewAvailability.endTime) <= parseTimeToMinutes(normalizedInterviewAvailability.startTime)) {
+      throw new ValidationError(['interviewAvailability.endTime'], 'Interview availability end time must be after start time.');
+    }
+  }
+
   const requisition = await Requisition.create({
     title: normalizedTitle,
     employmentType: employmentType || 'full_time',
@@ -429,6 +472,7 @@ const create = asyncHandler(async (req, res) => {
     maybeThreshold: maybeThreshold ?? defaultMaybe,
     initialScreeningCriteria: normalizeInitialScreeningCriteria(initialScreeningCriteria),
     questionnaire: normalizeQuestionnaire(questionnaire),
+    interviewAvailability: normalizedInterviewAvailability,
     applicationDeadline: applicationDeadline ? new Date(applicationDeadline) : null,
     aiScreeningEnabled: aiScreeningEnabled !== undefined ? Boolean(aiScreeningEnabled) : true,
     status: status || 'open',
@@ -636,13 +680,13 @@ const update = asyncHandler(async (req, res) => {
   const {
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     location, workplaceType, officeLocation, remoteRegion, jobDescription, status, hireThreshold, maybeThreshold, weights,
-    initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId, pipelineTemplateId,
+    initialScreeningCriteria, questionnaire, interviewAvailability, applicationDeadline, aiScreeningEnabled, departmentId, pipelineTemplateId,
   } = req.body;
 
   const hasNonStatusChanges = [
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
     location, workplaceType, officeLocation, remoteRegion, jobDescription, hireThreshold, maybeThreshold,
-    weights, initialScreeningCriteria, questionnaire, applicationDeadline, aiScreeningEnabled, departmentId, pipelineTemplateId,
+    weights, initialScreeningCriteria, questionnaire, interviewAvailability, applicationDeadline, aiScreeningEnabled, departmentId, pipelineTemplateId,
   ].some((value) => value !== undefined);
   if (requisition.status === 'closed' && (status !== 'open' || hasNonStatusChanges)) {
     const error = new ValidationError(['status'], 'This requisition is closed and read-only. Reopen it before making changes.');
@@ -709,6 +753,22 @@ const update = asyncHandler(async (req, res) => {
       } catch (scErr) {
         logger.warn(`[Requisition] Questionnaire scorecard sync error: ${scErr.message}`);
       }
+    }
+  }
+  if (interviewAvailability !== undefined) {
+    if (interviewAvailability === null || interviewAvailability === '') {
+      requisition.interviewAvailability = undefined;
+    } else {
+      const normalized = normalizeInterviewAvailability(interviewAvailability);
+      if (normalized) {
+        if (normalized.endDate < normalized.startDate) {
+          throw new ValidationError(['interviewAvailability.endDate'], 'Interview availability end date cannot be earlier than start date.');
+        }
+        if (parseTimeToMinutes(normalized.endTime) <= parseTimeToMinutes(normalized.startTime)) {
+          throw new ValidationError(['interviewAvailability.endTime'], 'Interview availability end time must be after start time.');
+        }
+      }
+      requisition.interviewAvailability = normalized;
     }
   }
   if (applicationDeadline !== undefined) requisition.applicationDeadline = applicationDeadline ? new Date(applicationDeadline) : null;
@@ -1160,7 +1220,7 @@ const getPublic = asyncHandler(async (req, res) => {
   }
 
   const requisition = await Requisition.findById(req.params.id)
-    .select('title employmentType fullTimeDetails partTimeDetails contractDetails internshipDetails temporaryDetails location workplaceType officeLocation remoteRegion jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt')
+    .select('title employmentType fullTimeDetails partTimeDetails contractDetails internshipDetails temporaryDetails location workplaceType officeLocation remoteRegion jobDescription initialScreeningCriteria questionnaire applicationDeadline aiScreeningEnabled status createdAt interviewAvailability')
     .lean();
 
   if (!requisition) {
@@ -1215,12 +1275,56 @@ const applyPublic = asyncHandler(async (req, res) => {
     });
   }
 
-  const { name, email, phone, questionnaireAnswers, opportunityDuration } = req.body;
+  const { name, email, phone, questionnaireAnswers, opportunityDuration, candidateAvailability } = req.body;
   if (!name || !email) {
     throw new ValidationError(['name', 'email'], 'Name and email are required to apply.');
   }
   if (!PHONE_NUMBER_PATTERN.test(String(phone || '').trim())) {
     throw new ValidationError(['phone'], 'Phone number must contain exactly 11 digits.');
+  }
+
+  let parsedCandidateAvailability = null;
+  if (candidateAvailability) {
+    if (typeof candidateAvailability === 'string') {
+      try { parsedCandidateAvailability = JSON.parse(candidateAvailability); } catch (e) { parsedCandidateAvailability = null; }
+    } else if (typeof candidateAvailability === 'object') {
+      parsedCandidateAvailability = candidateAvailability;
+    }
+  }
+
+  const hrAvail = requisition.interviewAvailability;
+  if (hrAvail && hrAvail.startDate && hrAvail.endDate) {
+    if (!parsedCandidateAvailability || !parsedCandidateAvailability.preferredDate) {
+      throw new ValidationError(['candidateAvailability'], 'Please select your interview availability.');
+    }
+
+    const prefDate = String(parsedCandidateAvailability.preferredDate).trim();
+    const hrStartStr = new Date(hrAvail.startDate).toISOString().slice(0, 10);
+    const hrEndStr = new Date(hrAvail.endDate).toISOString().slice(0, 10);
+
+    if (prefDate < hrStartStr || prefDate > hrEndStr) {
+      throw new ValidationError(['candidateAvailability.preferredDate'], `Preferred interview date must be between ${hrStartStr} and ${hrEndStr}.`);
+    }
+
+    const prefStartTime = String(parsedCandidateAvailability.startTime || '').trim();
+    const prefEndTime = String(parsedCandidateAvailability.endTime || '').trim();
+    const hrStartTime = hrAvail.startTime || '10:00';
+    const hrEndTime = hrAvail.endTime || '17:00';
+
+    if (!prefStartTime || !prefEndTime) {
+      throw new ValidationError(['candidateAvailability.time'], 'Please select preferred interview start and end times.');
+    }
+
+    if (parseTimeToMinutes(prefEndTime) <= parseTimeToMinutes(prefStartTime)) {
+      throw new ValidationError(['candidateAvailability.endTime'], 'Interview end time must be after start time.');
+    }
+
+    if (parseTimeToMinutes(prefStartTime) < parseTimeToMinutes(hrStartTime) || parseTimeToMinutes(prefEndTime) > parseTimeToMinutes(hrEndTime)) {
+      throw new ValidationError(
+        ['candidateAvailability.time'],
+        `Preferred interview time must be within the available window (${formatTime12h(hrStartTime)} – ${formatTime12h(hrEndTime)}).`
+      );
+    }
   }
 
   let parsedQAnswers = {};
@@ -1350,6 +1454,14 @@ const applyPublic = asyncHandler(async (req, res) => {
     passed: null,
   }));
 
+  const candidateAvailPayload = parsedCandidateAvailability ? {
+    preferredDate: String(parsedCandidateAvailability.preferredDate).trim(),
+    startTime: String(parsedCandidateAvailability.startTime).trim(),
+    endTime: String(parsedCandidateAvailability.endTime).trim(),
+    notes: String(parsedCandidateAvailability.notes || '').trim(),
+    submittedAt: new Date(),
+  } : undefined;
+
   let application = await Application.create({
     candidateId: candidate._id,
     requisitionId: requisition._id,
@@ -1358,6 +1470,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     stageProgress,
     questionnaireAnswers: parsedQAnswers,
     opportunityDuration: opportunityDuration ? String(opportunityDuration).trim() : undefined,
+    candidateAvailability: candidateAvailPayload,
   });
 
   // 3. Create Stage 1 Interview document

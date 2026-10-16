@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2, MoreVertical, Building2, Pencil,
+  Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2, MoreVertical, Building2, Pencil, Clock, Calendar as CalendarIcon,
 } from 'lucide-react';
 import api from '../hooks/useApi';
+import dayjs from 'dayjs';
+import { TimePicker } from '@/components/ui/time-picker';
+import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -85,6 +88,13 @@ const EMPTY_FORM = {
   pipelineTemplateId: '',
   departmentId: '',
   status: 'open',
+  interviewAvailability: {
+    startDate: '',
+    endDate: '',
+    startTime: '10:00',
+    endTime: '17:00',
+    notes: '',
+  },
 };
 
 export default function Requisitions() {
@@ -342,6 +352,13 @@ export default function Requisitions() {
               aiScreeningEnabled: r.aiScreeningEnabled !== undefined ? r.aiScreeningEnabled : true,
               pipelineTemplateId: r.pipelineTemplateId?._id || r.pipelineTemplateId || '',
               status: r.status || 'open',
+              interviewAvailability: r.interviewAvailability ? {
+                startDate: r.interviewAvailability.startDate ? String(r.interviewAvailability.startDate).slice(0, 10) : '',
+                endDate: r.interviewAvailability.endDate ? String(r.interviewAvailability.endDate).slice(0, 10) : '',
+                startTime: r.interviewAvailability.startTime || '10:00',
+                endTime: r.interviewAvailability.endTime || '17:00',
+                notes: r.interviewAvailability.notes || '',
+              } : EMPTY_FORM.interviewAvailability,
             });
           }
         } catch (err) {
@@ -457,6 +474,24 @@ export default function Requisitions() {
     if (!form.applicationDeadline) {
       toast.error('Application Deadline date is required.');
       return;
+    }
+
+    if (form.interviewAvailability?.startDate && form.interviewAvailability?.endDate) {
+      if (form.interviewAvailability.endDate < form.interviewAvailability.startDate) {
+        toast.error('Interview availability end date cannot be earlier than start date.');
+        return;
+      }
+    }
+    if (form.interviewAvailability?.startTime && form.interviewAvailability?.endTime) {
+      const toMinutes = (t) => {
+        if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + m;
+      };
+      if (toMinutes(form.interviewAvailability.startTime) >= toMinutes(form.interviewAvailability.endTime)) {
+        toast.error('Daily start time cannot be after or equal to end time.');
+        return;
+      }
     }
 
     if (!form.pipelineTemplateId) {
@@ -1517,6 +1552,161 @@ export default function Requisitions() {
                     <Label htmlFor="req-ai-screening" className="text-sm font-medium cursor-pointer">
                       Enable Automated AI Screening
                     </Label>
+                  </div>
+                </div>
+
+                {/* Interview Availability Window */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3.5 shadow-sm">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-[#d21e2b]" />
+                      <Label className="text-sm font-semibold text-slate-900">
+                        HR Interview Availability
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Select the dates and daily hours when you are available to interview candidates.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-700">
+                        Start Date
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start font-normal text-left bg-white text-xs h-9">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            {form.interviewAvailability?.startDate
+                              ? dayjs(form.interviewAvailability.startDate).format('ddd, MMM D, YYYY')
+                              : 'Pick a start date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={form.interviewAvailability?.startDate ? dayjs(form.interviewAvailability.startDate).toDate() : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                setForm((f) => ({
+                                  ...f,
+                                  interviewAvailability: {
+                                    ...f.interviewAvailability,
+                                    startDate: dayjs(date).format('YYYY-MM-DD'),
+                                  },
+                                }));
+                              }
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-700">
+                        End Date
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start font-normal text-left bg-white text-xs h-9">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            {form.interviewAvailability?.endDate
+                              ? dayjs(form.interviewAvailability.endDate).format('ddd, MMM D, YYYY')
+                              : 'Pick an end date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={form.interviewAvailability?.endDate ? dayjs(form.interviewAvailability.endDate).toDate() : undefined}
+                            disabled={form.interviewAvailability?.startDate ? { before: dayjs(form.interviewAvailability.startDate).toDate() } : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                setForm((f) => ({
+                                  ...f,
+                                  interviewAvailability: {
+                                    ...f.interviewAvailability,
+                                    endDate: dayjs(date).format('YYYY-MM-DD'),
+                                  },
+                                }));
+                              }
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-700 flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-slate-400" /> Daily Start Time
+                      </Label>
+                      <TimePicker
+                        value={form.interviewAvailability?.startTime || '10:00'}
+                        onChange={(val) => setForm({
+                          ...form,
+                          interviewAvailability: {
+                            ...form.interviewAvailability,
+                            startTime: val,
+                          },
+                        })}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-700 flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-slate-400" /> Daily End Time
+                      </Label>
+                      <TimePicker
+                        value={form.interviewAvailability?.endTime || '17:00'}
+                        onChange={(val) => setForm({
+                          ...form,
+                          interviewAvailability: {
+                            ...form.interviewAvailability,
+                            endTime: val,
+                          },
+                        })}
+                      />
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const toMinutes = (t) => {
+                      if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+                      const [h, m] = t.split(':').map(Number);
+                      return h * 60 + m;
+                    };
+                    const st = form.interviewAvailability?.startTime;
+                    const et = form.interviewAvailability?.endTime;
+                    if (st && et && toMinutes(st) >= toMinutes(et)) {
+                      return (
+                        <p className="text-xs text-red-600 font-medium bg-red-50 border border-red-200 rounded px-2.5 py-1.5">
+                          Daily start time cannot be after or equal to end time.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="req-avail-notes" className="text-xs font-medium text-slate-700">
+                      Notes (Optional)
+                    </Label>
+                    <Input
+                      id="req-avail-notes"
+                      placeholder="e.g. 30-minute virtual interviews via Google Meet."
+                      value={form.interviewAvailability?.notes || ''}
+                      onChange={(e) => setForm({
+                        ...form,
+                        interviewAvailability: {
+                          ...form.interviewAvailability,
+                          notes: e.target.value,
+                        },
+                      })}
+                      className="bg-white text-xs"
+                    />
                   </div>
                 </div>
 
