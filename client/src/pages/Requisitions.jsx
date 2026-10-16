@@ -511,7 +511,7 @@ export default function Requisitions() {
       }
     }
 
-    if (!form.pipelineTemplateId) {
+    if (!isEditPage && !form.pipelineTemplateId) {
       toast.error('Hiring Process Template is required.');
       return;
     }
@@ -1738,56 +1738,58 @@ export default function Requisitions() {
                   </div>
                 </div>
 
-                {/* Pipeline template picker */}
-                <div className="space-y-1.5 pt-1">
-                  <Label htmlFor="req-template">Hiring process template <span className="text-red-500">*</span></Label>
-                  <Popover open={templatePickerOpen} onOpenChange={setTemplatePickerOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="req-template" type="button" variant="outline" role="combobox"
-                        aria-expanded={templatePickerOpen}
-                        className="w-full justify-between font-normal"
-                      >
-                        <span className={selectedTemplate ? '' : 'text-muted-foreground'}>
-                          {selectedTemplate
-                            ? `${selectedTemplate.name}${selectedTemplate.isDefault ? ' (default)' : ''}`
-                            : 'Choose a hiring process…'}
-                        </span>
-                        <ChevronsUpDown className="opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Type to filter…" />
-                        <CommandList>
-                          <CommandEmpty>No hiring process matches.</CommandEmpty>
-                          <CommandGroup>
-                            {templates.map((t) => {
-                              const stageCount = (t.stages || []).filter((s) => s.enabled).length;
-                              return (
-                                <CommandItem
-                                  key={t._id}
-                                  value={t.name}
-                                  onSelect={() => {
-                                    setForm((f) => ({ ...f, pipelineTemplateId: t._id }));
-                                    setTemplatePickerOpen(false);
-                                  }}
-                                >
-                                  <Check className={form.pipelineTemplateId === t._id ? 'opacity-100' : 'opacity-0'} />
-                                  <span className="flex-1">{t.name}{t.isDefault ? ' (default)' : ''}</span>
-                                  <span className="text-xs text-muted-foreground">{stageCount} stages</span>
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  {selectedTemplate && (
-                    <p className="text-xs text-muted-foreground">{selectedTemplate.description}</p>
-                  )}
-                </div>
+                {/* Pipeline template picker (only when creating a new job opening) */}
+                {!isEditPage && (
+                  <div className="space-y-1.5 pt-1">
+                    <Label htmlFor="req-template">Hiring process template <span className="text-red-500">*</span></Label>
+                    <Popover open={templatePickerOpen} onOpenChange={setTemplatePickerOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="req-template" type="button" variant="outline" role="combobox"
+                          aria-expanded={templatePickerOpen}
+                          className="w-full justify-between font-normal"
+                        >
+                          <span className={selectedTemplate ? '' : 'text-muted-foreground'}>
+                            {selectedTemplate
+                              ? `${selectedTemplate.name}${selectedTemplate.isDefault ? ' (default)' : ''}`
+                              : 'Choose a hiring process…'}
+                          </span>
+                          <ChevronsUpDown className="opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Type to filter…" />
+                          <CommandList>
+                            <CommandEmpty>No hiring process matches.</CommandEmpty>
+                            <CommandGroup>
+                              {templates.map((t) => {
+                                const stageCount = (t.stages || []).filter((s) => s.enabled).length;
+                                return (
+                                  <CommandItem
+                                    key={t._id}
+                                    value={t.name}
+                                    onSelect={() => {
+                                      setForm((f) => ({ ...f, pipelineTemplateId: t._id }));
+                                      setTemplatePickerOpen(false);
+                                    }}
+                                  >
+                                    <Check className={form.pipelineTemplateId === t._id ? 'opacity-100' : 'opacity-0'} />
+                                    <span className="flex-1">{t.name}{t.isDefault ? ' (default)' : ''}</span>
+                                    <span className="text-xs text-muted-foreground">{stageCount} stages</span>
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {selectedTemplate && (
+                      <p className="text-xs text-muted-foreground">{selectedTemplate.description}</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex flex-col-reverse gap-2 border-t pt-5 sm:flex-row sm:justify-end">
                   <Button
