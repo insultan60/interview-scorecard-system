@@ -1535,12 +1535,32 @@ export default function Requisitions() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   <div className="space-y-1.5">
                     <Label htmlFor="req-deadline">Application Deadline <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="req-deadline"
-                      type="date"
-                      value={form.applicationDeadline}
-                      onChange={(e) => setForm({ ...form, applicationDeadline: e.target.value })}
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="req-deadline"
+                          type="button"
+                          variant="outline"
+                          className="w-full justify-start font-normal text-left bg-white text-xs h-9"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                          {form.applicationDeadline
+                            ? dayjs(form.applicationDeadline).format('ddd, MMM D, YYYY')
+                            : 'Pick an application deadline'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={form.applicationDeadline ? dayjs(form.applicationDeadline).toDate() : undefined}
+                          onSelect={(date) => {
+                            if (date) {
+                              setForm((f) => ({ ...f, applicationDeadline: dayjs(date).format('YYYY-MM-DD') }));
+                            }
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
                   <div className="flex items-center space-x-2 pt-6">
