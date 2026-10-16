@@ -597,10 +597,10 @@ const score = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/interviews/google/callback
- * One-time OAuth consent callback for obtaining a fresh Google refresh
- * token through the app itself (alternative to the OAuth Playground flow).
- * The full refresh token is logged server-side, not returned in the HTTP
- * response body, so it doesn't linger in browser history/dev tools.
+ * One-time OAuth consent callback (alternative to the OAuth Playground flow).
+ * The refresh token is a long-lived credential, so it is NEVER logged or
+ * returned in full — only a short preview is returned to confirm the exchange
+ * worked. To obtain a usable token, use the Google OAuth Playground.
  */
 const googleOAuthCallback = asyncHandler(async (req, res) => {
   const { code } = req.query;
@@ -614,12 +614,12 @@ const googleOAuthCallback = asyncHandler(async (req, res) => {
   const { tokens } = await client.getToken(code);
 
   if (tokens.refresh_token) {
-    logger.info(`[Interview] Google OAuth callback obtained a new refresh token: ${tokens.refresh_token}`);
+    logger.info('[Interview] Google OAuth callback completed; a refresh token was issued (value not logged).');
   }
 
   res.json({
-    message: 'Google authorization succeeded. Copy the new refresh token from the server log into GOOGLE_REFRESH_TOKEN in .env and restart the server.',
-    refreshTokenPreview: tokens.refresh_token ? `${tokens.refresh_token.slice(0, 12)}...` : null,
+    message: 'Google authorization succeeded. The refresh token is not logged or returned for security — generate one with the Google OAuth Playground and set it in Settings or GOOGLE_REFRESH_TOKEN.',
+    refreshTokenIssued: Boolean(tokens.refresh_token),
   });
 });
 
