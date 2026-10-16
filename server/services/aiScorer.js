@@ -47,8 +47,6 @@ function buildUserPrompt(transcriptText, attributes, stageType, requisition, app
 
   const isManual = application?.source === 'manual';
 
-  console.log("Is it manual?", isManual);
-
   // Public applications are evaluated as two distinct stages: the resume stage
   // uses CV + role criteria, while HR uses only the questionnaire responses.
   if (stageType === 'resume_screen') {

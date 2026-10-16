@@ -183,7 +183,6 @@ const approve = asyncHandler(async (req, res) => {
     const nextInterviewId = await getOrCreateNextInterview(application, requisitionForType, interview.stageKey, req.user._id);
     await recomputeAndPersist(application, requisitionForType, req.user._id, 'Recomputed after status-only stage approval.');
 
-    console.log('[DEBUG - BACKEND APPROVE (STATUS ONLY)]', { interviewId: interview._id, passed: true, nextInterviewId });
     logger.info(`[Scoring] Marked status-only interview ${interview._id} approved (no scores). nextInterviewId=${nextInterviewId}`);
     return res.json({ interview, stageAverage: null, passed: true, application, nextInterviewId });
   }
@@ -221,7 +220,6 @@ const approve = asyncHandler(async (req, res) => {
     if (isManual && interview.scores && interview.scores.length > 0) {
       interview.status = 'scored';
     } else {
-      console.log('[DEBUG - BACKEND APPROVE BLOCKED]', { interviewId: interview._id, status: interview.status, scores: interview.scores });
       throw new ValidationError(['status'], 'Interview must be scored before it can be approved.');
     }
   }
@@ -261,7 +259,6 @@ const approve = asyncHandler(async (req, res) => {
 
   const result = await recomputeAndPersist(application, requisitionForType, req.user._id, 'Recomputed after stage approval.');
 
-  console.log('[DEBUG - BACKEND APPROVE SUCCESS]', { interviewId: interview._id, stageAverage, passed, nextInterviewId, weightedTotal: result.weightedTotal, disposition: result.disposition });
   logger.info(`[Scoring] Approved interview ${interview._id}. stageAverage=${stageAverage} passed=${passed} weightedTotal=${result.weightedTotal} disposition=${result.disposition} nextInterviewId=${nextInterviewId}`);
   res.json({ interview, stageAverage, passed, application, nextInterviewId });
 });
@@ -279,7 +276,6 @@ const override = asyncHandler(async (req, res) => {
   assertRequisitionNotClosed(requisition, 'override interview scores');
 
   const { overrides } = req.body;
-  console.log('[DEBUG - BACKEND OVERRIDE RECEIVED]', { interviewId: req.params.id, overrides, existingScoresCount: interview.scores?.length || 0 });
 
   if (!Array.isArray(overrides) || overrides.length === 0) {
     throw new ValidationError(['overrides'], 'overrides must be a non-empty array of { attributeId, approvedScore, reason }.');
@@ -328,7 +324,6 @@ const override = asyncHandler(async (req, res) => {
 
   interview.markModified('scores');
   await interview.save();
-  console.log('[DEBUG - BACKEND OVERRIDE SAVED]', { interviewId: interview._id, scoresCount: interview.scores.length, status: interview.status });
   logger.info(`[Scoring] Overrode ${overrides.length} score(s) on interview ${interview._id}.`);
   res.json({ interview });
 });
@@ -602,7 +597,6 @@ const passFail = asyncHandler(async (req, res) => {
     }.`
   );
 
-  console.log('[DEBUG - BACKEND PASSFAIL]', { interviewId: interview._id, passed, nextInterviewId });
   logger.info(
     `[Scoring] HR marked pass_fail interview ${interview._id} ` +
     `passed=${passed} weightedTotal=${result.weightedTotal} ` +

@@ -69,14 +69,6 @@ function computeApplicationResult({ stages, interviewsByStageKey, hireThreshold,
 
   const stageResults = relevantStages.map((stage) => {
     const interview = interviewsByStageKey.get(stage.key);
-    console.log('PASS FAIL DEBUG:', {
-      stageKey: stage.key,
-      inputType: stage.inputType,
-      interviewId: interview?._id,
-      passFailResult: interview?.passFailResult,
-      interview,
-    });
-
 
     // pass_fail stages use the explicit pass/fail decision,
     // not approved scores.
