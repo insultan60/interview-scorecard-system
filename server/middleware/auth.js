@@ -41,7 +41,9 @@ async function requireAuth(req, res, next) {
  * @param {...string} allowedRoles
  * @returns {Function} Express middleware.
  */
-function requireRole(...allowedRoles) {
+function requireRole(...roles) {
+  // Accept both requireRole('a', 'b') and requireRole(['a', 'b']).
+  const allowedRoles = roles.flat();
   return function checkRole(req, res, next) {
     if (!req.user) {
       return res.status(401).json({ error: 'AUTH_ERROR', message: 'Not authenticated.' });
