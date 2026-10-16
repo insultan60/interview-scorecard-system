@@ -92,7 +92,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
   const [settings, setSettings] = useState({});
   const [keyStatus, setKeyStatus] = useState({});
