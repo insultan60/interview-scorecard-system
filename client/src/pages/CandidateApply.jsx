@@ -776,7 +776,7 @@ export default function CandidateApply() {
                         <Input
                           id="candidate-avail-notes"
                           type="text"
-                          placeholder="e.g. Morning preferred, or available after 2 PM"
+                          placeholder=""
                           value={candidateNotes}
                           onChange={(e) => setCandidateNotes(e.target.value)}
                           className="bg-white text-sm h-10 border-slate-200 shadow-sm"

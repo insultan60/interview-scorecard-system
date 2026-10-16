@@ -702,11 +702,12 @@ export default function Requisitions() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Job Opening</TableHead>
+                      <TableHead>Department</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Candidates</TableHead>
                       <TableHead>Hiring Process</TableHead>
                       <TableHead className="hidden lg:table-cell">Created</TableHead>
-                      <TableHead className="w-10" />
+                      <TableHead className="w-24 text-right" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -720,34 +721,11 @@ export default function Requisitions() {
                           onClick={() => navigate(`/requisitions/${r._id}`)}
                         >
                           <TableCell>
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-medium text-foreground">{r.title}</span>
-                                  {r.departmentId?.name && (
-                                    <Badge variant="outline" className="text-[11px] font-normal text-slate-600 bg-slate-50 border-slate-200 py-0 h-5">
-                                      {r.departmentId.name}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="hidden">
-                                  {EMPLOYMENT_TYPE_LABEL[r.employmentType] || 'Full-Time'}
-                                  {r.location ? ` · ${r.location}` : ''}
-                                  {` · ${enabledStages} stage${enabledStages === 1 ? '' : 's'}`}
-                                </div>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                title="Copy Candidate Application Link"
-                                onClick={(e) => copyApplyLink(r._id, e)}
-                                className="h-8 text-xs gap-1 text-slate-600 hover:text-[#d21e2b] hover:bg-slate-100"
-                              >
-                                <Link2 className="h-3.5 w-3.5" />
-                                Apply Link
-                              </Button>
-                            </div>
+                            <span className="text-sm font-medium text-foreground">{r.title}</span>
+                          </TableCell>
+
+                          <TableCell className="text-sm text-muted-foreground">
+                            {r.departmentId?.name || '—'}
                           </TableCell>
 
                           <TableCell>
@@ -788,8 +766,18 @@ export default function Requisitions() {
                             {formatDate(r.createdAt)}
                           </TableCell>
 
-                          <TableCell onClick={(e) => e.stopPropagation()} className="w-16">
+                          <TableCell onClick={(e) => e.stopPropagation()} className="w-24">
                             <div className="flex items-center justify-end gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-500 hover:text-[#d21e2b] hover:bg-slate-100"
+                                title="Copy Candidate Apply Link"
+                                onClick={(e) => copyApplyLink(r._id, e)}
+                              >
+                                <Link2 className="h-4 w-4" />
+                              </Button>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button
