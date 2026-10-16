@@ -314,7 +314,16 @@ export default function Requisitions() {
     async function loadDepartments() {
       try {
         const res = await api.get('/departments');
-        setDepartments(res.data.departments || []);
+        const list = res.data.departments || [];
+        setDepartments((prev) => {
+          const combined = [...list];
+          prev.forEach((p) => {
+            if (p?._id && !combined.some((c) => String(c._id) === String(p._id))) {
+              combined.push(p);
+            }
+          });
+          return combined;
+        });
       } catch (err) {
         console.error('Failed to load departments:', err);
       }
@@ -329,9 +338,17 @@ export default function Requisitions() {
           const res = await api.get(`/requisitions/${editId}`);
           const r = res.data.requisition;
           if (r) {
+            const rawDept = r.departmentId || r.department;
+            const deptId = rawDept?._id ? String(rawDept._id) : (rawDept ? String(rawDept) : '');
+            if (rawDept && rawDept._id && rawDept.name) {
+              setDepartments((prev) => {
+                if (prev.some((d) => String(d._id) === String(rawDept._id))) return prev;
+                return [...prev, rawDept];
+              });
+            }
             setForm({
               title: r.title || '',
-              departmentId: r.departmentId?._id || r.departmentId || '',
+              departmentId: deptId,
               employmentType: r.employmentType || 'full_time',
               fullTimeDetails: r.fullTimeDetails || { workingHours: '' },
               partTimeDetails: r.partTimeDetails || { weeklyHours: '', workingHours: '' },
@@ -924,16 +941,19 @@ export default function Requisitions() {
                   <div className="space-y-1.5">
                     <Label htmlFor="req-dept">Department</Label>
                     <Select
+                      key={`dept-select-${form.departmentId || 'none'}-${departments.length}`}
                       value={form.departmentId || 'none'}
                       onValueChange={(val) => setForm({ ...form, departmentId: val === 'none' ? '' : val })}
                     >
                       <SelectTrigger id="req-dept" className="w-full">
-                        <SelectValue placeholder="Select Department" />
+                        <SelectValue placeholder="Select Department">
+                          {departments.find((d) => String(d._id) === String(form.departmentId))?.name}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No Department</SelectItem>
                         {departments.map((d) => (
-                          <SelectItem key={d._id} value={d._id}>{d.name}</SelectItem>
+                          <SelectItem key={d._id} value={String(d._id)}>{d.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
