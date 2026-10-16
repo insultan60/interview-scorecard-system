@@ -58,7 +58,6 @@ export async function sendMeetingEmailClient({ candidateEmail, candidateName, re
       },
       PUBLIC_KEY
     );
-    console.log(`[EmailJS Browser] Successfully sent meeting link email to ${candidateEmail} via EmailJS Browser API.`);
     return { sent: true };
   } catch (err) {
     console.warn('[EmailJS Browser] Failed to send email from client:', err);
@@ -110,7 +109,6 @@ export async function sendHostMeetingEmailClient({ hostEmail, action, candidateN
       requisition_title: requisitionTitle || 'Interview', stage_label: stageLabel,
       meeting_uri: meetingUri || '', subject, message, body: message,
     }, PUBLIC_KEY);
-    console.log(`[EmailJS Browser] Sent host ${action} notification to ${hostEmail}.`);
     return { sent: true };
   } catch (err) {
     console.warn(`[EmailJS Browser] Failed to send host ${action} notification:`, err);
@@ -146,12 +144,6 @@ export async function sendOfferEmailClient({ candidateEmail, candidateName, requ
     'Red Star Technologies Hiring Team',
   ].filter(Boolean).join('\n');
 
-  console.log('[EmailJS Browser] Preparing offer email payload:', {
-    candidateEmail,
-    candidateName,
-    requisitionTitle,
-    offerLetterUrl,
-  });
 
   try {
     await emailjs.send(
@@ -176,7 +168,6 @@ export async function sendOfferEmailClient({ candidateEmail, candidateName, requ
       },
       PUBLIC_KEY
     );
-    console.log(`[EmailJS Browser] Successfully sent offer letter email to ${candidateEmail} via EmailJS Browser API.`);
     return { sent: true };
   } catch (err) {
     console.warn('[EmailJS Browser] Failed to send offer email from client:', err);
@@ -233,7 +224,6 @@ export async function sendApplicationConfirmationEmailClient({ candidateEmail, c
  * Sends an availability request link email directly from the browser via EmailJS HTTPS API.
  */
 export async function sendAvailabilityEmailClient({ candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl }) {
-  console.log('[EmailJS Browser] Attempting to send Availability Request Email...', { candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl });
   if (!isBrowserEmailJSConfigured()) {
     console.warn('[EmailJS Browser] Browser EmailJS environment variables are not configured in .env.');
     return { sent: false, reason: 'Browser EmailJS is not configured.' };
@@ -277,7 +267,6 @@ export async function sendAvailabilityEmailClient({ candidateEmail, candidateNam
       },
       PUBLIC_KEY
     );
-    console.log(`[EmailJS Browser] Successfully sent availability request email to ${candidateEmail}`);
     return { sent: true };
   } catch (err) {
     console.warn('[EmailJS Browser] Failed to send availability email:', err);
@@ -332,7 +321,6 @@ export async function sendOnboardingFormEmailClient({ candidateEmail, candidateN
       },
       PUBLIC_KEY
     );
-    console.log(`[EmailJS Browser] Successfully sent onboarding form email to ${candidateEmail} via EmailJS Browser API.`);
     return { sent: true };
   } catch (err) {
     console.warn('[EmailJS Browser] Failed to send onboarding form email from client:', err);

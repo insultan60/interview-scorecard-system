@@ -70,14 +70,6 @@ export default function PipelineStepper({ stages, progress, stageLinks, currentS
             status = 'scheduled';
           }
 
-          console.log(`[DEBUG - PIPELINE STEPPER STAGE ${stage.key}]`, {
-            stageKey: stage.key,
-            rawProgress,
-            rawStatus,
-            finalStatus: status,
-            interviewId,
-            isBlocked,
-          });
 
           const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
           const Icon = style.icon;

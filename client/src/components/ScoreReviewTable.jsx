@@ -105,14 +105,6 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
   const isManualStage = displayItems.every((item) => item.aiScore == null);
 
   async function handleManualSaveAndApprove() {
-    console.log('[DEBUG - FRONTEND MANUAL SAVE & APPROVE CLICKED]', {
-      interviewId: interview._id,
-      stageKey: interview.stageKey,
-      status: interview.status,
-      isApproved,
-      drafts,
-      displayItems,
-    });
 
     const unrated = displayItems.filter((item) => {
       const draft = drafts[item.attributeId];
@@ -120,7 +112,6 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
     });
 
     if (unrated.length > 0) {
-      console.log('[DEBUG - FRONTEND UNRATED ATTRIBUTES DETECTED]', { unrated, displayItems, drafts });
       toast.error(`Please enter a rating (1-5) for all attributes (${displayItems.length - unrated.length}/${displayItems.length} rated).`);
       return;
     }
@@ -134,9 +125,7 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
         reason: drafts[item.attributeId]?.reason?.trim() || 'Live Interview Rating',
       }));
 
-      console.log('[DEBUG - FRONTEND SENDING MANUAL SAVE & APPROVE OVERRIDES]', overrides);
       const res = await api.patch(`/scoring/interview/${interview._id}/approve`, { overrides });
-      console.log('[DEBUG - FRONTEND ATOMIC APPROVE SUCCESS]', res.data);
 
       toast.success(wasAlreadyApproved ? 'Stage re-approved.' : 'Stage approved!');
       onUpdated(res.data.interview, res.data.stageAverage, res.data.passed, res.data.nextInterviewId, wasAlreadyApproved);
@@ -187,7 +176,6 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
     setApproving(true);
     try {
       const res = await api.patch(`/scoring/interview/${interview._id}/approve`);
-      console.log('[DEBUG - FRONTEND SCORE REVIEW RESPONSE]', res.data);
       toast.success(wasAlreadyApproved ? 'Stage re-approved.' : 'Stage approved.');
       onUpdated(res.data.interview, res.data.stageAverage, res.data.passed, res.data.nextInterviewId, wasAlreadyApproved);
     } finally {

@@ -164,7 +164,6 @@ export default function CandidateAvailability() {
         notes,
         captchaToken,
       });
-      console.log('[CandidateAvailability] Submit success:', res.data);
       setSubmitted(true);
       toast.success('Your availability has been submitted to the hiring team!');
     } catch (err) {

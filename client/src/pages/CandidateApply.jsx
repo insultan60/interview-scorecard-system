@@ -166,7 +166,6 @@ export default function CandidateApply() {
 
   useEffect(() => {
     async function fetchPublicRequisition() {
-      console.log(`[CandidateApply] Fetching public requisition with ID: "${id}"...`);
       setLoading(true);
       setError(null);
       try {
@@ -372,7 +371,6 @@ export default function CandidateApply() {
         }
       }
 
-      console.log('[CandidateApply] Application submission success:', res.data);
       setResult(res.data);
       resetForm();
       setStep('success');

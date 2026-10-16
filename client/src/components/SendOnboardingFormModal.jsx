@@ -57,7 +57,6 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
       // 2. If backend fails, check for browser EmailJS fallback
       console.warn('[OnboardingForm] Backend email send returned false. Reason:', res.data?.emailReason);
       if (isBrowserEmailJSConfigured()) {
-        console.log('[OnboardingForm] Attempting client-side fallback via EmailJS...');
         const clientRes = await sendOnboardingFormEmailClient({
           candidateEmail,
           candidateName,
