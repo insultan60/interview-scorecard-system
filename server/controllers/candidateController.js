@@ -347,7 +347,11 @@ const removeFromRequisition = asyncHandler(async (req, res) => {
   const interviewResult = await Interview.deleteMany({ applicationId: application._id });
   await application.deleteOne();
 
-  const cleanupResults = await Promise.allSettled(artifactIds.map(destroyFileIfUnreferenced));
+  const cleanupResults = await Promise.allSettled([
+    ...artifactIds.map(destroyFileIfUnreferenced),
+    // The offer letter belongs to this application alone, so it goes with it.
+    ...(application.offerLetterPublicId ? [deleteFile(application.offerLetterPublicId).then(() => true)] : []),
+  ]);
   const deletedFiles = cleanupResults.filter((result) => result.status === 'fulfilled' && result.value).length;
   cleanupResults
     .filter((result) => result.status === 'rejected')
@@ -370,7 +374,7 @@ const remove = asyncHandler(async (req, res) => {
   const candidate = await Candidate.findById(req.params.id);
   if (!candidate) return res.status(404).json({ error: 'NOT_FOUND', message: 'Candidate not found.' });
 
-  const applications = await Application.find({ candidateId: candidate._id }).select('_id').lean();
+  const applications = await Application.find({ candidateId: candidate._id }).select('_id offerLetterPublicId').lean();
   const applicationIds = applications.map((application) => application._id);
   const interviews = await Interview.find({ applicationId: { $in: applicationIds } })
     .select('artifactFilePublicId')
@@ -379,6 +383,7 @@ const remove = asyncHandler(async (req, res) => {
   const fileIds = [...new Set([
     candidate.resumeFilePublicId,
     ...interviews.map((interview) => interview.artifactFilePublicId),
+    ...applications.map((application) => application.offerLetterPublicId), // offer letters belong to the application
   ].filter(Boolean))];
   await Promise.all(fileIds.map((publicId) => deleteFile(publicId)));
 

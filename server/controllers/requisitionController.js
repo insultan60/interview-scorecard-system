@@ -16,7 +16,7 @@ const { assertRequisitionOpen, assertRequisitionConfigurable } = require('../uti
 const { generateScorecard } = require('../services/questionGenerator');
 const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
-const { uploadFile } = require('../services/fileStorage');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 const emailNotifier = require('../services/emailNotifier');
@@ -850,7 +850,7 @@ const remove = asyncHandler(async (req, res) => {
   if (!requisition) return res.status(404).json({ error: 'NOT_FOUND', message: 'Job Opening not found.' });
 
   // Find all applications & interviews for this requisition
-  const applications = await Application.find({ requisitionId: requisition._id }).select('_id').lean();
+  const applications = await Application.find({ requisitionId: requisition._id }).select('_id offerLetterPublicId').lean();
   const interviews = await Interview.find({ requisitionId: requisition._id });
 
   // 1. Cancel all scheduled Google Calendar meetings for all interviews in this requisition
@@ -877,9 +877,16 @@ const remove = asyncHandler(async (req, res) => {
   const applicationResult = await Application.deleteMany({ requisitionId: requisition._id });
   await AuditLog.deleteMany({ requisitionId: requisition._id });
 
-  // 4. Clean up Cloudinary files
-  const cleanupResults = await Promise.allSettled(artifactIds.map(destroyFileIfUnreferenced));
+  // 4. Clean up stored files (interview artifacts, and each application's offer letter)
+  const offerLetterIds = [...new Set(applications.map((application) => application.offerLetterPublicId).filter(Boolean))];
+  const cleanupResults = await Promise.allSettled([
+    ...artifactIds.map(destroyFileIfUnreferenced),
+    ...offerLetterIds.map((publicId) => deleteFile(publicId).then(() => true)),
+  ]);
   const deletedFiles = cleanupResults.filter((result) => result.status === 'fulfilled' && result.value).length;
+  cleanupResults
+    .filter((result) => result.status === 'rejected')
+    .forEach((result) => logger.warn(`[Requisition] Could not delete a stored file while deleting "${requisition.title}": ${result.reason?.message || result.reason}`));
 
   // 5. Delete the requisition itself
   const reqTitle = requisition.title;
