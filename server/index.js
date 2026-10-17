@@ -8,6 +8,7 @@ const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { startRetentionSchedule } = require('./services/retentionService');
+const { getAllowedOrigins, normalizeOrigin } = require('./utils/allowedOrigins');
 const { getCaptchaConfig } = require('./services/captchaService');
 
 const authRoutes = require('./routes/auth');
@@ -40,22 +41,28 @@ app.use(helmet());
 /**
  * Only real frontend origins may call this API — never a wildcard.
  *
- * CLIENT_URL accepts a COMMA-SEPARATED list so a Vercel preview deployment
- * (which gets its own generated origin, distinct from production) can be
- * allowed alongside the production URL without opening the API to everyone.
- * The first entry is still the canonical one used for Slack notification links.
+ * ALLOWED_ORIGINS is a COMMA-SEPARATED list of website addresses (for example
+ * "https://app.ownerstalent.com,https://staging-app.example.com"). If it is not
+ * set, CLIENT_URL is used instead, so older setups keep working. See
+ * utils/allowedOrigins.js for the exact rules.
+ * CLIENT_URL itself is the website's main address, used to build links in emails
+ * and Slack messages.
  */
-const ALLOWED_ORIGINS = (process.env.CLIENT_URL || 'http://localhost:5173')
-  .split(',')
-  .map((o) => o.trim().replace(/\/+$/, '')) // tolerate a trailing slash
-  .filter(Boolean);
+const { origins: ALLOWED_ORIGINS, ignored: IGNORED_ORIGINS, source: ORIGINS_SOURCE } = getAllowedOrigins();
+logger.info(`[CORS] Allowed origins (from ${ORIGINS_SOURCE}): ${ALLOWED_ORIGINS.join(', ') || 'NONE'}`);
+if (IGNORED_ORIGINS.length > 0) {
+  logger.warn(`[CORS] Ignored invalid origin entries (use scheme + host only, no wildcard or path): ${IGNORED_ORIGINS.join(', ')}`);
+}
+if (ALLOWED_ORIGINS.length === 0) {
+  logger.error('[CORS] No valid allowed origins configured: browsers will be blocked. Check ALLOWED_ORIGINS.');
+}
 
 app.use(cors({
   origin(origin, callback) {
     // A missing Origin header means same-origin or a non-browser caller (curl,
-    // Render's health check) — those aren't subject to CORS at all.
+    // a load balancer's health check) — those aren't subject to CORS at all.
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin.replace(/\/+$/, ''))) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(normalizeOrigin(origin))) return callback(null, true);
     logger.warn(`[CORS] Blocked origin: ${origin} (allowed: ${ALLOWED_ORIGINS.join(', ')})`);
     return callback(null, false); // clean CORS rejection, not a 500
   },
