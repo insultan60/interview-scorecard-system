@@ -1,7 +1,7 @@
 const express = require('express');
 const scoringController = require('../controllers/scoringController');
 const { requireAuth } = require('../middleware/auth');
-const { upload } = require('../middleware/upload');
+const { uploadPdf } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -13,6 +13,6 @@ router.patch('/interview/:id/pass-fail', scoringController.passFail);
 router.patch('/application/:id/override-initial-screening', scoringController.overrideInitialScreening);
 router.post('/application/:id/recompute', scoringController.recompute);
 router.patch('/application/:id/decision', scoringController.decision);
-router.post('/application/:id/send-offer-letter', upload.single('offerLetter'), scoringController.sendOfferLetter);
+router.post('/application/:id/send-offer-letter', uploadPdf('offerLetter'), scoringController.sendOfferLetter);
 
 module.exports = router;

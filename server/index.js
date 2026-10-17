@@ -20,6 +20,7 @@ const settingsRoutes = require('./routes/settings');
 const auditRoutes = require('./routes/audit');
 const userRoutes = require('./routes/users');
 const departmentRoutes = require('./routes/departments');
+const fileRoutes = require('./routes/files');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -79,6 +80,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
+app.use('/api/files', fileRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

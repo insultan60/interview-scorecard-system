@@ -8,7 +8,8 @@ const logger = require('../utils/logger');
 const { asyncHandler } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
 const { assertRequisitionOpen } = require('../utils/requisitionStatus');
-const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
 const { sendOnboardingFormEmail } = require('../services/emailNotifier');
@@ -115,13 +116,20 @@ const create = asyncHandler(async (req, res) => {
   const validatedPhone = validatePhone(phone);
   const duplicate = await Candidate.findOne({ email: validatedEmail });
   if (duplicate) throw new ValidationError(['email'], 'A candidate with this email address already exists.');
+  assertPdfUpload(req.file, { field: 'resume', label: 'résumé', required: false });
 
   let resumeFileUrl;
   let resumeFilePublicId;
+  let resumeFileName;
+  let resumeFileSize;
+  let resumeFileMimeType;
   if (req.file) {
-    const uploaded = await uploadBuffer(req.file.buffer, { folder: 'resumes', filename: `${Date.now()}-${req.file.originalname}` });
-    resumeFileUrl = uploaded.secureUrl;
+    const uploaded = await uploadFile({ file: req.file, folder: 'resumes' });
+    resumeFileUrl = uploaded.url;
     resumeFilePublicId = uploaded.publicId;
+    resumeFileName = uploaded.name;
+    resumeFileSize = uploaded.size;
+    resumeFileMimeType = uploaded.mimeType;
   }
 
   const candidate = await Candidate.create({
@@ -131,6 +139,9 @@ const create = asyncHandler(async (req, res) => {
     notes,
     resumeFileUrl,
     resumeFilePublicId,
+    resumeFileName,
+    resumeFileSize,
+    resumeFileMimeType,
   });
 
   logger.info(`[Candidate] Created "${name}" (${candidate._id})${req.file ? ' with résumé' : ''}.`);
@@ -227,10 +238,14 @@ const update = asyncHandler(async (req, res) => {
   let resumeReplaced = false;
   let replacedResumePublicId = null;
   if (req.file) {
+    assertPdfUpload(req.file, { field: 'resume', label: 'résumé' });
     const oldPublicId = candidate.resumeFilePublicId;
-    const uploaded = await uploadBuffer(req.file.buffer, { folder: 'resumes', filename: `${Date.now()}-${req.file.originalname}` });
-    candidate.resumeFileUrl = uploaded.secureUrl;
+    const uploaded = await uploadFile({ file: req.file, folder: 'resumes' });
+    candidate.resumeFileUrl = uploaded.url;
     candidate.resumeFilePublicId = uploaded.publicId;
+    candidate.resumeFileName = uploaded.name;
+    candidate.resumeFileSize = uploaded.size;
+    candidate.resumeFileMimeType = uploaded.mimeType;
     resumeReplaced = true;
     replacedResumePublicId = oldPublicId;
   }
@@ -365,7 +380,7 @@ const remove = asyncHandler(async (req, res) => {
     candidate.resumeFilePublicId,
     ...interviews.map((interview) => interview.artifactFilePublicId),
   ].filter(Boolean))];
-  await Promise.all(fileIds.map((publicId) => destroyFile(publicId)));
+  await Promise.all(fileIds.map((publicId) => deleteFile(publicId)));
 
   await AuditLog.deleteMany({ applicationId: { $in: applicationIds } });
   const interviewResult = await Interview.deleteMany({ applicationId: { $in: applicationIds } });

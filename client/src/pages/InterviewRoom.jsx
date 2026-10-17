@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, Pencil } from 'lucide-react';
 import api from '../hooks/useApi';
+import { openStoredFile } from '../lib/fileAccess';
+import { validatePdfFile } from '../lib/fileRules';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -459,6 +461,12 @@ export default function InterviewRoom() {
   async function handleUploadArtifact(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const problem = validatePdfFile(file, 'artifact');
+    if (problem) {
+      toast.error(problem);
+      e.target.value = '';
+      return;
+    }
     setUploadingArtifact(true);
     try {
       const body = new FormData();
@@ -1158,14 +1166,14 @@ export default function InterviewRoom() {
           </CardHeader>
           <CardContent>
             {interview.artifactFileUrl ? (
-              <a href={interview.artifactFileUrl} target="_blank" rel="noreferrer" className="text-sm text-[#d21e2b] hover:underline">
+              <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm text-[#d21e2b] hover:underline">
                 View uploaded artifact
-              </a>
+              </button>
             ) : (
               <p className="text-sm text-muted-foreground">No artifact uploaded yet.</p>
             )}
             <input
-              type="file" onChange={handleUploadArtifact} disabled={uploadingArtifact}
+              type="file" accept="application/pdf,.pdf" onChange={handleUploadArtifact} disabled={uploadingArtifact}
               className="mt-2 cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </CardContent>
@@ -1298,9 +1306,9 @@ export default function InterviewRoom() {
                 </div>
                 {interview.artifactFileUrl && (
                   <div>
-                    <a href={interview.artifactFileUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-[#d21e2b] hover:underline">
+                    <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm font-medium text-[#d21e2b] hover:underline">
                       View Uploaded Offer Letter
-                    </a>
+                    </button>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">

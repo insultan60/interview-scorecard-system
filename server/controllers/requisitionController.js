@@ -16,7 +16,8 @@ const { assertRequisitionOpen, assertRequisitionConfigurable } = require('../uti
 const { generateScorecard } = require('../services/questionGenerator');
 const { scoreInterview } = require('../services/aiScorer');
 const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
-const { uploadBuffer } = require('../config/cloudinary');
+const { uploadFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 const emailNotifier = require('../services/emailNotifier');
 const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
@@ -1340,16 +1341,7 @@ const applyPublic = asyncHandler(async (req, res) => {
   if (unansweredQuestions.length > 0) {
     throw new ValidationError(['questionnaireAnswers'], 'Please answer every screening question before submitting your application.');
   }
-  if (!req.file) {
-    throw new ValidationError(['resume'], 'A PDF resume is required to apply.');
-  }
-  const isPdfResume = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
-  if (!isPdfResume) {
-    throw new ValidationError(['resume'], 'Resume must be a PDF file.');
-  }
-  if (req.file.size > 5 * 1024 * 1024) {
-    throw new ValidationError(['resume'], 'Resume must be 5 MB or smaller.');
-  }
+  assertPdfUpload(req.file, { field: 'resume', label: 'resume' });
 
   const cleanEmail = email.toLowerCase().trim();
 
@@ -1367,24 +1359,20 @@ const applyPublic = asyncHandler(async (req, res) => {
   let resumeFilePublicId = '';
   let candidateResumeFileUrl = '';
   let candidateResumeFilePublicId = '';
+  let resumeMeta = null; // { name, size, mimeType } stored beside the file
   let oldProfileResumeId = null;
   let resumeText = '';
 
   if (req.file) {
-    const uploaded = await uploadBuffer(req.file.buffer, {
-      folder: 'candidate-resumes',
-      filename: `${Date.now()}-${req.file.originalname}`,
-    });
-    resumeFileUrl = uploaded.secureUrl;
+    const uploaded = await uploadFile({ file: req.file, folder: 'candidate-resumes' });
+    resumeFileUrl = uploaded.url;
     resumeFilePublicId = uploaded.publicId;
+    resumeMeta = { name: uploaded.name, size: uploaded.size, mimeType: uploaded.mimeType };
 
     // The candidate profile keeps a current CV, while this application keeps
     // its own immutable resume-screen artifact for historical review.
-    const profileUpload = await uploadBuffer(req.file.buffer, {
-      folder: 'candidate-resumes',
-      filename: `${Date.now()}-profile-${req.file.originalname}`,
-    });
-    candidateResumeFileUrl = profileUpload.secureUrl;
+    const profileUpload = await uploadFile({ file: req.file, folder: 'candidate-resumes', filenamePrefix: 'profile-' });
+    candidateResumeFileUrl = profileUpload.url;
     candidateResumeFilePublicId = profileUpload.publicId;
 
     try {
@@ -1403,12 +1391,18 @@ const applyPublic = asyncHandler(async (req, res) => {
       phone: phone.trim(),
       resumeFileUrl: candidateResumeFileUrl,
       resumeFilePublicId: candidateResumeFilePublicId,
+      resumeFileName: resumeMeta?.name,
+      resumeFileSize: resumeMeta?.size,
+      resumeFileMimeType: resumeMeta?.mimeType,
     });
   } else {
     if (candidateResumeFileUrl) {
       oldProfileResumeId = candidate.resumeFilePublicId;
       candidate.resumeFileUrl = candidateResumeFileUrl;
       candidate.resumeFilePublicId = candidateResumeFilePublicId;
+      candidate.resumeFileName = resumeMeta?.name;
+      candidate.resumeFileSize = resumeMeta?.size;
+      candidate.resumeFileMimeType = resumeMeta?.mimeType;
     }
     candidate.phone = phone.trim();
     await candidate.save();
@@ -1487,6 +1481,9 @@ const applyPublic = asyncHandler(async (req, res) => {
       status: 'pending',
       artifactFileUrl: resumeFileUrl,
       artifactFilePublicId: resumeFilePublicId,
+      artifactFileName: resumeMeta?.name,
+      artifactFileSize: resumeMeta?.size,
+      artifactFileMimeType: resumeMeta?.mimeType,
       transcriptText: resumeText,
     });
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const requisitionController = require('../controllers/requisitionController');
 const { requireAuth } = require('../middleware/auth');
-const { upload } = require('../middleware/upload');
+const { uploadPdf } = require('../middleware/upload');
 const { publicApplyLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
@@ -9,7 +9,7 @@ const router = express.Router();
 // Public routes for candidate self-application (no auth required)
 router.get('/:id/public', requisitionController.getPublic);
 // Rate limit runs BEFORE multer so a flood never gets as far as buffering uploads.
-router.post('/:id/apply', publicApplyLimiter, upload.single('resume'), requisitionController.applyPublic);
+router.post('/:id/apply', publicApplyLimiter, uploadPdf('resume'), requisitionController.applyPublic);
 
 // Authenticated routes below
 router.use(requireAuth);

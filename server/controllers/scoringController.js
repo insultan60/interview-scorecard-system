@@ -12,7 +12,8 @@ const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
-const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
 
 /**
  * Recomputes an application's weightedTotal / allGatesPassed / disposition
@@ -410,34 +411,23 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(application.requisitionId);
   assertRequisitionNotClosed(requisition, 'send an offer letter');
 
-  if (!req.file) {
-    throw new ValidationError(['offerLetter'], 'Please upload the offer letter as a PDF.');
-  }
-
-  const filename = req.file.originalname || '';
-  const isPdf = req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(filename);
-  if (!isPdf) {
-    throw new ValidationError(['offerLetter'], 'Only PDF offer letters can be uploaded.');
-  }
-  if (req.file.size > 5 * 1024 * 1024) {
-    throw new ValidationError(['offerLetter'], 'The offer letter must be 5 MB or smaller.');
-  }
+  assertPdfUpload(req.file, { field: 'offerLetter', label: 'offer letter' });
 
   if (application.offerLetterPublicId) {
     try {
-      await destroyFile(application.offerLetterPublicId);
+      await deleteFile(application.offerLetterPublicId);
     } catch (err) {
       logger.warn(`[Scoring] Could not remove previous offer letter for ${application._id}: ${err.message}`);
     }
   }
 
-  const upload = await uploadBuffer(req.file.buffer, {
-    folder: 'offer-letters',
-    filename: `offer-${application._id}-${Date.now()}.pdf`,
-  });
+  const upload = await uploadFile({ file: req.file, folder: 'offer-letters' });
 
-  application.offerLetterUrl = upload.secureUrl;
+  application.offerLetterUrl = upload.url;
   application.offerLetterPublicId = upload.publicId;
+  application.offerLetterFileName = upload.name;
+  application.offerLetterFileSize = upload.size;
+  application.offerLetterFileMimeType = upload.mimeType;
   application.offerLetterUploadedAt = new Date();
 
   const candidate = application.candidateId;
@@ -445,7 +435,11 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
     candidateEmail: candidate?.email,
     candidateName: candidate?.name,
     requisitionTitle: requisition.title,
-    offerLetterUrl: upload.secureUrl,
+    offerLetterUrl: upload.url,
+    // Production sends the PDF itself; other environments send a link.
+    attachment: emailNotifier.shouldAttachOfferLetter()
+      ? { filename: req.file.originalname, content: req.file.buffer }
+      : undefined,
   });
   application.offerLetterDeliveryStatus = emailResult.sent ? 'sent' : 'pending';
   application.offerLetterSentAt = emailResult.sent ? new Date() : null;
@@ -458,7 +452,7 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
     applicationId: application._id,
     targetType: 'application',
     targetId: application._id.toString(),
-    newValue: { offerLetterUrl: upload.secureUrl, emailSent: emailResult.sent },
+    newValue: { offerLetterUrl: upload.url, emailSent: emailResult.sent },
     reason: 'Offer letter uploaded for a hired candidate.',
   });
 

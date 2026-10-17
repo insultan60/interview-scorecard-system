@@ -4,6 +4,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil, Building2 } from 'lucide-react';
 import api from '../hooks/useApi';
+import { openStoredFile } from '../lib/fileAccess';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -1339,7 +1340,7 @@ export default function RequisitionDetail() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => window.open(viewCandidateFor.resumeFileUrl, '_blank', 'noreferrer')}
+                    onClick={() => openStoredFile('resume', viewCandidateFor._id)}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     View résumé

@@ -31,6 +31,8 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
 import { formatDate, formatDisposition } from '../utils/formatters';
+import { openStoredFile } from '../lib/fileAccess';
+import { validatePdfFile } from '../lib/fileRules';
 
 const PER_PAGE_OPTIONS = [10, 20, 50, 100];
 const DEFAULT_PAGE_SIZE = 10;
@@ -751,7 +753,7 @@ export default function Candidates() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               disabled={!c.resumeFileUrl}
-                              onClick={() => window.open(c.resumeFileUrl, '_blank', 'noreferrer')}
+                              onClick={() => openStoredFile('resume', c._id)}
                             >
                               <FileText />
                               {c.resumeFileUrl ? 'View résumé' : 'No résumé'}
@@ -878,7 +880,12 @@ export default function Candidates() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-cand-resume">Replace résumé <span className="text-muted-foreground">(optional)</span></Label>
-                <Input id="edit-cand-resume" type="file" accept="application/pdf,.pdf" onChange={(e) => setEditResumeFile(e.target.files?.[0] || null)} className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5" />
+                <Input id="edit-cand-resume" type="file" accept="application/pdf,.pdf" onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  const problem = validatePdfFile(file, 'résumé');
+                  if (problem) { toast.error(problem); e.target.value = ''; setEditResumeFile(null); return; }
+                  setEditResumeFile(file);
+                }} className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5" />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -1026,7 +1033,7 @@ export default function Candidates() {
 
           <DialogFooter className="gap-2 sm:gap-2">
             {viewFor?.resumeFileUrl && (
-              <Button type="button" variant="outline" onClick={() => window.open(viewFor.resumeFileUrl, '_blank', 'noreferrer')}>
+              <Button type="button" variant="outline" onClick={() => openStoredFile('resume', viewFor._id)}>
                 <FileText />
                 View résumé
               </Button>
@@ -1233,8 +1240,13 @@ export default function Candidates() {
               <div className="space-y-1.5">
                 <Label htmlFor="cand-resume">Résumé <span className="text-muted-foreground">(optional)</span></Label>
                 <Input
-                  id="cand-resume" type="file"
-                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                  id="cand-resume" type="file" accept="application/pdf,.pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    const problem = validatePdfFile(file, 'résumé');
+                    if (problem) { toast.error(problem); e.target.value = ''; setResumeFile(null); return; }
+                    setResumeFile(file);
+                  }}
                   className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
                 />
               </div>

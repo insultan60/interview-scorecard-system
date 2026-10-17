@@ -10,7 +10,8 @@ const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
 const { assertCalendarMeetingCancelled } = require('../utils/meetingLifecycle');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
-const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
@@ -494,12 +495,15 @@ const uploadArtifact = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
   await assertInterviewMutable(interview, 'upload an artifact');
-  if (!req.file) throw new ValidationError(['artifact'], 'An artifact file is required (field name "artifact").');
+  assertPdfUpload(req.file, { field: 'artifact', label: 'artifact' });
 
   const oldArtifactPublicId = interview.artifactFilePublicId;
-  const uploaded = await uploadBuffer(req.file.buffer, { folder: 'interview-artifacts', filename: `${Date.now()}-${req.file.originalname}` });
-  interview.artifactFileUrl = uploaded.secureUrl;
+  const uploaded = await uploadFile({ file: req.file, folder: 'interview-artifacts' });
+  interview.artifactFileUrl = uploaded.url;
   interview.artifactFilePublicId = uploaded.publicId;
+  interview.artifactFileName = uploaded.name;
+  interview.artifactFileSize = uploaded.size;
+  interview.artifactFileMimeType = uploaded.mimeType;
 
   try {
     interview.transcriptText = await extractArtifactText(req.file.buffer, req.file.originalname);
@@ -633,35 +637,23 @@ const sendOffer = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
   assertCalendarMeetingCancelled(interview, 'complete this stage');
 
-  if (!req.file) {
-    throw new ValidationError(['offerLetter'], 'An offer letter PDF document is required.');
-  }
-
-  const isPdf = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
-  if (!isPdf) {
-    throw new ValidationError(['offerLetter'], 'Only PDF documents are supported for offer letters.');
-  }
-
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  if (req.file.size > MAX_FILE_SIZE) {
-    throw new ValidationError(['offerLetter'], 'Offer letter PDF file size must not exceed 5MB.');
-  }
+  assertPdfUpload(req.file, { field: 'offerLetter', label: 'offer letter' });
 
   const requisition = await Requisition.findById(interview.requisitionId);
   assertRequisitionNotClosed(requisition, 'send an offer');
 
-  // If a previous offer letter exists in Cloudinary, delete it first
+  // If a previous offer letter exists in storage, delete it first
   if (interview.artifactFilePublicId) {
-    await destroyFile(interview.artifactFilePublicId);
+    await deleteFile(interview.artifactFilePublicId);
   }
 
-  // Upload offer letter PDF to Cloudinary
-  const uploaded = await uploadBuffer(req.file.buffer, {
-    folder: 'interview-offer-letters',
-    filename: `${Date.now()}-${req.file.originalname}`,
-  });
-  interview.artifactFileUrl = uploaded.secureUrl;
+  // Store the offer letter PDF
+  const uploaded = await uploadFile({ file: req.file, folder: 'interview-offer-letters' });
+  interview.artifactFileUrl = uploaded.url;
   interview.artifactFilePublicId = uploaded.publicId;
+  interview.artifactFileName = uploaded.name;
+  interview.artifactFileSize = uploaded.size;
+  interview.artifactFileMimeType = uploaded.mimeType;
 
   // Find candidate details to send email
   const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
@@ -674,6 +666,10 @@ const sendOffer = asyncHandler(async (req, res) => {
       candidateName: candidate.name,
       requisitionTitle: requisition?.title,
       offerLetterUrl: interview.artifactFileUrl,
+      // Production sends the PDF itself; other environments send a link.
+      attachment: emailNotifier.shouldAttachOfferLetter()
+        ? { filename: req.file.originalname, content: req.file.buffer }
+        : undefined,
     });
   }
 

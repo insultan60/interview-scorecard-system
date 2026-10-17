@@ -46,6 +46,9 @@ const applicationSchema = new mongoose.Schema({
   // Offer letters are application-level documents, not pipeline stages.
   offerLetterUrl: String,
   offerLetterPublicId: String,
+  offerLetterFileName: String,
+  offerLetterFileSize: Number,    // bytes, before any compression
+  offerLetterFileMimeType: String,
   offerLetterUploadedAt: Date,
   offerLetterDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
   offerLetterSentAt: Date,
