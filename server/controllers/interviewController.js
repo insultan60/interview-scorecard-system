@@ -742,6 +742,7 @@ const requestAvailability = asyncHandler(async (req, res) => {
   logger.info(`[Interview] Availability request created for interview ${interview._id} to ${candidateEmail}: ${availabilityUrl}. emailSent=${emailResult.sent}`);
   res.json({
     sent: emailResult.sent,
+    emailReason: emailResult.reason,
     interview,
     availabilityUrl,
     candidateEmail,

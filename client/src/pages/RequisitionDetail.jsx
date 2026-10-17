@@ -27,7 +27,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatDate, formatDisposition, formatScore } from '../utils/formatters';
-import { isBrowserEmailJSConfigured, sendOfferEmailClient } from '../services/emailService';
 import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
 
 const DISPOSITION_BADGE = {
@@ -146,29 +145,12 @@ export default function RequisitionDetail() {
       const formData = new FormData();
       formData.append('offerLetter', offerFile);
       const response = await api.post(`/scoring/application/${offerFor._id}/send-offer-letter`, formData);
-      const { application, emailSent, emailReason } = response.data;
+      const { emailSent, emailReason } = response.data;
 
       if (emailSent) {
         toast.success('Offer letter uploaded and emailed to the candidate.');
       } else {
-        const fallback = await sendOfferEmailClient({
-          candidateEmail: offerFor.candidateId?.email,
-          candidateName: offerFor.candidateId?.name,
-          requisitionTitle: data?.requisition?.title || 'the position',
-          offerLetterUrl: application?.offerLetterUrl,
-        });
-        if (fallback.sent) {
-          try {
-            await api.patch(`/scoring/application/${offerFor._id}/offer-letter-delivery`, { deliveryStatus: 'sent' });
-          } catch (deliveryError) {
-            console.warn('[Offer letter] Browser delivery was successful but its status could not be saved.', deliveryError);
-          }
-          toast.success('Offer letter uploaded and emailed through the browser fallback.');
-        } else if (!isBrowserEmailJSConfigured()) {
-          toast.error(`${emailReason || 'Server email could not be sent.'} Browser email fallback is not configured.`);
-        } else {
-          toast.error(fallback.reason || emailReason || 'The offer letter was uploaded, but the email could not be sent.');
-        }
+        toast.error(emailReason || 'The offer letter was uploaded, but the email could not be sent.');
       }
 
       setOfferFor(null);

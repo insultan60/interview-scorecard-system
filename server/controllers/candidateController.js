@@ -407,24 +407,6 @@ const sendOnboardingForm = asyncHandler(async (req, res) => {
   });
 });
 
-/** PATCH /api/candidates/onboarding-form-delivery */
-const recordOnboardingFormDelivery = asyncHandler(async (req, res) => {
-  const { applicationId, deliveryStatus } = req.body;
-  if (!applicationId || !mongoose.isValidObjectId(applicationId)) {
-    throw new ValidationError(['applicationId'], 'Valid applicationId is required.');
-  }
-  const application = await Application.findById(applicationId);
-  if (!application) {
-    return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
-  }
-
-  application.onboardingFormDeliveryStatus = deliveryStatus === 'sent' ? 'sent' : 'pending';
-  application.onboardingFormSentAt = deliveryStatus === 'sent' ? new Date() : null;
-  await application.save();
-
-  res.json({ application });
-});
-
 /**
  * POST /api/candidates/bulk-attach
  * Attaches multiple candidates to a single requisition.
@@ -483,6 +465,6 @@ const bulkAttach = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, bulkCreate, bulkAttach, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm, recordOnboardingFormDelivery };
+module.exports = { list, create, bulkCreate, bulkAttach, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm };
 
 

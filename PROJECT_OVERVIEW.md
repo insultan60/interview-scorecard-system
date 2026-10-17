@@ -95,7 +95,6 @@ Optional, disabled by default (weight 0): Task Performance, Client Interview, Cu
 - React 18 + Vite 5, React Router v6
 - Tailwind CSS 3 + shadcn/ui-style components (Radix UI primitives) in `components/ui/`
 - `@tanstack/react-table`, Recharts, `react-quill-new` (rich-text editor), `react-day-picker`, `dayjs`, `lucide-react`, `react-hot-toast`, Axios
-- `@emailjs/browser` as a browser-side email fallback
 
 **AI / services:** Anthropic Claude Messages API, Google Meet REST + Calendar API, Slack incoming webhook, Gmail SMTP, Cloudflare Turnstile (CAPTCHA), Cloudinary.
 
@@ -151,7 +150,6 @@ interview-scorecard-system/
 │       ├── main.jsx, App.jsx          # Entry + route table
 │       ├── context/AuthContext.jsx    # Session (user + JWT)
 │       ├── hooks/useApi.js            # Shared Axios instance + interceptors
-│       ├── services/emailService.js   # Browser EmailJS fallback
 │       ├── constants/screeningCriteria.json  # Education / Experience option lists
 │       ├── utils/formatters.js, lib/utils.js
 │       ├── components/                # App components (+ ui/ shadcn primitives)
@@ -324,7 +322,7 @@ Base path `/api`. All routes need `Authorization: Bearer <jwt>` unless marked **
 | | `GET/PATCH/DELETE /candidates/:id` | read / update / delete |
 | | `POST /candidates/:id/apply` | attach to a requisition |
 | | `DELETE /candidates/:id/requisitions/:requisitionId` | detach |
-| | `POST /candidates/send-onboarding-form`, `PATCH /candidates/onboarding-form-delivery` | onboarding form |
+| | `POST /candidates/send-onboarding-form` | send the onboarding form email |
 | Interviews | `GET /interviews/google/callback` | **public** Google OAuth redirect |
 | | `GET/POST /interviews/:id/availability/public` | **public** candidate availability |
 | | `GET /interviews`, `GET /interviews/:id`, `POST /interviews` | list / read / create |
@@ -340,7 +338,7 @@ Base path `/api`. All routes need `Authorization: Bearer <jwt>` unless marked **
 | | `PATCH /scoring/application/:id/override-initial-screening` | HR override |
 | | `POST /scoring/application/:id/recompute` | force recompute |
 | | `PATCH /scoring/application/:id/decision` | hired / rejected / withdrawn |
-| | `POST /scoring/application/:id/send-offer-letter`, `PATCH …/offer-letter-delivery` | offer letter |
+| | `POST /scoring/application/:id/send-offer-letter` | upload and email the offer letter |
 | Settings | `GET /settings`, `GET /settings/key-status`, `GET /settings/ai-usage` | read |
 | | `PUT /settings/:key`, `POST /settings/test-api` | **admin only** |
 | Audit | `GET /audit` | audit log query |
@@ -375,7 +373,6 @@ Protected pages are wrapped in `RequireAuth` + `Layout` (collapsible `Sidebar`; 
 - `AuthContext` – holds `user`, `login`, `logout`; token stored in `localStorage` (`interview_scorecard_token`) and validated against `/auth/me` on load.
 - `hooks/useApi.js` – shared Axios instance (`baseURL = VITE_API_URL`); attaches the JWT; on a session `AUTH_ERROR` 401 it clears the token and redirects to `/login`; all other errors surface as toasts. (Third-party 401s, e.g. Google scope errors, deliberately do **not** log the user out.)
 - Path alias `@` → `client/src`. Dev server on port 5173 proxies `/api` to `localhost:5000`.
-- `services/emailService.js` – optional EmailJS fallback if the server's Gmail send fails (`VITE_EMAILJS_*`).
 
 ---
 
@@ -390,7 +387,6 @@ Protected pages are wrapped in `RequireAuth` + `Layout` (collapsible `Sidebar`; 
 | **Gmail SMTP** (App Password) | Candidate/user emails | Needed for emails |
 | **Slack webhook** | Notifications | Optional |
 | **Cloudflare Turnstile** | CAPTCHA on public apply | Optional (skipped if keys absent) |
-| **EmailJS** (browser) | Fallback email | Optional |
 
 Credentials (Anthropic key, Google client id/secret/refresh token, Slack webhook, Gmail user/password) can be set in `.env` **or** overridden at runtime from Settings (stored in the `Setting` collection). They are never returned in full to the browser — only masked with the last 4 characters.
 
@@ -452,7 +448,6 @@ Credentials (Anthropic key, Google client id/secret/refresh token, Slack webhook
 | Variable | Purpose |
 |---|---|
 | `VITE_API_URL` | Full API URL, e.g. `http://localhost:5000/api`. **Baked in at build time** — rebuild after changing. |
-| `VITE_EMAILJS_SERVICE_ID/TEMPLATE_ID/PUBLIC_KEY` | Optional browser email fallback |
 | Turnstile site key | The public apply page needs the site key to render the CAPTCHA widget (see `CandidateApply.jsx` for the exact variable it reads) |
 
 ### Runtime settings (collection `Setting`, editable in Settings UI)

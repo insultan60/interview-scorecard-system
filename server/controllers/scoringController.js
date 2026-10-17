@@ -396,8 +396,8 @@ const decision = asyncHandler(async (req, res) => {
 /**
  * POST /api/scoring/application/:id/send-offer-letter
  * Uploads a signed offer document for a hired candidate and sends its secure
- * link through the server email service.  A non-fatal email failure is
- * returned to the browser so it can use its configured EmailJS fallback.
+ * link through the server email service. A non-fatal email failure is
+ * reported in the response (emailSent / emailReason) and does not undo the upload.
  */
 const sendOfferLetter = asyncHandler(async (req, res) => {
   const application = await Application.findById(req.params.id).populate('candidateId', 'name email');
@@ -464,34 +464,6 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
 
   logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; server email sent=${emailResult.sent}.`);
   res.json({ application, emailSent: emailResult.sent, emailReason: emailResult.reason });
-});
-
-/** Records that the browser EmailJS fallback delivered the current offer letter. */
-const recordOfferLetterDelivery = asyncHandler(async (req, res) => {
-  const application = await Application.findById(req.params.id);
-  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
-  if (!application.offerLetterUrl) {
-    throw new ValidationError(['offerLetter'], 'Upload an offer letter before recording delivery.');
-  }
-  if (req.body?.deliveryStatus !== 'sent') {
-    throw new ValidationError(['deliveryStatus'], 'deliveryStatus must be sent.');
-  }
-
-  application.offerLetterDeliveryStatus = 'sent';
-  application.offerLetterSentAt = new Date();
-  await application.save();
-  await AuditLog.create({
-    action: 'offer_letter_sent',
-    userId: req.user._id,
-    requisitionId: application.requisitionId,
-    applicationId: application._id,
-    targetType: 'application',
-    targetId: application._id.toString(),
-    newValue: { offerLetterUrl: application.offerLetterUrl, emailSent: true, deliveryMethod: 'browser_fallback' },
-    reason: 'Offer letter sent through the browser email fallback.',
-  });
-
-  res.json({ application });
 });
 
 const passFail = asyncHandler(async (req, res) => {
@@ -710,5 +682,5 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
   res.json({ application, nextInterviewId });
 });
 
-module.exports = { approve, override, recompute, decision, sendOfferLetter, recordOfferLetterDelivery, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
+module.exports = { approve, override, recompute, decision, sendOfferLetter, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
 

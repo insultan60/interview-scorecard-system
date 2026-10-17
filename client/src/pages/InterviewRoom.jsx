@@ -5,7 +5,6 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, Pencil } from 'lucide-react';
 import api from '../hooks/useApi';
-import { sendMeetingEmailClient, sendHostMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -267,60 +266,18 @@ export default function InterviewRoom() {
         toast.success('Meeting set and emailed to candidate.');
       } else {
         toast.success('Meeting set.');
-        if (isBrowserEmailJSConfigured()) {
-          const stageLabel = stageConfig?.label || res.data.interview?.stageKey || '';
-          const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
-          const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
-          const requisitionTitle = requisition?.title || '';
-          const clientRes = await sendMeetingEmailClient({
-            candidateEmail,
-            candidateName,
-            requisitionTitle,
-            stageLabel,
-            meetingUri: res.data.interview?.meetingUri || '',
-          });
-          if (clientRes.sent) {
-            toast.success('Emailed candidate via Browser EmailJS.');
-          } else {
-            console.warn('[EmailNotifier] Browser EmailJS failed:', clientRes.reason);
-            toast.error(res.data.emailReason || clientRes.reason || 'Could not email the candidate.');
-          }
-        } else {
-          console.warn('[EmailNotifier] Meeting email not sent (Backend email failed and Browser EmailJS not configured).');
-          toast.error(res.data.emailReason || 'Could not email the candidate.');
-        }
+        toast.error(res.data.emailReason || 'Could not email the candidate.');
       }
-      await sendHostEmailFallback(res.data, 'scheduled', res.data.interview);
+      reportHostEmailFailure(res.data);
     } finally {
       setCreatingMeeting(false);
     }
   }
 
-  async function sendHostEmailFallback(result, action, meeting) {
+  /** The server sends the Calendar host's notification; tell the user if it could not. */
+  function reportHostEmailFailure(result) {
     if (result?.hostEmailSent !== false) return;
-
-    if (!isBrowserEmailJSConfigured()) {
-      console.warn('[EmailNotifier] Host email was not sent by the backend and Browser EmailJS is not configured:', result.hostEmailReason);
-      toast.error(`Host email was not sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
-      return;
-    }
-
-    const clientRes = await sendHostMeetingEmailClient({
-      hostEmail: result.hostEmail,
-      action,
-      candidateName: application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '',
-      requisitionTitle: requisition?.title || '',
-      stageLabel: stageConfig?.label || meeting?.stageKey || '',
-      meetingUri: meeting?.meetingUri || '',
-      meetingStart: meeting?.meetingStart,
-      meetingEnd: meeting?.meetingEnd,
-    });
-    if (clientRes.sent) {
-      toast.success('Host notification sent via Browser EmailJS.');
-    } else {
-      console.warn('[EmailNotifier] Browser EmailJS host notification failed:', clientRes.reason);
-      toast.error(`Host email was not sent: ${clientRes.reason}`);
-    }
+    toast.error(`Host email was not sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
   }
 
   function copyCandidateContact(value, label) {
@@ -350,31 +307,10 @@ export default function InterviewRoom() {
   async function handleResendMeetingEmail() {
     setSendingMeetingEmail(true);
     try {
-      if (isBrowserEmailJSConfigured()) {
-        const stageLabel = stageConfig?.label || interview?.stageKey || '';
-        const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
-        const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
-        const requisitionTitle = requisition?.title || '';
-        const clientRes = await sendMeetingEmailClient({
-          candidateEmail,
-          candidateName,
-          requisitionTitle,
-          stageLabel,
-          meetingUri: interview?.meetingUri || '',
-        });
-        if (clientRes.sent) {
-          toast.success('Email sent to candidate via Browser EmailJS.');
-          return;
-        }
-        console.warn('[EmailNotifier] Browser EmailJS failed. Falling back to BACKEND...', clientRes.reason);
-        toast.error(`Browser EmailJS failed (${clientRes.reason}). Falling back to backend...`);
-      }
-
       const res = await api.post(`/interviews/${id}/send-meeting-email`, {}, { validateStatus: () => true });
       if (res.data?.sent) {
         toast.success('Email sent to candidate.');
       } else {
-        console.warn('[EmailNotifier] Backend resend meeting email failed:', res.data?.reason);
         toast.error(res.data?.reason || res.data?.message || 'Could not send email.');
       }
     } finally {
@@ -393,25 +329,7 @@ export default function InterviewRoom() {
       if (res.data.sent) {
         toast.success(`Availability request email sent to ${res.data.candidateEmail || 'candidate'}!`);
       } else {
-        console.warn('[EmailNotifier] Backend email not sent. Reason:', res.data.emailReason);
-        if (isBrowserEmailJSConfigured()) {
-          const clientRes = await sendAvailabilityEmailClient({
-            candidateEmail: res.data.candidateEmail,
-            candidateName: res.data.candidateName,
-            requisitionTitle: res.data.requisitionTitle,
-            stageLabel: res.data.stageLabel,
-            availabilityUrl: res.data.availabilityUrl,
-          });
-          if (clientRes.sent) {
-            toast.success('Availability link sent to candidate via Browser EmailJS!');
-          } else {
-            console.warn('[EmailNotifier] Browser EmailJS failed:', clientRes.reason);
-            toast.error(`Could not email candidate (${res.data.emailReason || clientRes.reason || 'Gmail SMTP not configured in Settings'}).`);
-          }
-        } else {
-          console.warn('[EmailNotifier] Gmail SMTP not configured in Settings and Browser EmailJS not configured in .env');
-          toast.error(res.data.emailReason || 'Gmail SMTP not configured in Settings (GMAIL_USER & GMAIL_APP_PASSWORD required).');
-        }
+        toast.error(res.data.emailReason || 'Could not send the availability request email. Check that email sending is configured.');
       }
     } catch (err) {
       console.error('[EmailNotifier] Error requesting availability:', err);
@@ -479,7 +397,6 @@ export default function InterviewRoom() {
     if (!window.confirm('Cancel this meeting? The link will be removed — you can create or paste a new one afterward.')) return;
     setCreatingMeeting(true);
     try {
-      const cancelledMeeting = interview;
       const res = await api.delete(`/interviews/${id}/meeting`, { validateStatus: () => true });
       if (res.status >= 400) {
         toast.error(res.data?.message || 'Could not cancel the meeting.');
@@ -487,7 +404,7 @@ export default function InterviewRoom() {
       }
       setInterview(res.data.interview);
       toast.success('Meeting cancelled.');
-      await sendHostEmailFallback(res.data, 'cancelled', cancelledMeeting);
+      reportHostEmailFailure(res.data);
     } finally {
       setCreatingMeeting(false);
     }
@@ -656,27 +573,7 @@ export default function InterviewRoom() {
       if (res.data.emailSent) {
         toast.success('Offer letter uploaded, emailed to candidate, and stage approved!');
       } else {
-        if (isBrowserEmailJSConfigured()) {
-          const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
-          const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
-          const requisitionTitle = requisition?.title || '';
-          const offerUrl = res.data.interview?.artifactFileUrl || interview?.artifactFileUrl || res.data.interview?.offerLetterUrl || '';
-          const clientRes = await sendOfferEmailClient({
-            candidateEmail,
-            candidateName,
-            requisitionTitle,
-            offerLetterUrl: offerUrl,
-          });
-          if (clientRes.sent) {
-            toast.success('Offer stage approved & emailed candidate via Browser EmailJS!');
-          } else {
-            console.warn('[EmailNotifier] Browser EmailJS offer email failed:', clientRes.reason);
-            toast.success(`Offer stage approved! (${res.data.emailReason || clientRes.reason || 'Email not sent.'})`);
-          }
-        } else {
-          console.warn('[EmailNotifier] Offer letter email not sent (Backend email failed and Browser EmailJS not configured).');
-          toast.success(`Offer stage approved! (${res.data.emailReason || 'Email not sent.'})`);
-        }
+        toast.success(`Offer stage approved! (${res.data.emailReason || 'Email not sent.'})`);
       }
 
       setInterview(res.data.interview);

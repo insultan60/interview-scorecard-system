@@ -14,6 +14,5 @@ router.patch('/application/:id/override-initial-screening', scoringController.ov
 router.post('/application/:id/recompute', scoringController.recompute);
 router.patch('/application/:id/decision', scoringController.decision);
 router.post('/application/:id/send-offer-letter', upload.single('offerLetter'), scoringController.sendOfferLetter);
-router.patch('/application/:id/offer-letter-delivery', scoringController.recordOfferLetterDelivery);
 
 module.exports = router;
