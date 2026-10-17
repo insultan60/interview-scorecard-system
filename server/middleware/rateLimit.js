@@ -68,9 +68,9 @@ const publicApplyLimiter = rateLimit({
 // Candidate availability submissions are cheap, but still unauthenticated.
 const publicAvailabilityLimiter = rateLimit({
   name: 'public-availability',
-  windowMs: 15 * 60 * 1000,
+  windowMs: 60 * 60 * 1000,
   max: 5,
-  message: 'Too many submissions. Please try again in a few minutes.',
+  message: 'Too many submissions. Please try again in a while.',
 });
 
 module.exports = { rateLimit, publicApplyLimiter, publicAvailabilityLimiter };
