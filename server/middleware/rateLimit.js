@@ -56,12 +56,12 @@ function rateLimit({ name, windowMs, max, message }) {
   };
 }
 
-// 10 applications per IP per hour: generous for shared networks (offices,
-// universities) but stops a script from flooding AI scoring and file uploads.
+// 5 applications per IP per hour: enough for a real candidate (or a few on one
+// shared network) but stops a script from flooding AI scoring and file uploads.
 const publicApplyLimiter = rateLimit({
   name: 'public-apply',
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 5,
   message: 'Too many applications from this network. Please try again in a while.',
 });
 
@@ -69,7 +69,7 @@ const publicApplyLimiter = rateLimit({
 const publicAvailabilityLimiter = rateLimit({
   name: 'public-availability',
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 5,
   message: 'Too many submissions. Please try again in a few minutes.',
 });
 
