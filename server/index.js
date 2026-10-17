@@ -1,5 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -9,6 +10,7 @@ const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { startRetentionSchedule } = require('./services/retentionService');
 const { getAllowedOrigins, normalizeOrigin } = require('./utils/allowedOrigins');
+const { createOriginGuard } = require('./middleware/originGuard');
 const { getCaptchaConfig } = require('./services/captchaService');
 
 const authRoutes = require('./routes/auth');
@@ -66,7 +68,12 @@ app.use(cors({
     logger.warn(`[CORS] Blocked origin: ${origin} (allowed: ${ALLOWED_ORIGINS.join(', ')})`);
     return callback(null, false); // clean CORS rejection, not a 500
   },
+  credentials: true, // the website sends its login cookies to this API
 }));
+// Login now lives in cookies, so refuse data-changing requests that come from a
+// website we have not allowed (CSRF protection). See middleware/originGuard.js.
+app.use('/api', createOriginGuard(ALLOWED_ORIGINS));
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' })); // 10mb: JD text + transcript uploads via JSON paths
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev', {

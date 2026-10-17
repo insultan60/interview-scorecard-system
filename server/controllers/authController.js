@@ -1,12 +1,11 @@
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 const { asyncHandler, sanitizeUser } = require('../utils/helpers');
 const emailNotifier = require('../services/emailNotifier');
+const sessions = require('../services/sessionService');
 
-const TOKEN_TTL = '12h';
 const RESET_TTL_MINUTES = Math.max(5, Math.min(Number(process.env.PASSWORD_RESET_TTL_MINUTES) || 30, 120));
 const RESET_RESPONSE = 'If an active account uses that email address, a password-reset link has been sent.';
 const RESET_REQUEST_WINDOW_MS = 15 * 60 * 1000;
@@ -26,17 +25,10 @@ function canRequestPasswordReset(ip) {
 }
 
 /**
- * Signs a JWT for a given user id. Subject (`sub`) is the user's Mongo _id.
- * @param {string} userId
- * @returns {string}
- */
-function signToken(userId) {
-  return jwt.sign({ sub: userId }, process.env.JWT_SECRET, { expiresIn: TOKEN_TTL });
-}
-
-/**
  * POST /api/auth/login
- * Verifies email + password, returns a JWT + the sanitized user on success.
+ * Verifies email + password, starts a session (sets the HTTP-only access and
+ * refresh cookies) and returns the sanitized user. No token is returned in the
+ * response body, so page scripts never see one.
  * Body: { email, password }
  * Errors: 400 if fields missing; 401 if credentials are wrong or user inactive.
  */
@@ -59,9 +51,35 @@ const login = asyncHandler(async (req, res) => {
     return res.status(401).json({ error: 'AUTH_ERROR', message: 'Invalid email or password.' });
   }
 
-  const token = signToken(user._id.toString());
+  await sessions.startSession(req, res, user);
   logger.info(`[Auth] Login succeeded for ${email} (role=${user.role}).`);
-  return res.json({ token, user: sanitizeUser(user) });
+  return res.json({ user: sanitizeUser(user) });
+});
+
+/**
+ * POST /api/auth/refresh
+ * Swaps the refresh cookie for a new access + refresh pair (the old refresh
+ * token stops working). 401 AUTH_ERROR, with the cookies cleared, when there is
+ * no valid refresh token: the person must sign in again.
+ */
+const refresh = asyncHandler(async (req, res) => {
+  const result = await sessions.refreshSession(req, res);
+  if (result.failure) {
+    sessions.clearSessionCookies(res);
+    return res.status(401).json({ error: 'AUTH_ERROR', message: 'Your session has ended. Please sign in again.' });
+  }
+  return res.json({ user: sanitizeUser(result.user) });
+});
+
+/**
+ * POST /api/auth/logout
+ * Ends this login everywhere it was refreshed from, and clears both cookies.
+ * Safe to call when already signed out.
+ */
+const logout = asyncHandler(async (req, res) => {
+  await sessions.revokeSessionByCookie(req);
+  sessions.clearSessionCookies(res);
+  return res.json({ message: 'Signed out.' });
 });
 
 /**
@@ -137,8 +155,9 @@ const resetPassword = asyncHandler(async (req, res) => {
   // sessions.
   user.passwordChangedAt = new Date(Date.now() - 1000);
   await user.save();
+  await sessions.revokeAllForUser(user._id); // signs the account out on every device
   logger.info(`[Auth] Password reset completed for user=${user._id}.`);
   return res.json({ message: 'Password updated. You can now sign in.' });
 });
 
-module.exports = { login, me, forgotPassword, resetPassword };
+module.exports = { login, refresh, logout, me, forgotPassword, resetPassword };
