@@ -9,6 +9,8 @@ const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { startRetentionSchedule } = require('./services/retentionService');
+const { startApplicationProcessor } = require('./services/applicationProcessor');
+const { startEmailQueue } = require('./services/emailQueue');
 const { getAllowedOrigins, normalizeOrigin } = require('./utils/allowedOrigins');
 const { createOriginGuard } = require('./middleware/originGuard');
 const { getCaptchaConfig } = require('./services/captchaService');
@@ -110,6 +112,8 @@ async function start() {
       logger.warn('[Security] Cloudflare Turnstile is NOT configured (TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY). Public application forms have no bot protection and can be abused to consume AI spend and storage.');
     }
     startRetentionSchedule();
+    startApplicationProcessor(); // finishes AI screening of public applications in the background
+    startEmailQueue();           // sends queued emails in the background, with retries
     app.listen(PORT, () => {
       logger.info(`[Server] Listening on port ${PORT} (env=${process.env.NODE_ENV || 'development'})`);
     });

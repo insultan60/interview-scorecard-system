@@ -14,12 +14,12 @@ const { asyncHandler, normalizeWeights } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
 const { assertRequisitionOpen, assertRequisitionConfigurable } = require('../utils/requisitionStatus');
 const { generateScorecard } = require('../services/questionGenerator');
-const { scoreInterview } = require('../services/aiScorer');
-const { computeStageAverage, isStagePassed, rankApplications } = require('../services/scoringEngine');
+const { syncHrQuestionnaireRubric, assignMissingAttributeIds } = require('../utils/scorecardHelpers');
+const { rankApplications } = require('../services/scoringEngine');
+const { enqueueApplication } = require('../services/applicationProcessor');
 const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
 const { callClaude, getModelIds } = require('../services/claudeClient');
-const emailNotifier = require('../services/emailNotifier');
 const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 // Server-side validation mirror. The editable UI definition lives in client/src/constants.
@@ -327,55 +327,6 @@ function hasApplicationDeadlinePassed(deadline) {
     date.getUTCDate() + 1
   );
   return Date.now() >= nextDayStartUtc;
-}
-
-/** Uses each application question and its ideal answer / JD context as the HR-screen rubric. */
-function syncHrQuestionnaireRubric(scorecard, requisition) {
-  let updated = false;
-  ['hr_screen', 'hr_interview'].forEach((stageKey) => {
-    const hrStage = scorecard?.stages?.find((stage) => stage.stageKey === stageKey);
-    if (!hrStage) return;
-
-    const attributes = (requisition.questionnaire || []).map((item, index) => {
-      const question = typeof item === 'string' ? item : item.question;
-      const idealAnswer = typeof item === 'object' ? item.idealAnswer : '';
-      const requireIdealAnswer = typeof item === 'object' ? Boolean(item.requireIdealAnswer) : false;
-
-      let anchor5 = 'Fully addresses the question with a clear, relevant answer aligned with the Job Description requirements.';
-      let redFlags = 'Does not answer the question, or provides an unclear or irrelevant response.';
-
-      if (idealAnswer) {
-        anchor5 = `Ideal answer benchmark: ${idealAnswer}`;
-        redFlags = `Does not address or match the required ideal answer benchmark: "${idealAnswer}".`;
-      }
-
-      return {
-        attributeId: `${hrStage.stageKey || 'hr_screen'}_question_${index + 1}`,
-        name: `Question ${index + 1}`,
-        question,
-        anchor5,
-        redFlags,
-        requireIdealAnswer,
-        idealAnswer,
-      };
-    });
-
-    if (JSON.stringify(hrStage.attributes) !== JSON.stringify(attributes)) {
-      hrStage.attributes = attributes;
-      updated = true;
-    }
-  });
-  return updated;
-}
-
-function assignMissingAttributeIds(stages) {
-  stages.forEach((stage) => {
-    stage.attributes.forEach((attr, index) => {
-      if (!attr.attributeId) {
-        attr.attributeId = `${stage.stageKey}_${index + 1}_${crypto.randomBytes(3).toString('hex')}`;
-      }
-    });
-  });
 }
 
 /**
@@ -1419,26 +1370,9 @@ const applyPublic = asyncHandler(async (req, res) => {
     }
   }
 
-  // 1. Ensure Scorecard exists for this requisition (auto-generate if missing)
-  let scorecard = requisition.scorecardId ? await Scorecard.findById(requisition.scorecardId) : await Scorecard.findOne({ requisitionId: requisition._id });
-  if (!scorecard) {
-    try {
-      const generated = await generateScorecard(requisition);
-      assignMissingAttributeIds(generated.stages);
-      scorecard = await Scorecard.create({ requisitionId: requisition._id, generatedByAI: true, stages: generated.stages });
-      requisition.scorecardId = scorecard._id;
-      await requisition.save();
-      logger.info(`[ApplyPublic] Auto-generated missing scorecard for requisition ${requisition._id}`);
-    } catch (scErr) {
-      logger.warn(`[ApplyPublic] Could not auto-generate scorecard for requisition ${requisition._id}: ${scErr.message}`);
-    }
-  }
-  if (scorecard && syncHrQuestionnaireRubric(scorecard, requisition)) {
-    scorecard.markModified('stages');
-    await scorecard.save();
-  }
-
-  // 2. Create Application document
+  // 1. Create the Application document. Its AI screening is marked pending and
+  //    done in the background (services/applicationProcessor.js) so the candidate
+  //    gets their answer straight away instead of waiting for the AI.
   const enabledStages = (requisition.stages || []).filter((s) => s.enabled);
   // Public applications always begin with the required résumé screen, even
   // for a requisition created from an older pipeline template.
@@ -1463,7 +1397,7 @@ const applyPublic = asyncHandler(async (req, res) => {
     submittedAt: new Date(),
   } : undefined;
 
-  let application = await Application.create({
+  const application = await Application.create({
     candidateId: candidate._id,
     requisitionId: requisition._id,
     currentStageKey: firstStageKey,
@@ -1472,14 +1406,13 @@ const applyPublic = asyncHandler(async (req, res) => {
     questionnaireAnswers: parsedQAnswers,
     opportunityDuration: opportunityDuration ? String(opportunityDuration).trim() : undefined,
     candidateAvailability: candidateAvailPayload,
+    screeningJob: { status: 'pending' },
   });
 
-  // 3. Create Stage 1 Interview document
+  // 2. Create the stage interviews (just saves the résumé / answers; scoring happens later).
   const Interview = require('../models/Interview');
-  let firstInterview = null;
-  let hrInterview = null;
   if (firstStageKey) {
-    firstInterview = await Interview.create({
+    await Interview.create({
       applicationId: application._id,
       requisitionId: requisition._id,
       stageKey: firstStageKey,
@@ -1508,7 +1441,7 @@ const applyPublic = asyncHandler(async (req, res) => {
       const questionText = typeof question === 'string' ? question : question.question;
       return `Question ${index + 1}: ${questionText}\nCandidate Answer: ${parsedQAnswers[questionText] || ''}`;
     }).join('\n\n');
-    hrInterview = await Interview.create({
+    await Interview.create({
       applicationId: application._id,
       requisitionId: requisition._id,
       stageKey: hrStage.key,
@@ -1519,164 +1452,20 @@ const applyPublic = asyncHandler(async (req, res) => {
     });
     const hrProgress = application.stageProgress.find((progress) => progress.stageKey === hrStage.key);
     if (hrProgress) hrProgress.status = 'scheduled';
-    await application.save();
   }
+  await application.save();
 
-  // 4. Score the résumé stage using only the CV, JD, and screening criteria.
-  let aiScore = null;
-  let passed = null;
-  if (firstInterview && scorecard && firstStage) {
-    const stageRubric = scorecard.stages.find((s) => s.stageKey === firstStageKey);
-    if (stageRubric && stageRubric.attributes && stageRubric.attributes.length > 0 && resumeText) {
-      try {
-        logger.info(`[ApplyPublic] Auto-scoring Stage 1 (${firstStageKey}) interview for candidate application ${application._id}...`);
-        const { interview: scoredInterview } = await scoreInterview({
-          interview: firstInterview,
-          stageType: firstStage.stageType,
-          attributes: stageRubric.attributes,
-          requisition,
-          application,
-        });
-        if (scoredInterview) {
-          firstInterview = scoredInterview;
-          const progressItem = application.stageProgress.find((p) => p.stageKey === firstStageKey);
-          if (progressItem) progressItem.status = 'scored';
-          await application.save();
-        }
-      } catch (scoreErr) {
-        logger.warn(`[ApplyPublic] Stage 1 auto-scoring warning: ${scoreErr.message}`);
-      }
-    }
-  }
+  logger.info(`[ApplyPublic] Application ${application._id} submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}"; AI screening queued.`);
 
-  // 5. Auto-approve résumé scores and compute the first-stage result.
-  if (firstInterview && (firstInterview.status === 'scored' || (firstInterview.scores && firstInterview.scores.length > 0))) {
-    try {
-      firstInterview.scores.forEach((s) => {
-        if (s.approvedScore === undefined || s.approvedScore === null) {
-          s.approvedScore = s.aiScore;
-        }
-      });
-      firstInterview.status = 'approved';
-      firstInterview.markModified('scores');
-
-      const stageAverage = computeStageAverage(firstInterview);
-      const stagePassed = isStagePassed(stageAverage, firstStage.passThreshold);
-      firstInterview.stageAverage = stageAverage;
-      await firstInterview.save();
-
-      aiScore = stageAverage;
-      passed = stagePassed;
-      application.initialScreening = {
-        aiScore: stageAverage,
-        aiJustification: firstInterview.scores.map((score) => score.aiJustification).filter(Boolean).join(' '),
-        passed: stagePassed,
-        overridden: false,
-      };
-
-      const progress = application.stageProgress.find((p) => p.stageKey === firstStageKey);
-      if (progress) {
-        progress.stageAverage = stageAverage;
-        progress.passed = stagePassed;
-        progress.status = stagePassed ? 'passed' : 'failed';
-      }
-
-      const { getOrCreateNextInterview, recomputeAndPersist } = require('./scoringController');
-      let nextInterviewId = null;
-      if (stagePassed) {
-        nextInterviewId = await getOrCreateNextInterview(application, requisition, firstStageKey, null);
-        await recomputeAndPersist(application, requisition, null, 'Auto-approved Stage 1 AI scoring upon public application submission.');
-      } else {
-        await recomputeAndPersist(application, requisition, null, 'Auto-computed results after Stage 1 failure.');
-      }
-      logger.info(`[ApplyPublic] Auto-approved Stage 1 (${firstStageKey}): stageAverage=${stageAverage}, passed=${stagePassed}, nextInterviewId=${nextInterviewId}`);
-    } catch (approveErr) {
-      logger.error(`[ApplyPublic] Auto-approval error: ${approveErr.message}`);
-    }
-  }
-
-  // 6. Auto-score and approve the HR screen from questionnaire answers only.
-  if (hrInterview && scorecard && hrStage) {
-    const hrRubric = scorecard.stages.find((stage) => stage.stageKey === hrStage.key);
-    if (hrRubric?.attributes?.length > 0) {
-      try {
-        const { interview: scoredInterview } = await scoreInterview({
-          interview: hrInterview,
-          stageType: hrStage.stageType,
-          attributes: hrRubric.attributes,
-          requisition,
-          application,
-        });
-        hrInterview = scoredInterview;
-        if (hrInterview.status === 'scored') {
-          hrInterview.scores.forEach((score) => {
-            if (score.approvedScore === undefined || score.approvedScore === null) {
-              score.approvedScore = score.aiScore;
-            }
-          });
-          hrInterview.status = 'approved';
-          hrInterview.markModified('scores');
-          const stageAverage = computeStageAverage(hrInterview);
-          const stagePassed = isStagePassed(stageAverage, hrStage.passThreshold);
-          hrInterview.stageAverage = stageAverage;
-          await hrInterview.save();
-
-          const progress = application.stageProgress.find((item) => item.stageKey === hrStage.key);
-          if (progress) {
-            progress.stageAverage = stageAverage;
-            progress.passed = stagePassed;
-            progress.status = stagePassed ? 'passed' : 'failed';
-          }
-          const { getOrCreateNextInterview, recomputeAndPersist } = require('./scoringController');
-          // Continue to later pipeline stages only when both required public
-          // application screens pass. HR is still scored when résumé fails.
-          if (stagePassed && passed) {
-            await getOrCreateNextInterview(application, requisition, hrStage.key, null);
-          }
-          await recomputeAndPersist(application, requisition, null, 'Auto-approved HR questionnaire scoring upon public application submission.');
-        }
-      } catch (scoreErr) {
-        logger.warn(`[ApplyPublic] HR questionnaire scoring warning: ${scoreErr.message}`);
-      }
-    }
-  }
-
-  try {
-    const allApps = await Application.find({ requisitionId: requisition._id });
-    const ranked = rankApplications(allApps);
-    for (const app of ranked) {
-      await Application.updateOne({ _id: app._id }, { rank: app.rank });
-    }
-  } catch (rankErr) {
-    logger.warn(`[ApplyPublic] Ranking error: ${rankErr.message}`);
-  }
-
-  // Confirmation email is best-effort: a mail configuration/delivery failure
-  // must never undo an application that was already successfully submitted.
-  let confirmationEmail = { sent: false, reason: 'Not attempted.' };
-  try {
-    confirmationEmail = await emailNotifier.sendApplicationConfirmationEmail({
-      candidateEmail: candidate.email,
-      candidateName: candidate.name,
-      requisitionTitle: requisition.title,
-    });
-  } catch (emailErr) {
-    confirmationEmail = { sent: false, reason: 'Could not send confirmation email.' };
-    logger.warn(`[ApplyPublic] Confirmation email failed for application ${application._id}: ${emailErr.message}`);
-  }
-
-  logger.info(`[ApplyPublic] Application submitted for candidate "${name}" (${candidate._id}) on requisition "${requisition.title}". AI Screening Enabled=${requisition.aiScreeningEnabled}, Score=${aiScore}, Passed=${passed}, confirmationEmailSent=${confirmationEmail.sent}`);
-
+  // Answer the candidate now. Nothing the candidate needs depends on the AI.
   res.status(201).json({
     success: true,
     message: 'Application submitted successfully! Your application is under review.',
     aiScreeningEnabled: requisition.aiScreeningEnabled,
-    score: aiScore,
-    passed,
-    confirmationEmailSent: confirmationEmail.sent,
-    application,
-    interview: firstInterview,
   });
+
+  // 3. Everything slow (scorecard, AI scoring, ranking, confirmation email) runs in the background.
+  enqueueApplication(application._id);
 });
 
 module.exports = {

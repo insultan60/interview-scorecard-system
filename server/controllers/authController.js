@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 const { asyncHandler, sanitizeUser } = require('../utils/helpers');
-const emailNotifier = require('../services/emailNotifier');
+const { enqueueEmail } = require('../services/emailQueue');
 const sessions = require('../services/sessionService');
 
 const RESET_TTL_MINUTES = Math.max(5, Math.min(Number(process.env.PASSWORD_RESET_TTL_MINUTES) || 30, 120));
@@ -108,19 +108,21 @@ const forgotPassword = asyncHandler(async (req, res) => {
 
     const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/+$/, '');
     const resetUrl = `${clientUrl}/reset-password?token=${encodeURIComponent(rawToken)}`;
-    const result = await emailNotifier.sendPasswordResetEmail({
-      userEmail: user.email, userName: user.name, resetUrl, expiresInMinutes: RESET_TTL_MINUTES,
+    // The email is queued and sent in the background, so this request answers at once
+    // (which also means the response time no longer reveals whether the account exists).
+    const result = await enqueueEmail({
+      type: 'password-reset',
+      to: user.email,
+      payload: { userEmail: user.email, userName: user.name, resetUrl, expiresInMinutes: RESET_TTL_MINUTES },
     });
-    if (!result.sent) {
-      logger.warn(`[Auth] Password-reset email could not be delivered for user=${user._id}: ${result.reason}`);
-      // A safe local-only test path: never send the token back to the browser.
-      // Developers can copy it from the server terminal while testing without
-      // turning an arbitrary-email request into an account-takeover flaw.
-      if (process.env.NODE_ENV === 'development') {
-        logger.info(`[Auth] Development reset link for ${user.email}: ${resetUrl}`);
-      }
+    if (result.queued) logger.info(`[Auth] Password-reset email queued for user=${user._id}.`);
+    else logger.warn(`[Auth] Password-reset email could not be queued for user=${user._id}: ${result.reason}`);
+    // A safe local-only test path: never send the token back to the browser.
+    // Developers can copy it from the server terminal while testing without
+    // turning an arbitrary-email request into an account-takeover flaw.
+    if (process.env.NODE_ENV === 'development') {
+      logger.info(`[Auth] Development reset link for ${user.email}: ${resetUrl}`);
     }
-    else logger.info(`[Auth] Password-reset link sent for user=${user._id}.`);
   }
 
   return res.json({ message: RESET_RESPONSE });

@@ -16,6 +16,16 @@ const applicationSchema = new mongoose.Schema({
     notes: String,
     submittedAt: Date,
   },
+  // Background AI screening of a public application (see services/applicationProcessor.js).
+  // Only set on applications that came through the public form.
+  screeningJob: {
+    status: { type: String, enum: ['pending', 'processing', 'completed', 'failed'] },
+    attempts: { type: Number, default: 0 },
+    lockedAt: Date,                  // when the current attempt started (detects a job left behind by a restart)
+    completedAt: Date,
+    lastError: String,
+    confirmationEmailSentAt: Date,   // so a retry never sends the confirmation twice
+  },
   stageProgress: [{
     stageKey: String,
     status: { type: String, enum: STAGE_PROGRESS_STATUS, default: 'pending' },

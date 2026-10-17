@@ -45,8 +45,8 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
         applicationId: appId,
       });
 
-      if (res.data?.sent) {
-        toast.success(`Onboarding form sent to ${candidateEmail}!`);
+      if (res.data?.queued) {
+        toast.success(`Onboarding form email is being sent to ${candidateEmail}.`);
         onOpenChange(false);
         onSuccess?.();
         return;

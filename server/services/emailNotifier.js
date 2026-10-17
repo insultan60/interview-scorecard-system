@@ -43,10 +43,11 @@ async function getTransporter() {
  * candidate-facing email can never take down the request that triggered it
  * (same philosophy as slackNotifier.js).
  * @param {{to:string, subject:string, text:string, attachments?: Array<{filename:string, content:Buffer}>}} params
- * @returns {Promise<{sent:boolean, reason?:string}>}
+ * @returns {Promise<{sent:boolean, reason?:string, permanent?:boolean}>}
  */
 async function sendEmail({ to, subject, text, attachments }) {
-  if (!to) return { sent: false, reason: 'No recipient email on file.' };
+  // `permanent: true` tells the email queue not to retry: trying again cannot help.
+  if (!to) return { sent: false, reason: 'No recipient email on file.', permanent: true };
 
   const transporter = await getTransporter();
   if (!transporter) {
@@ -61,7 +62,13 @@ async function sendEmail({ to, subject, text, attachments }) {
     return { sent: true };
   } catch (err) {
     logger.warn(`[EmailNotifier] Failed to send to ${to}: ${err.message}`);
-    return { sent: false, reason: 'Failed to send — check Gmail credentials in Settings.' };
+    // 550-554 = the mail server refused this recipient address, so retrying will never work.
+    const rejected = Number(err.responseCode) >= 550 && Number(err.responseCode) <= 554;
+    return {
+      sent: false,
+      reason: rejected ? 'The recipient address was rejected by the mail server.' : 'Failed to send — check Gmail credentials in Settings.',
+      permanent: rejected,
+    };
   }
 }
 

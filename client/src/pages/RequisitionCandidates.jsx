@@ -3,6 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Search, Users, X, ChevronDown } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Button } from '@/components/ui/button';
+import ScreeningBadge from '../components/ScreeningBadge';
+import useRefreshWhile from '../hooks/useRefreshWhile';
+import { isScreeningActive, isScreeningFailed } from '../lib/screening';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -69,11 +72,11 @@ export default function RequisitionCandidates() {
     setPage(1);
   }
 
-  async function load(targetPage = page, targetLimit = pageSize) {
+  async function load(targetPage = page, targetLimit = pageSize, silent = false) {
     const requestId = ++latestLoadRef.current;
     const isInitialLoad = !data;
     if (isInitialLoad) setLoading(true);
-    else setFetchingCandidates(true);
+    else if (!silent) setFetchingCandidates(true);
 
     try {
       const res = await api.get(`/requisitions/${id}`, {
@@ -116,6 +119,9 @@ export default function RequisitionCandidates() {
   }, [id, debouncedSearch, dispositionFilters, stageFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applications = data?.applications || [];
+
+  // While the AI is still scoring a visible application, refresh quietly until it finishes.
+  useRefreshWhile(applications.some(isScreeningActive), () => load(page, pageSize, true));
   const stageLabels = useMemo(() => Object.fromEntries((data?.requisition?.stages || []).map((stage) => [stage.key, stage.label])), [data]);
   const statusCounts = data?.applicationStats || { total: 0, IN_PROGRESS: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 };
 
@@ -254,9 +260,13 @@ export default function RequisitionCandidates() {
                       </TableCell>
                       <TableCell>{stageLabels[application.currentStageKey] || 'Initial screening'}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={`font-medium ${badgeClass}`}>
-                          {badgeText}
-                        </Badge>
+                        {!disp && (isScreeningActive(application) || isScreeningFailed(application)) ? (
+                          <ScreeningBadge application={application} />
+                        ) : (
+                          <Badge variant="outline" className={`font-medium ${badgeClass}`}>
+                            {badgeText}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button

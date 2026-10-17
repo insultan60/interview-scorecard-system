@@ -5,6 +5,9 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil, Building2 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { openStoredFile } from '../lib/fileAccess';
+import ScreeningBadge from '../components/ScreeningBadge';
+import useRefreshWhile from '../hooks/useRefreshWhile';
+import { isScreeningActive, isScreeningFailed } from '../lib/screening';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -146,10 +149,10 @@ export default function RequisitionDetail() {
       const formData = new FormData();
       formData.append('offerLetter', offerFile);
       const response = await api.post(`/scoring/application/${offerFor._id}/send-offer-letter`, formData);
-      const { emailSent, emailReason } = response.data;
+      const { emailQueued, emailReason } = response.data;
 
-      if (emailSent) {
-        toast.success('Offer letter uploaded and emailed to the candidate.');
+      if (emailQueued) {
+        toast.success('Offer letter uploaded. The candidate is being emailed.');
       } else {
         toast.error(emailReason || 'The offer letter was uploaded, but the email could not be sent.');
       }
@@ -288,11 +291,11 @@ export default function RequisitionDetail() {
     setPage(1);
   }
 
-  async function load(targetPage = page, targetLimit = pageSize) {
+  async function load(targetPage = page, targetLimit = pageSize, silent = false) {
     const requestId = ++latestLoadRef.current;
     const isInitialLoad = !data;
     if (isInitialLoad) setLoading(true);
-    else setFetchingCandidates(true);
+    else if (!silent) setFetchingCandidates(true);
 
     try {
       const params = {
@@ -352,6 +355,9 @@ export default function RequisitionDetail() {
   useEffect(() => {
     load(1);
   }, [id, debouncedCandidateSearch, dispositionFilters, finalDecisionFilters, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // While the AI is still scoring a visible application, refresh quietly until it finishes.
+  useRefreshWhile((data?.applications || []).some(isScreeningActive), () => load(page, pageSize, true));
 
   useEffect(() => {
     if (activeTab !== 'scorecard' || scorecardData) return;
@@ -896,6 +902,8 @@ export default function RequisitionDetail() {
                               <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
                                 {formatDisposition(disposition)}
                               </Badge>
+                            ) : (isScreeningActive(app) || isScreeningFailed(app)) ? (
+                              <ScreeningBadge application={app} />
                             ) : (
                               <span className="text-xs text-muted-foreground">In progress</span>
                             )}

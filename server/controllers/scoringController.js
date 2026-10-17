@@ -12,6 +12,7 @@ const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
+const { enqueueEmail } = require('../services/emailQueue');
 const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
 
@@ -430,20 +431,29 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
   application.offerLetterFileMimeType = upload.mimeType;
   application.offerLetterUploadedAt = new Date();
 
-  const candidate = application.candidateId;
-  const emailResult = await emailNotifier.sendOfferEmail({
-    candidateEmail: candidate?.email,
-    candidateName: candidate?.name,
-    requisitionTitle: requisition.title,
-    offerLetterUrl: upload.url,
-    // Production sends the PDF itself; other environments send a link.
-    attachment: emailNotifier.shouldAttachOfferLetter()
-      ? { filename: req.file.originalname, content: req.file.buffer }
-      : undefined,
-  });
-  application.offerLetterDeliveryStatus = emailResult.sent ? 'sent' : 'pending';
-  application.offerLetterSentAt = emailResult.sent ? new Date() : null;
+  // The delivery status stays "pending" until the email queue really sends the email
+  // (it then updates it to "sent"). Saved BEFORE queueing so that update cannot be overwritten.
+  application.offerLetterDeliveryStatus = 'pending';
+  application.offerLetterSentAt = null;
   await application.save();
+
+  // The email is sent in the background. Production attaches the PDF itself (the queue keeps it
+  // until sent); other environments send a link.
+  const candidate = application.candidateId;
+  const emailResult = await enqueueEmail({
+    type: 'offer-letter',
+    to: candidate?.email,
+    payload: {
+      candidateEmail: candidate?.email,
+      candidateName: candidate?.name,
+      requisitionTitle: requisition.title,
+      offerLetterUrl: upload.url,
+    },
+    attachment: emailNotifier.shouldAttachOfferLetter()
+      ? { filename: req.file.originalname, content: req.file.buffer, contentType: 'application/pdf' }
+      : undefined,
+    related: { kind: 'offer-letter', applicationId: application._id },
+  });
 
   await AuditLog.create({
     action: 'offer_letter_sent',
@@ -452,12 +462,12 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
     applicationId: application._id,
     targetType: 'application',
     targetId: application._id.toString(),
-    newValue: { offerLetterUrl: upload.url, emailSent: emailResult.sent },
+    newValue: { offerLetterUrl: upload.url, emailQueued: emailResult.queued },
     reason: 'Offer letter uploaded for a hired candidate.',
   });
 
-  logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; server email sent=${emailResult.sent}.`);
-  res.json({ application, emailSent: emailResult.sent, emailReason: emailResult.reason });
+  logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; email queued=${emailResult.queued}.`);
+  res.json({ application, emailQueued: emailResult.queued, emailReason: emailResult.reason });
 });
 
 const passFail = asyncHandler(async (req, res) => {

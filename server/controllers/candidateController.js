@@ -12,7 +12,7 @@ const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
-const { sendOnboardingFormEmail } = require('../services/emailNotifier');
+const { enqueueEmail } = require('../services/emailQueue');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -406,23 +406,27 @@ const sendOnboardingForm = asyncHandler(async (req, res) => {
     throw new ValidationError(['candidateEmail'], 'Candidate email is required.');
   }
 
-  const result = await sendOnboardingFormEmail({
-    candidateEmail,
-    candidateName,
-    onboardingUrl,
-  });
-
-  if (applicationId && mongoose.isValidObjectId(applicationId)) {
+  // Mark it pending BEFORE queueing, so the queue's later "sent" update cannot be overwritten.
+  const hasApplication = applicationId && mongoose.isValidObjectId(applicationId);
+  if (hasApplication) {
     const application = await Application.findById(applicationId);
     if (application) {
-      application.onboardingFormDeliveryStatus = result.sent ? 'sent' : 'pending';
-      application.onboardingFormSentAt = result.sent ? new Date() : null;
+      application.onboardingFormDeliveryStatus = 'pending';
+      application.onboardingFormSentAt = null;
       await application.save();
     }
   }
 
+  // The email is sent in the background; the queue marks the application "sent" once it really goes out.
+  const result = await enqueueEmail({
+    type: 'onboarding-form',
+    to: candidateEmail,
+    payload: { candidateEmail, candidateName, onboardingUrl },
+    ...(hasApplication ? { related: { kind: 'onboarding-form', applicationId } } : {}),
+  });
+
   res.json({
-    sent: result.sent,
+    queued: result.queued,
     emailReason: result.reason || null,
   });
 });

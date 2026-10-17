@@ -7,6 +7,9 @@ import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, P
 import api from '../hooks/useApi';
 import { openStoredFile } from '../lib/fileAccess';
 import { validatePdfFile } from '../lib/fileRules';
+import AlertBanner from '../components/AlertBanner';
+import useRefreshWhile from '../hooks/useRefreshWhile';
+import { isScreeningActive, isScreeningFailed } from '../lib/screening';
 import PipelineStepper from '../components/PipelineStepper';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -110,6 +113,9 @@ export default function InterviewRoom() {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // While the AI is still scoring this application in the background, refresh quietly until it finishes.
+  useRefreshWhile(isScreeningActive(application), () => load());
 
   useEffect(() => {
     if (!id) return;
@@ -264,8 +270,8 @@ export default function InterviewRoom() {
       setMeetingLinkInput('');
       setAdditionalInvitees([]);
       setAdditionalInviteesInput('');
-      if (res.data.emailSent) {
-        toast.success('Meeting set and emailed to candidate.');
+      if (res.data.emailQueued) {
+        toast.success('Meeting set. The candidate is being emailed.');
       } else {
         toast.success('Meeting set.');
         toast.error(res.data.emailReason || 'Could not email the candidate.');
@@ -276,10 +282,10 @@ export default function InterviewRoom() {
     }
   }
 
-  /** The server sends the Calendar host's notification; tell the user if it could not. */
+  /** The server queues the Calendar host's notification; tell the user if it could not be queued. */
   function reportHostEmailFailure(result) {
-    if (result?.hostEmailSent !== false) return;
-    toast.error(`Host email was not sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
+    if (result?.hostEmailQueued !== false) return;
+    toast.error(`Host email could not be sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
   }
 
   function copyCandidateContact(value, label) {
@@ -310,8 +316,8 @@ export default function InterviewRoom() {
     setSendingMeetingEmail(true);
     try {
       const res = await api.post(`/interviews/${id}/send-meeting-email`, {}, { validateStatus: () => true });
-      if (res.data?.sent) {
-        toast.success('Email sent to candidate.');
+      if (res.data?.queued) {
+        toast.success('The email is being sent to the candidate.');
       } else {
         toast.error(res.data?.reason || res.data?.message || 'Could not send email.');
       }
@@ -328,8 +334,8 @@ export default function InterviewRoom() {
         setInterview(res.data.interview);
       }
 
-      if (res.data.sent) {
-        toast.success(`Availability request email sent to ${res.data.candidateEmail || 'candidate'}!`);
+      if (res.data.queued) {
+        toast.success(`Availability request email is being sent to ${res.data.candidateEmail || 'the candidate'}.`);
       } else {
         toast.error(res.data.emailReason || 'Could not send the availability request email. Check that email sending is configured.');
       }
@@ -578,8 +584,8 @@ export default function InterviewRoom() {
       });
 
 
-      if (res.data.emailSent) {
-        toast.success('Offer letter uploaded, emailed to candidate, and stage approved!');
+      if (res.data.emailQueued) {
+        toast.success('Offer letter uploaded, the candidate is being emailed, and the stage is approved!');
       } else {
         toast.success(`Offer stage approved! (${res.data.emailReason || 'Email not sent.'})`);
       }
@@ -720,6 +726,17 @@ export default function InterviewRoom() {
           )}
         </div>
       </div>
+
+      {isScreeningActive(application) && (
+        <div className="mt-4">
+          <AlertBanner type="info" message="The AI is scoring this application in the background. Scores will appear here shortly, so please wait before scoring by hand." />
+        </div>
+      )}
+      {isScreeningFailed(application) && (
+        <div className="mt-4">
+          <AlertBanner type="warning" message="Automatic AI scoring could not finish for this application. You can score it by hand below." />
+        </div>
+      )}
 
       <Card className="mt-4">
         <CardContent className="pt-6">
