@@ -1,5 +1,5 @@
 import RichTextViewer from '../components/RichTextViewer';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, P
 import api from '../hooks/useApi';
 import { openStoredFile } from '../lib/fileAccess';
 import { validatePdfFile } from '../lib/fileRules';
+import { resolveZone, wallClockToInstant, pickedDay, formatInZone, defaultMeetingSlot } from '../lib/calendarTime';
 import AlertBanner from '../components/AlertBanner';
 import useRefreshWhile from '../hooks/useRefreshWhile';
 import { isScreeningActive, isScreeningFailed } from '../lib/screening';
@@ -24,12 +25,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { formatDisposition } from '../utils/formatters';
-
-function formatLocalDateTime(date) {
-  const datePart = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
-  return `${datePart}T${timePart}`;
-}
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
@@ -59,6 +54,11 @@ export default function InterviewRoom() {
   const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => dayjs().add(1, 'hour').startOf('hour').toDate());
   const [selectedStartTime, setSelectedStartTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').format('HH:mm'));
   const [selectedEndTime, setSelectedEndTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('HH:mm'));
+  // Meetings are picked, checked and shown in the CALENDAR's time zone (sent by the server),
+  // not in the zone this computer is set to. Falls back to the computer's zone if the server sends none.
+  const [calendarTimeZone, setCalendarTimeZone] = useState(null);
+  const zone = resolveZone(calendarTimeZone);
+  const slotDefaultedRef = useRef(false);
   const [meetingStartInput, setMeetingStartInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').format('YYYY-MM-DDTHH:mm')}`);
   const [meetingEndInput, setMeetingEndInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('YYYY-MM-DDTHH:mm')}`);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
@@ -90,6 +90,7 @@ export default function InterviewRoom() {
   const load = useCallback(async () => {
     const { data: interviewData } = await api.get(`/interviews/${id}`);
     setInterview(interviewData.interview);
+    setCalendarTimeZone(interviewData.calendarTimeZone || null);
 
     const [reqResponse, scorecardResponse] = await Promise.all([
       api.get(`/requisitions/${interviewData.interview.requisitionId}`),
@@ -113,6 +114,16 @@ export default function InterviewRoom() {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Once the calendar's zone is known, start the date/time pickers on the next full hour in that zone.
+  useEffect(() => {
+    if (!calendarTimeZone || slotDefaultedRef.current) return;
+    slotDefaultedRef.current = true;
+    const slot = defaultMeetingSlot(resolveZone(calendarTimeZone));
+    setSelectedMeetingDate(slot.date);
+    setSelectedStartTime(slot.startTime);
+    setSelectedEndTime(slot.endTime);
+  }, [calendarTimeZone]);
 
   // While the AI is still scoring this application in the background, refresh quietly until it finishes.
   useRefreshWhile(isScreeningActive(application), () => load());
@@ -214,17 +225,15 @@ export default function InterviewRoom() {
           return;
         }
 
-        const baseDate = selectedMeetingDate || new Date();
-        const year = baseDate.getFullYear();
-        const month = baseDate.getMonth();
-        const day = baseDate.getDate();
-        const [startH, startM] = (selectedStartTime || '10:00').split(':').map(Number);
-        startDateObj = new Date(year, month, day, startH, startM, 0, 0);
-
-        const [endH, endM] = (selectedEndTime || '10:30').split(':').map(Number);
-        endDateObj = new Date(year, month, day, endH, endM, 0, 0);
-        localStartTime = formatLocalDateTime(startDateObj);
-        localEndTime = formatLocalDateTime(endDateObj);
+        // The day clicked in the picker plus the times chosen are wall-clock values in the
+        // calendar's zone; turn them into the real moments (the same on any computer).
+        const day = pickedDay(selectedMeetingDate);
+        const startHHmm = selectedStartTime || '10:00';
+        const endHHmm = selectedEndTime || '10:30';
+        startDateObj = wallClockToInstant(day, startHHmm, zone);
+        endDateObj = wallClockToInstant(day, endHHmm, zone);
+        localStartTime = `${day}T${startHHmm}:00`;
+        localEndTime = `${day}T${endHHmm}:00`;
       }
 
       const pendingInvitees = parseEmailList(additionalInviteesInput);
@@ -244,7 +253,7 @@ export default function InterviewRoom() {
           localEndTime,
           meetingStart: startDateObj.toISOString(),
           meetingEnd: endDateObj.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timeZone: zone,
           additionalAttendeeEmails,
         }
         : { meetingUri: meetingLinkInput.trim() };
@@ -973,12 +982,13 @@ export default function InterviewRoom() {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-semibold text-slate-900 border-b pb-2.5">
                       <span className="flex items-center gap-1.5">
                         <CalendarIcon className="h-4 w-4 text-[#d21e2b]" />
-                        {dayjs(interview.meetingStart).format('dddd, MMMM D, YYYY')}
+                        {formatInZone(interview.meetingStart, zone, 'dddd, MMMM D, YYYY')}
                       </span>
                       <span className="flex items-center gap-1.5 text-slate-700">
                         <Clock className="h-4 w-4 text-slate-400" />
-                        {dayjs(interview.meetingStart).format('h:mm A')}
-                        {interview.meetingEnd ? ` – ${dayjs(interview.meetingEnd).format('h:mm A')}` : ''}
+                        {formatInZone(interview.meetingStart, zone, 'h:mm A')}
+                        {interview.meetingEnd ? ` – ${formatInZone(interview.meetingEnd, zone, 'h:mm A')}` : ''}
+                        <span className="ml-1 text-xs font-normal text-slate-500">({zone})</span>
                       </span>
                     </div>
                   )}
@@ -1084,6 +1094,7 @@ export default function InterviewRoom() {
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">All times are in {zone}.</p>
                     {(() => {
                       const toMins = (t) => {
                         if (!t || typeof t !== 'string' || !t.includes(':')) return 0;

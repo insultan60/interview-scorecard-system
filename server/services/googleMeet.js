@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
+const { getCalendarTimeZone } = require('../utils/calendarTimeZone');
 const { withRetry } = require('../utils/retry');
 const { getSecrets } = require('../utils/secrets');
 const { ValidationError } = require('../utils/errors');
@@ -118,7 +119,7 @@ async function createMeeting(interview, details = {}) {
   // calendar timezone. A browser can be set to a different timezone (for
   // example, Pacific time), which would otherwise move a Pakistan meeting to
   // the following day in Google Calendar.
-  const timeZone = process.env.GOOGLE_CALENDAR_TIME_ZONE
+  const timeZone = getCalendarTimeZone()
     || details.timeZone
     || Intl.DateTimeFormat().resolvedOptions().timeZone
     || 'UTC';

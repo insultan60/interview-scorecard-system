@@ -13,6 +13,7 @@ const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/
 const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
 const { enqueueEmail } = require('../services/emailQueue');
+const { getCalendarTimeZone } = require('../utils/calendarTimeZone');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
@@ -201,7 +202,8 @@ const list = asyncHandler(async (req, res) => {
 const getOne = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
-  res.json({ interview });
+  // calendarTimeZone: the zone meetings are booked in, so the page picks and shows times in it too.
+  res.json({ interview, calendarTimeZone: getCalendarTimeZone() });
 });
 
 /**
