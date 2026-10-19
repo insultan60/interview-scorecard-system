@@ -2,6 +2,7 @@ const express = require('express');
 const scoringController = require('../controllers/scoringController');
 const { requireAuth } = require('../middleware/auth');
 const { uploadPdf } = require('../middleware/upload');
+const { offerPreviewLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -13,6 +14,8 @@ router.patch('/interview/:id/pass-fail', scoringController.passFail);
 router.patch('/application/:id/override-initial-screening', scoringController.overrideInitialScreening);
 router.post('/application/:id/recompute', scoringController.recompute);
 router.patch('/application/:id/decision', scoringController.decision);
+router.get('/offer-letter-templates', scoringController.getOfferLetterTemplates);
+router.post('/application/:id/offer-letter-preview', offerPreviewLimiter, scoringController.previewOfferLetter);
 router.post('/application/:id/send-offer-letter', uploadPdf('offerLetter'), scoringController.sendOfferLetter);
 
 module.exports = router;

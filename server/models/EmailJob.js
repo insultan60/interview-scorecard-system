@@ -17,11 +17,11 @@ const emailJobSchema = new mongoose.Schema({
     content: Buffer,
   },
   related: {                                       // what to update when the email is really sent
-    kind: String,                                  // 'offer-letter' | 'onboarding-form' | 'application-confirmation'
+    kind: String,                                  // 'offer-letter' | 'interview-offer' | 'onboarding-form' | 'application-confirmation'
     applicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Application' },
   },
   dedupeKey: String,                               // the same key can only be queued once
-  status: { type: String, enum: ['pending', 'sending', 'sent', 'failed'], default: 'pending', index: true },
+  status: { type: String, enum: ['pending', 'sending', 'sent', 'failed', 'cancelled'], default: 'pending', index: true },
   attempts: { type: Number, default: 0 },
   nextAttemptAt: { type: Date, default: Date.now, index: true },
   lockedAt: Date,                                  // when the current attempt started (detects a job left by a restart)

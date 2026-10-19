@@ -12,7 +12,7 @@ const { assertCalendarMeetingCancelled } = require('../utils/meetingLifecycle');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
 const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
-const { enqueueEmail } = require('../services/emailQueue');
+const { enqueueEmail, cancelPendingEmails } = require('../services/emailQueue');
 const { getCalendarTimeZone } = require('../utils/calendarTimeZone');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
@@ -650,12 +650,9 @@ const sendOffer = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(interview.requisitionId);
   assertRequisitionNotClosed(requisition, 'send an offer');
 
-  // If a previous offer letter exists in storage, delete it first
-  if (interview.artifactFilePublicId) {
-    await deleteFile(interview.artifactFilePublicId);
-  }
-
-  // Store the offer letter PDF
+  // Upload the NEW file first and delete the previous one only after the new one is saved, so a failed
+  // upload never leaves the interview pointing at a file that has already been deleted.
+  const previousPublicId = interview.artifactFilePublicId;
   const uploaded = await uploadFile({ file: req.file, folder: 'interview-offer-letters' });
   interview.artifactFileUrl = uploaded.url;
   interview.artifactFilePublicId = uploaded.publicId;
@@ -683,12 +680,32 @@ const sendOffer = asyncHandler(async (req, res) => {
       attachment: emailNotifier.shouldAttachOfferLetter()
         ? { filename: req.file.originalname, content: req.file.buffer, contentType: 'application/pdf' }
         : undefined,
+      related: application ? { kind: 'interview-offer', applicationId: application._id } : undefined,
     });
   }
 
   // Mark stage as approved
   interview.status = 'approved';
-  await interview.save();
+  try {
+    await interview.save();
+  } catch (err) {
+    // The new file was never recorded, so remove it; the previous letter is still in place.
+    await deleteFile(uploaded.publicId).catch((cleanupErr) => logger.warn(`[Interview] Could not remove unsaved offer letter ${uploaded.publicId}: ${cleanupErr.message}`));
+    throw err;
+  }
+
+  // The new letter is saved, so the previous file is no longer needed.
+  if (previousPublicId && previousPublicId !== uploaded.publicId) {
+    try {
+      await deleteFile(previousPublicId);
+    } catch (err) {
+      logger.warn(`[Interview] Could not remove previous offer letter for interview ${interview._id}: ${err.message}`);
+    }
+  }
+  // A resend replaces any earlier offer email that is still waiting or retrying, so the candidate gets one.
+  if (emailResult.queued && application) {
+    await cancelPendingEmails({ type: 'offer-letter', applicationId: application._id, exceptJobId: emailResult.jobId });
+  }
 
   await AuditLog.create({
     action: 'score_approve',

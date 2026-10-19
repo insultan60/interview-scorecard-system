@@ -73,4 +73,12 @@ const publicAvailabilityLimiter = rateLimit({
   message: 'Too many submissions. Please try again in a while.',
 });
 
-module.exports = { rateLimit, publicApplyLimiter, publicAvailabilityLimiter };
+// Making a PDF preview runs LibreOffice, which is heavy; signed-in staff only, but still capped.
+const offerPreviewLimiter = rateLimit({
+  name: 'offer-letter-preview',
+  windowMs: 60 * 1000,
+  max: 20,
+  message: 'Too many previews. Please wait a minute and try again.',
+});
+
+module.exports = { rateLimit, publicApplyLimiter, publicAvailabilityLimiter, offerPreviewLimiter };

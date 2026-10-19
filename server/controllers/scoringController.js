@@ -12,9 +12,11 @@ const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
-const { enqueueEmail } = require('../services/emailQueue');
+const { enqueueEmail, cancelPendingEmails } = require('../services/emailQueue');
 const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
+const { generateOfferLetter } = require('../services/offerLetterService');
+const { listTemplates } = require('../services/offerLetterTemplates');
 
 /**
  * Recomputes an application's weightedTotal / allGatesPassed / disposition
@@ -396,10 +398,43 @@ const decision = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/scoring/offer-letter-templates
+ * The offer letter templates staff can choose from, with the fields each one needs and
+ * whether its Word file is present on this server.
+ */
+const getOfferLetterTemplates = asyncHandler(async (req, res) => {
+  res.json({ templates: listTemplates() });
+});
+
+/**
+ * POST /api/scoring/application/:id/offer-letter-preview   { templateKey, fields }
+ * Makes the letter exactly as it would be sent and returns the PDF (base64), without storing or emailing anything.
+ */
+const previewOfferLetter = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id).populate('candidateId', 'name');
+  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  if (application.finalDecision !== 'hired') {
+    throw new ValidationError(['finalDecision'], 'An offer letter can only be made after the candidate is marked Hired.');
+  }
+  const requisition = await Requisition.findById(application.requisitionId);
+  assertRequisitionNotClosed(requisition, 'make an offer letter');
+
+  const generated = await generateOfferLetter({
+    templateKey: req.body?.templateKey,
+    fields: req.body?.fields,
+    candidateName: application.candidateId?.name,
+  });
+  // JSON (not raw PDF bytes) so the app's API client keeps its normal error messages and session renewal.
+  res.set('Cache-Control', 'no-store');
+  res.json({ fileName: generated.fileName, pdfBase64: generated.pdf.toString('base64') });
+});
+
+/**
  * POST /api/scoring/application/:id/send-offer-letter
- * Uploads a signed offer document for a hired candidate and sends its secure
- * link through the server email service. A non-fatal email failure is
- * reported in the response (emailSent / emailReason) and does not undo the upload.
+ * Stores the offer letter for a hired candidate and emails it. The letter is either a PDF
+ * uploaded by staff (multipart, field "offerLetter") or made from a template on the server
+ * (JSON { templateKey, fields }). A non-fatal email failure is reported in the response
+ * (emailQueued / emailReason) and does not undo the upload.
  */
 const sendOfferLetter = asyncHandler(async (req, res) => {
   const application = await Application.findById(req.params.id).populate('candidateId', 'name email');
@@ -412,18 +447,28 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(application.requisitionId);
   assertRequisitionNotClosed(requisition, 'send an offer letter');
 
-  assertPdfUpload(req.file, { field: 'offerLetter', label: 'offer letter' });
-
-  if (application.offerLetterPublicId) {
-    try {
-      await deleteFile(application.offerLetterPublicId);
-    } catch (err) {
-      logger.warn(`[Scoring] Could not remove previous offer letter for ${application._id}: ${err.message}`);
-    }
+  // The letter is either the PDF staff uploaded, or one made from a template (the template wins if both arrive).
+  let file = req.file;
+  let template = null;
+  if (req.body?.templateKey) {
+    const generated = await generateOfferLetter({
+      templateKey: req.body.templateKey,
+      fields: req.body.fields,
+      candidateName: application.candidateId?.name,
+    });
+    file = { buffer: generated.pdf, originalname: generated.fileName, size: generated.pdf.length, mimetype: 'application/pdf' };
+    template = { key: generated.templateKey, fields: generated.fields };
   }
 
-  const upload = await uploadFile({ file: req.file, folder: 'offer-letters' });
+  assertPdfUpload(file, { field: 'offerLetter', label: 'offer letter' });
 
+  // Upload the NEW file first and delete the old one only after the new one is saved, so a failed
+  // upload never leaves the application pointing at a file that has already been deleted.
+  const previousPublicId = application.offerLetterPublicId;
+  const upload = await uploadFile({ file, folder: 'offer-letters' });
+
+  application.offerLetterTemplateKey = template ? template.key : null;
+  application.offerLetterFields = template ? template.fields : null;
   application.offerLetterUrl = upload.url;
   application.offerLetterPublicId = upload.publicId;
   application.offerLetterFileName = upload.name;
@@ -435,7 +480,22 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
   // (it then updates it to "sent"). Saved BEFORE queueing so that update cannot be overwritten.
   application.offerLetterDeliveryStatus = 'pending';
   application.offerLetterSentAt = null;
-  await application.save();
+  try {
+    await application.save();
+  } catch (err) {
+    // The new file was never recorded, so remove it; the previous letter is still in place.
+    await deleteFile(upload.publicId).catch((cleanupErr) => logger.warn(`[Scoring] Could not remove unsaved offer letter ${upload.publicId}: ${cleanupErr.message}`));
+    throw err;
+  }
+
+  // The new letter is saved, so the previous file is no longer needed.
+  if (previousPublicId && previousPublicId !== upload.publicId) {
+    try {
+      await deleteFile(previousPublicId);
+    } catch (err) {
+      logger.warn(`[Scoring] Could not remove previous offer letter for ${application._id}: ${err.message}`);
+    }
+  }
 
   // The email is sent in the background. Production attaches the PDF itself (the queue keeps it
   // until sent); other environments send a link.
@@ -450,10 +510,12 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
       offerLetterUrl: upload.url,
     },
     attachment: emailNotifier.shouldAttachOfferLetter()
-      ? { filename: req.file.originalname, content: req.file.buffer, contentType: 'application/pdf' }
+      ? { filename: file.originalname, content: file.buffer, contentType: 'application/pdf' }
       : undefined,
     related: { kind: 'offer-letter', applicationId: application._id },
   });
+  // A resend replaces any earlier offer email that is still waiting or retrying, so the candidate gets one.
+  if (emailResult.queued) await cancelPendingEmails({ type: 'offer-letter', applicationId: application._id, exceptJobId: emailResult.jobId });
 
   await AuditLog.create({
     action: 'offer_letter_sent',
@@ -462,11 +524,11 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
     applicationId: application._id,
     targetType: 'application',
     targetId: application._id.toString(),
-    newValue: { offerLetterUrl: upload.url, emailQueued: emailResult.queued },
-    reason: 'Offer letter uploaded for a hired candidate.',
+    newValue: { offerLetterUrl: upload.url, emailQueued: emailResult.queued, ...(template ? { templateKey: template.key } : {}) },
+    reason: template ? 'Offer letter made from a template for a hired candidate.' : 'Offer letter uploaded for a hired candidate.',
   });
 
-  logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; email queued=${emailResult.queued}.`);
+  logger.info(`[Scoring] Offer letter ${template ? `made from template "${template.key}"` : 'uploaded'} for application ${application._id}; email queued=${emailResult.queued}.`);
   res.json({ application, emailQueued: emailResult.queued, emailReason: emailResult.reason });
 });
 
@@ -686,5 +748,5 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
   res.json({ application, nextInterviewId });
 });
 
-module.exports = { approve, override, recompute, decision, sendOfferLetter, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
+module.exports = { approve, override, recompute, decision, sendOfferLetter, getOfferLetterTemplates, previewOfferLetter, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
 

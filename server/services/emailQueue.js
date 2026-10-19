@@ -79,6 +79,32 @@ async function enqueueEmail({ type, to, payload = {}, attachment, related, dedup
   }
 }
 
+/**
+ * Cancels emails of one type for one application that have not been sent yet, so a
+ * newer email replaces them instead of the candidate getting both (for example a
+ * resent offer letter while the first one is still waiting or retrying).
+ * An email that is being sent right now cannot be cancelled.
+ * @param {object} params
+ * @param {string} params.type
+ * @param {*} params.applicationId
+ * @param {*} [params.exceptJobId] - The new email, which must stay.
+ * @returns {Promise<number>} How many emails were cancelled.
+ */
+async function cancelPendingEmails({ type, applicationId, exceptJobId }) {
+  if (!type || !applicationId) return 0;
+  try {
+    const now = new Date();
+    const result = await EmailJob.updateMany(
+      { type, status: 'pending', 'related.applicationId': applicationId, ...(exceptJobId ? { _id: { $ne: exceptJobId } } : {}) },
+      { $set: { status: 'cancelled', lastError: 'Replaced by a newer email.', expireAt: new Date(now.getTime() + KEEP_SENT_MS) }, $unset: { lockedAt: 1, attachment: 1 } },
+    );
+    return result.modifiedCount || 0;
+  } catch (err) {
+    logger.warn(`[EmailQueue] Could not cancel older "${type}" emails: ${err.message}`);
+    return 0;
+  }
+}
+
 // ---------------------------------------------------------------- sending one email
 
 /** What to update once an email has really been delivered. */
@@ -210,4 +236,4 @@ function startEmailQueue({ intervalMs = DEFAULT_SWEEP_MS } = {}) {
   return timer;
 }
 
-module.exports = { enqueueEmail, processEmailJob, startEmailQueue, sweep, MAX_ATTEMPTS, BACKOFF_MS };
+module.exports = { enqueueEmail, cancelPendingEmails, processEmailJob, startEmailQueue, sweep, MAX_ATTEMPTS, BACKOFF_MS };

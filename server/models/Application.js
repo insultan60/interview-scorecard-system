@@ -60,6 +60,8 @@ const applicationSchema = new mongoose.Schema({
   offerLetterFileSize: Number,    // bytes, before any compression
   offerLetterFileMimeType: String,
   offerLetterUploadedAt: Date,
+  offerLetterTemplateKey: String,                          // set when the letter was made from a template (null for an uploaded PDF)
+  offerLetterFields: mongoose.Schema.Types.Mixed,          // the values filled into that template
   offerLetterDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
   offerLetterSentAt: Date,
 

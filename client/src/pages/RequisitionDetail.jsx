@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatDate, formatDisposition, formatScore } from '../utils/formatters';
 import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
+import OfferLetterDialog from '../components/OfferLetterDialog.jsx';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -104,8 +105,6 @@ export default function RequisitionDetail() {
   const [decisionReasonDraft, setDecisionReasonDraft] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
   const [offerFor, setOfferFor] = useState(null);
-  const [offerFile, setOfferFile] = useState(null);
-  const [sendingOffer, setSendingOffer] = useState(false);
   const [onboardingCandidate, setOnboardingCandidate] = useState(null);
 
   const [viewCandidateFor, setViewCandidateFor] = useState(null);
@@ -126,45 +125,6 @@ export default function RequisitionDetail() {
     if (!text) return;
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard.`);
-  }
-
-  async function handleSendOfferLetter(event) {
-    event.preventDefault();
-    if (!offerFor || !offerFile) {
-      toast.error('Choose the candidate\'s offer letter PDF first.');
-      return;
-    }
-    const isPdf = offerFile.type === 'application/pdf' || /\.pdf$/i.test(offerFile.name);
-    if (!isPdf) {
-      toast.error('Only PDF offer letters can be uploaded.');
-      return;
-    }
-    if (offerFile.size > 5 * 1024 * 1024) {
-      toast.error('The offer letter must be 5 MB or smaller.');
-      return;
-    }
-
-    setSendingOffer(true);
-    try {
-      const formData = new FormData();
-      formData.append('offerLetter', offerFile);
-      const response = await api.post(`/scoring/application/${offerFor._id}/send-offer-letter`, formData);
-      const { emailQueued, emailReason } = response.data;
-
-      if (emailQueued) {
-        toast.success('Offer letter uploaded. The candidate is being emailed.');
-      } else {
-        toast.error(emailReason || 'The offer letter was uploaded, but the email could not be sent.');
-      }
-
-      setOfferFor(null);
-      setOfferFile(null);
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not upload and send the offer letter.');
-    } finally {
-      setSendingOffer(false);
-    }
   }
 
   async function handleConfirmDecision(applicationId) {
@@ -1019,7 +979,6 @@ export default function RequisitionDetail() {
                                       className="h-8 w-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
                                       onClick={() => {
                                         setOfferFor(app);
-                                        setOfferFile(null);
                                       }}
                                     >
                                       <FileText className="h-4 w-4" />
@@ -1165,56 +1124,12 @@ export default function RequisitionDetail() {
             </Card>
           )}
 
-          <Dialog
-            open={!!offerFor}
-            onOpenChange={(open) => {
-              if (!open && !sendingOffer) {
-                setOfferFor(null);
-                setOfferFile(null);
-              }
-            }}
-          >
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Send offer letter</DialogTitle>
-                <DialogDescription>
-                  Upload a signed PDF for {offerFor?.candidateId?.name || 'this candidate'}. The candidate will receive a secure link by email.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSendOfferLetter} className="space-y-4">
-                <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-                  <p className="font-medium text-foreground">{offerFor?.candidateId?.name || 'Candidate'}</p>
-                  <p className="mt-1 text-muted-foreground">{data?.requisition?.title || 'Job opening'}</p>
-                  <p className="mt-1 break-all text-muted-foreground">{offerFor?.candidateId?.email || 'No email address on file'}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="offer-letter-file">Offer letter (PDF)</Label>
-                  <Input
-                    id="offer-letter-file"
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    onChange={(event) => setOfferFile(event.target.files?.[0] || null)}
-                    disabled={sendingOffer}
-                    className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
-                  />
-                  <p className="text-xs text-muted-foreground">PDF only, up to 5 MB. The candidate receives a professional email with a secure link to the letter.</p>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => { setOfferFor(null); setOfferFile(null); }}
-                    disabled={sendingOffer}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" disabled={sendingOffer || !offerFile}>
-                    {sendingOffer ? 'Uploading and sending…' : 'Send offer letter'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <OfferLetterDialog
+            application={offerFor}
+            jobTitle={data?.requisition?.title}
+            onClose={() => setOfferFor(null)}
+            onSent={load}
+          />
 
           {/* ---------- close confirmation ---------- */}
           <AlertDialog open={pendingClose} onOpenChange={setPendingClose}>
