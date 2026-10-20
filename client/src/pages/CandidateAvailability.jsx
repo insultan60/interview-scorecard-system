@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TimePicker } from '@/components/ui/time-picker';
-import redstarIcon from '../assets/redstar-icon.png';
+import logo from '../assets/logo.svg';
 
 function formatStageLabel(label) {
   if (!label) return '';
@@ -207,10 +207,7 @@ export default function CandidateAvailability() {
     <div className="min-h-screen bg-slate-50/60 font-sans text-slate-900">
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
         <div className="mx-auto max-w-4xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={redstarIcon} alt="Red Star Technologies" className="h-8 w-8 object-contain" />
-            <span className="font-semibold text-base tracking-tight">Red Star Technologies</span>
-          </div>
+          <img src={logo} alt="OWNERS TALENT" className="h-8 w-auto object-contain" />
         </div>
       </header>
 

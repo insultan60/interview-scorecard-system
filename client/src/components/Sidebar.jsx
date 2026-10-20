@@ -5,7 +5,8 @@ import {
   Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight, User, UserCog,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import redstarIcon from '../assets/redstar-icon.png';
+import logo from '../assets/logo.svg';
+import logoMark from '../assets/logo-mark.svg';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -59,23 +60,22 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
     >
       {/* Header */}
       <div className="relative flex items-center justify-between gap-2 px-3 py-3.5 border-b border-gray-100 min-h-[60px]">
-        <div className={`flex items-center gap-2.5 overflow-hidden ${isCollapsed ? 'md:justify-center md:w-full' : ''}`}>
-          <img
-            src={redstarIcon}
-            alt="Red Star Technologies"
-            className="h-8 w-8 flex-shrink-0 object-contain"
-            title="OWNERS TALENT - Red Star Technologies"
-          />
-          {!isCollapsed && (
-            <div className="min-w-0 transition-opacity duration-200 hidden md:block">
-              <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">OWNERS TALENT</h1>
-              <p className="text-[11px] text-gray-400">Red Star Technologies</p>
-            </div>
+        <div className={`flex items-center overflow-hidden ${isCollapsed ? 'md:justify-center md:w-full' : ''}`}>
+          {/* Collapsed (desktop): only the circle mark fits. Otherwise: the full logo, which already carries the name. */}
+          {isCollapsed && (
+            <img
+              src={logoMark}
+              alt="OWNERS TALENT"
+              title="OWNERS TALENT"
+              className="hidden h-8 w-8 flex-shrink-0 object-contain md:block"
+            />
           )}
-          <div className="min-w-0 md:hidden">
-            <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">OWNERS TALENT</h1>
-            <p className="text-[11px] text-gray-400">Red Star Technologies</p>
-          </div>
+          <img
+            src={logo}
+            alt="OWNERS TALENT"
+            title="OWNERS TALENT"
+            className={`h-9 w-auto max-w-full object-contain ${isCollapsed ? 'md:hidden' : ''}`}
+          />
         </div>
 
         {/* Mobile close button */}

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import heroBg from '../assets/hero-bg.webp';
 import heroLogo from '../assets/hero-logo.webp';
 import heroLogo2 from '../assets/hero-logo2.webp';
-import redstarIcon from '../assets/redstar-icon.png';
+import logo from '../assets/logo.svg';
 
 export default function Login() {
   const { login } = useAuth();
@@ -44,10 +44,7 @@ export default function Login() {
         {/* Banner panel — desktop */}
         <div className="relative hidden flex-col justify-between overflow-hidden bg-[#d21e2b] p-10 text-white md:flex">
           <div className="relative z-10">
-            <div className="flex items-center gap-2">
-              <img src={redstarIcon} alt="" className="h-6 w-6 brightness-0 invert" />
-              <span className="text-sm font-semibold uppercase tracking-wider text-white/80">Red Star Technologies</span>
-            </div>
+            <img src={logo} alt="OWNERS TALENT" className="h-12 w-auto" />
             <h1 className="mt-10 text-3xl font-bold leading-tight">OWNERS TALENT</h1>
             <p className="mt-3 max-w-xs text-sm text-white/80">
               One stage-gated hiring workflow — AI proposes the scores, your team makes the call.
@@ -58,9 +55,8 @@ export default function Login() {
         </div>
 
         {/* Banner strip — mobile */}
-        <div className="flex items-center gap-2 bg-[#d21e2b] px-6 py-5 text-white md:hidden">
-          <img src={redstarIcon} alt="" className="h-5 w-5 brightness-0 invert" />
-          <span className="text-sm font-semibold">Red Star Technologies</span>
+        <div className="flex items-center bg-[#d21e2b] px-6 py-4 text-white md:hidden">
+          <img src={logo} alt="OWNERS TALENT" className="h-8 w-auto" />
         </div>
 
         {/* Form panel */}

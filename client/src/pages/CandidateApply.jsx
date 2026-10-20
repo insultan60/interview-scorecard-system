@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import redstarIcon from '../assets/redstar-icon.png';
+import logo from '../assets/logo.svg';
 import communityQrCode from '../assets/community-qr-code.png';
 
 const formatDeadline = (date) => {
@@ -412,10 +412,7 @@ export default function CandidateApply() {
       {/* Top Branding Header */}
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
         <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={redstarIcon} alt="Red Star Technologies" className="h-9 w-9 object-contain" />
-            <span className="font-semibold text-lg tracking-tight">Red Star Technologies</span>
-          </div>
+          <img src={logo} alt="OWNERS TALENT" className="h-9 w-auto object-contain" />
           {requisition.applicationDeadline && (
             <Badge variant={isExpired ? 'destructive' : 'outline'} className="gap-1.5 py-1 px-3">
               <CalendarIcon className="h-3.5 w-3.5" />
