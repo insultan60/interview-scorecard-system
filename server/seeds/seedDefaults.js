@@ -14,8 +14,11 @@ const User = require("../models/User");
 const PipelineTemplate = require("../models/PipelineTemplate");
 const Setting = require("../models/Setting");
 
-async function seedAdminUser() {
-  const email = process.env.SEED_ADMIN_EMAIL || "admin@example.com";
+/**
+ * Creates the first OWNER account from SEED_OWNER_NAME / SEED_OWNER_EMAIL / SEED_OWNER_PASSWORD.
+ */
+async function seedOwnerUser() {
+  const email = process.env.SEED_OWNER_EMAIL || "owner@example.com";
   const hasOwner = await User.exists({ role: "owner" });
   const existing = await User.findOne({ email });
 
@@ -23,19 +26,19 @@ async function seedAdminUser() {
     if (!hasOwner && existing.role === "admin") {
       existing.role = "owner";
       await existing.save();
-      logger.info(`[Seed] Upgraded default user (${email}) to owner role.`);
+      logger.info(`[Seed] Upgraded existing user (${email}) to owner role.`);
     } else {
-      logger.info(`[Seed] Default user already exists (${email}) with role ${existing.role}, skipping.`);
+      logger.info(`[Seed] Owner user already exists (${email}) with role ${existing.role}, skipping.`);
     }
     return existing;
   }
 
-  const name = process.env.SEED_ADMIN_NAME || "Admin";
-  const password = process.env.SEED_ADMIN_PASSWORD || "change_this_password";
+  const name = process.env.SEED_OWNER_NAME || "Owner";
+  const password = process.env.SEED_OWNER_PASSWORD || "change_this_password";
   const passwordHash = await bcrypt.hash(password, 10);
   const initialRole = hasOwner ? "admin" : "owner";
 
-  const admin = await User.create({
+  const owner = await User.create({
     name,
     email,
     passwordHash,
@@ -43,8 +46,8 @@ async function seedAdminUser() {
     active: true,
   });
 
-  logger.info(`[Seed] Created default user: ${email} with role: ${initialRole}`);
-  return admin;
+  logger.info(`[Seed] Created owner user: ${email} with role: ${initialRole}`);
+  return owner;
 }
 
 const DEMO_USERS = [
@@ -213,7 +216,7 @@ async function seedSettings() {
 async function run() {
   try {
     await connectDB();
-    await seedAdminUser();
+    await seedOwnerUser();
     await seedDemoUsers();
     await seedDefaultPipeline();
     await seedSettings();
@@ -230,7 +233,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  seedAdminUser,
+  seedOwnerUser,
   seedDemoUsers,
   seedDefaultPipeline,
   seedSettings,

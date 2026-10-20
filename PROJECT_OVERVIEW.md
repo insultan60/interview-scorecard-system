@@ -140,7 +140,7 @@ interview-scorecard-system/
 │   │   └── fileReferenceCleanup.js # Delete a Cloudinary file only if nothing else references it
 │   ├── utils/                # constants, errors, helpers, logger, retry, secrets,
 │   │                         # textExtractor, requisitionStatus, meetingLifecycle
-│   ├── seeds/seedDefaults.js # Admin user, default pipeline, default settings
+│   ├── seeds/seedDefaults.js # Owner user, default pipeline, default settings
 │   ├── logs/                 # Daily log files (git-ignored content)
 │   └── uploads/              # Placeholder (files actually go to Cloudinary)
 │
@@ -409,7 +409,7 @@ Credentials (Anthropic key, Google client id/secret/refresh token, Slack webhook
 - **Roles:** `admin`, `hiring_manager`, `recruiter`, `interviewer`. **Currently only the `admin` role is enforced**, on the write endpoints of Settings (`PUT /settings/:key`, `POST /settings/test-api`). All other authenticated routes are available to any logged-in user — full RBAC is a planned item.
 - **Public surface (deliberately small):** job info + apply, candidate availability, Google OAuth callback, auth endpoints, health. Apply is protected by Turnstile, PDF-only/5 MB validation and duplicate detection.
 - **Hardening in place:** Helmet headers; strict CORS allow-list; secrets masked in API responses; password-reset tokens hashed with a short TTL; phone/email validation; Cloudinary for uploads (no local disk); candidate **consent** gate before AI processing of transcripts; no wildcard CORS.
-- **Production advice:** serve over HTTPS (the nginx template notes this), use a long random `JWT_SECRET`, change the seeded admin password immediately, use a Gmail App Password (never the real password).
+- **Production advice:** serve over HTTPS (the nginx template notes this), use a long random `JWT_SECRET`, change the seeded owner password immediately, use a Gmail App Password (never the real password).
 
 ---
 
@@ -442,7 +442,7 @@ Credentials (Anthropic key, Google client id/secret/refresh token, Slack webhook
 | `DEFAULT_HIRE_THRESHOLD` (3.5), `DEFAULT_MAYBE_THRESHOLD` (3.0) | Scoring defaults |
 | `TRANSCRIPT_RETENTION_DAYS` (90) | Retention window |
 | `MONTHLY_AI_SPEND_CAP_USD` (200), `AI_SPEND_WARN_PERCENT` (80) | Spend controls |
-| `SEED_ADMIN_NAME/EMAIL/PASSWORD` | Seeded admin account |
+| `SEED_OWNER_NAME/EMAIL/PASSWORD` | Seeded owner account |
 
 ### Client environment variables (`client/.env`)
 | Variable | Purpose |
@@ -484,7 +484,7 @@ npm run dev
 | `npm run client:build` | Production build of the frontend → `client/dist` |
 | `npm run seed` | Run `server/seeds/seedDefaults.js` |
 
-URLs: frontend `http://localhost:5173`, API `http://localhost:5000`, health `http://localhost:5000/api/health`. Log in with the `SEED_ADMIN_*` credentials, then change the password.
+URLs: frontend `http://localhost:5173`, API `http://localhost:5000`, health `http://localhost:5000/api/health`. Log in with the `SEED_OWNER_*` credentials, then change the password.
 
 **Seed script** is idempotent: it creates the admin user, the default "Standard Hiring Stages" template and default Settings only if they don't already exist. (It also references demo users for the other roles.)
 
