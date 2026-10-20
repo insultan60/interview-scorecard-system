@@ -84,7 +84,7 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
               <button
                 type="button"
                 onClick={() => setOnboardingUrl(DEFAULT_CLICKUP_FORM_URL)}
-                className="text-xs text-[#d21e2b] hover:underline font-medium"
+                className="text-xs text-brand hover:underline font-medium"
               >
                 Reset Default
               </button>
@@ -112,7 +112,7 @@ export default function SendOnboardingFormModal({ open, onOpenChange, candidate,
             <Button
               type="submit"
               disabled={sending || !candidateEmail}
-              className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white font-medium"
+              className="bg-brand hover:bg-brand/90 text-white font-medium"
             >
               {sending ? 'Sending...' : 'Send Onboarding Form'}
             </Button>

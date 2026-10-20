@@ -186,7 +186,7 @@ export default function Settings() {
       <div className="flex items-center gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-            <SettingsIcon className="h-7 w-7 text-[#d21e2b]" />
+            <SettingsIcon className="h-7 w-7 text-brand" />
             Settings
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -246,7 +246,7 @@ export default function Settings() {
                         size="sm"
                         onClick={() => testConnection(svc.key)}
                         disabled={!isAdmin || testing[svc.key]}
-                        className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                        className="bg-brand text-white hover:bg-brand/90"
                       >
                         {testing[svc.key] ? 'Testing…' : 'Test connection'}
                       </Button>
@@ -550,7 +550,7 @@ function NumberSetting({ label, value, onSave, disabled, saving, step, min, max 
         {!disabled && changed && (
           <Button
             onClick={() => onSave(numDraft)} disabled={saving || isInvalid}
-            className="flex-shrink-0 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            className="flex-shrink-0 bg-brand text-white hover:bg-brand/90"
           >
             {saving ? '…' : 'Save'}
           </Button>
@@ -617,7 +617,7 @@ function ModelSetting({ label, hint, value, onSave, disabled, saving }) {
         {!disabled && changed && draft && (
           <Button
             onClick={() => onSave(draft)} disabled={saving}
-            className="flex-shrink-0 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            className="flex-shrink-0 bg-brand text-white hover:bg-brand/90"
           >
             {saving ? '…' : 'Save'}
           </Button>
@@ -657,7 +657,7 @@ function MaskedKeyInput({ label, masked, onSave, disabled, saving }) {
           />
           <Button
             size="sm" onClick={handleSave} disabled={saving || !draft}
-            className="flex-shrink-0 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            className="flex-shrink-0 bg-brand text-white hover:bg-brand/90"
           >
             {saving ? '…' : 'Save'}
           </Button>

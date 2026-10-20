@@ -432,7 +432,7 @@ export default function CandidateApply() {
                   className={
                     isExpired
                       ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-100'
-                      : 'bg-[#d21e2b]/10 text-[#d21e2b] border-[#d21e2b]/20 hover:bg-[#d21e2b]/10'
+                      : 'bg-brand/10 text-brand border-brand/20 hover:bg-brand/10'
                   }
                 >
                   {isExpired ? 'Closed Position' : 'Open Position'}
@@ -471,7 +471,7 @@ export default function CandidateApply() {
             <CardContent className="pt-6 space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-[#d21e2b]" /> Job Description & Overview
+                  <FileText className="h-5 w-5 text-brand" /> Job Description & Overview
                 </h3>
                 <div className="min-w-0 overflow-hidden text-slate-700 leading-relaxed text-sm bg-slate-50/70 p-4 rounded-lg border border-slate-100">
                   <RichTextViewer content={requisition.jobDescription} />
@@ -498,7 +498,7 @@ export default function CandidateApply() {
                 <div className="pt-4 flex justify-end">
                   <Button
                     onClick={() => { setFormPart(1); setStep('form'); }}
-                    className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6 py-2.5 text-base font-medium shadow-sm gap-2"
+                    className="bg-brand hover:bg-brand/90 text-white px-6 py-2.5 text-base font-medium shadow-sm gap-2"
                   >
                     Apply for this Position <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -628,7 +628,7 @@ export default function CandidateApply() {
                       <div className="rounded-lg bg-slate-50 border border-slate-200/70 p-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                            <CalendarIcon className="h-3.5 w-3.5 text-[#d21e2b]" /> Available Window
+                            <CalendarIcon className="h-3.5 w-3.5 text-brand" /> Available Window
                           </span>
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-medium px-2.5 py-0.5 shadow-none">
@@ -798,9 +798,9 @@ export default function CandidateApply() {
                   <h3 className="text-base font-semibold text-slate-900 border-b pb-2">
                     Resume / CV Attachment <span className="text-red-500">*</span>
                   </h3>
-                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-6 text-center hover:border-[#d21e2b]/50 transition-colors bg-slate-50/50">
+                  <div className="rounded-lg border-2 border-dashed border-slate-300 p-6 text-center hover:border-brand/50 transition-colors bg-slate-50/50">
                     <Upload className="mx-auto h-8 w-8 text-slate-400 mb-2" />
-                    <Label htmlFor="resume-file" className="cursor-pointer text-sm font-medium text-[#d21e2b] hover:underline">
+                    <Label htmlFor="resume-file" className="cursor-pointer text-sm font-medium text-brand hover:underline">
                       Upload CV / Resume (PDF, max 5 MB)
                     </Label>
                     <p className="text-xs text-slate-500 mt-1">PDF only, up to 5 MB</p>
@@ -813,7 +813,7 @@ export default function CandidateApply() {
                     />
                     {resumeFile && (
                       <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-slate-800 border shadow-sm">
-                        <FileText className="h-4 w-4 text-[#d21e2b]" />
+                        <FileText className="h-4 w-4 text-brand" />
                         {resumeFile.name} ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB)
                       </div>
                     )}
@@ -835,7 +835,7 @@ export default function CandidateApply() {
                   <Button
                     type="submit"
                     disabled={submitting}
-                    className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white px-6"
+                    className="bg-brand hover:bg-brand/90 text-white px-6"
                   >
                     {formPart === 1 ? 'Continue' : (submitting ? 'Submitting Application...' : 'Submit Application')}
                   </Button>
@@ -976,7 +976,7 @@ export default function CandidateApply() {
                     href="https://redstartechs.com/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="h-8 w-8 rounded-full bg-slate-50 border border-slate-200/80 hover:bg-[#d21e2b] hover:text-white hover:border-[#d21e2b] text-slate-600 flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105"
+                    className="h-8 w-8 rounded-full bg-slate-50 border border-slate-200/80 hover:bg-brand hover:text-white hover:border-brand text-slate-600 flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105"
                     title="Website"
                   >
                     <Globe className="h-3.5 w-3.5" />

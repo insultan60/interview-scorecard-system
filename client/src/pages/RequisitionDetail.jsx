@@ -529,9 +529,9 @@ export default function RequisitionDetail() {
             toast.success('Public candidate application link copied to clipboard!');
           }}
           disabled={!canStartNewWork}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-brand"
         >
-          <Link2 className="h-3.5 w-3.5 text-[#d21e2b]" />
+          <Link2 className="h-3.5 w-3.5 text-brand" />
           Copy Candidate Apply Link
         </Button>
 
@@ -552,7 +552,7 @@ export default function RequisitionDetail() {
           size="sm"
           onClick={handleDuplicate}
           disabled={duplicating}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-brand"
         >
           <Copy className="h-3.5 w-3.5 text-slate-600" />
           {duplicating ? 'Duplicating…' : 'Duplicate Job Opening'}
@@ -821,10 +821,10 @@ export default function RequisitionDetail() {
                             <button
                               type="button"
                               onClick={() => setViewCandidateFor(app.candidateId)}
-                              className="group flex flex-col text-left cursor-pointer rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-100/80 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
+                              className="group flex flex-col text-left cursor-pointer rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-100/80 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                               title={`View ${app.candidateId?.name || 'candidate'}'s details`}
                             >
-                              <div className="font-medium text-foreground group-hover:text-[#d21e2b] transition-colors">
+                              <div className="font-medium text-foreground group-hover:text-brand transition-colors">
                                 {app.candidateId?.name || app.candidateName || 'Unknown'}
                               </div>
                               <div className="text-xs text-muted-foreground break-all">{app.candidateId?.email || app.candidateEmail}</div>
@@ -922,7 +922,7 @@ export default function RequisitionDetail() {
                                     size="sm"
                                     onClick={() => handleConfirmDecision(app._id)}
                                     disabled={submittingDecision}
-                                    className="h-6 px-2 text-[11px] bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                                    className="h-6 px-2 text-[11px] bg-brand text-white hover:bg-brand/90"
                                   >
                                     {submittingDecision ? 'Saving…' : 'Confirm'}
                                   </Button>
@@ -948,7 +948,7 @@ export default function RequisitionDetail() {
                                   setDecisionDraft('hired');
                                   setDecisionReasonDraft('');
                                 }}
-                                className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                                className="h-7 text-xs border-brand/40 text-brand hover:bg-brand/5"
                               >
                                 Record Decision
                               </Button>
@@ -1025,7 +1025,7 @@ export default function RequisitionDetail() {
                                 variant="outline"
                                 size="icon"
                                 title={goingToInterview === app._id ? 'Opening interview…' : 'Go to Interview'}
-                                className="h-8 w-8 border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/10 hover:text-[#d21e2b]"
+                                className="h-8 w-8 border-brand/40 text-brand hover:bg-brand/10 hover:text-brand"
                                 onClick={() => handleGoToInterview(app)}
                                 disabled={isGoDisabled}
                               >
@@ -1148,7 +1148,7 @@ export default function RequisitionDetail() {
                 <AlertDialogAction
                   onClick={(e) => { e.preventDefault(); setPendingClose(false); applyStatus('closed'); }}
                   disabled={savingStatus}
-                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                  className="bg-brand text-white hover:bg-brand/90"
                 >
                   {savingStatus ? 'Closing…' : 'Close job'}
                 </AlertDialogAction>
@@ -1231,7 +1231,7 @@ export default function RequisitionDetail() {
                       <button
                         type="button"
                         onClick={() => copyContact(viewCandidateFor.email, 'Email')}
-                        className="mt-0.5 break-all text-left font-medium hover:text-[#d21e2b] hover:underline"
+                        className="mt-0.5 break-all text-left font-medium hover:text-brand hover:underline"
                       >
                         {viewCandidateFor.email || '—'}
                       </button>
@@ -1241,7 +1241,7 @@ export default function RequisitionDetail() {
                       <button
                         type="button"
                         onClick={() => copyContact(viewCandidateFor.phone, 'Phone number')}
-                        className="mt-0.5 text-left font-medium hover:text-[#d21e2b] hover:underline"
+                        className="mt-0.5 text-left font-medium hover:text-brand hover:underline"
                       >
                         {viewCandidateFor.phone || '—'}
                       </button>
@@ -1278,7 +1278,7 @@ export default function RequisitionDetail() {
                     setViewCandidateFor(null);
                     openEditCandidate(c);
                   }}
-                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                  className="bg-brand text-white hover:bg-brand/90"
                 >
                   <Pencil className="h-4 w-4 mr-2" />
                   Edit candidate
@@ -1338,7 +1338,7 @@ export default function RequisitionDetail() {
                       type="file"
                       accept="application/pdf,.pdf"
                       onChange={(e) => setEditCandidateResumeFile(e.target.files?.[0] || null)}
-                      className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                      className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
                     />
                   </div>
                 </div>
@@ -1355,7 +1355,7 @@ export default function RequisitionDetail() {
                   <Button type="button" variant="outline" onClick={() => setEditCandidateFor(null)} disabled={editingCandidate}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={editingCandidate} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+                  <Button type="submit" disabled={editingCandidate} className="bg-brand text-white hover:bg-brand/90">
                     {editingCandidate ? 'Saving…' : 'Save changes'}
                   </Button>
                 </DialogFooter>

@@ -486,7 +486,7 @@ export default function Candidates() {
         <div className="flex items-center gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-              <Users className="h-7 w-7 text-[#d21e2b]" />
+              <Users className="h-7 w-7 text-brand" />
               Candidates
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -499,7 +499,7 @@ export default function Candidates() {
             <Upload />
             Import CSV
           </Button>
-          <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+          <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
             <Plus />
             New Candidate
           </Button>
@@ -556,9 +556,9 @@ export default function Candidates() {
       <Card className="mt-4">
         <CardContent className="p-0">
           {selectedCandidateIds.length > 0 && (
-            <div className="mb-4 flex flex-col gap-2 rounded-lg border border-[#d21e2b]/30 bg-[#d21e2b]/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-2 rounded-lg border border-brand/30 bg-brand/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 font-medium text-foreground">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#d21e2b] text-[11px] font-bold text-white">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[11px] font-bold text-white">
                   {selectedCandidateIds.length}
                 </span>
                 <span>candidate{selectedCandidateIds.length === 1 ? '' : 's'} selected</span>
@@ -566,7 +566,7 @@ export default function Candidates() {
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
-                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+                  className="bg-brand text-white hover:bg-brand/90 gap-1.5"
                   onClick={() => { setBulkAttachTarget(''); setBulkReqPickerOpen(false); setBulkAttachOpen(true); }}
                 >
                   <Link2 className="h-4 w-4" />
@@ -600,7 +600,7 @@ export default function Candidates() {
                   Add someone, then attach them to a job opening to start interviewing.
                 </p>
               </div>
-              <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+              <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
                 <Plus />
                 New Candidate
               </Button>
@@ -653,7 +653,7 @@ export default function Candidates() {
                         setViewFor(c);
                       }
                     }}
-                    className="cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
+                    className="cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                     title={`View ${c.name}`}
                   >
                     <TableCell onClick={(e) => e.stopPropagation()} className="w-10">
@@ -729,7 +729,7 @@ export default function Candidates() {
                       <div className="flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                         <Button
                           variant="outline" size="sm"
-                          className="border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5 hover:text-[#d21e2b]"
+                          className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
                           onClick={() => openAttach(c)}
                         >
                           <Link2 />
@@ -877,7 +877,7 @@ export default function Candidates() {
                   const problem = validatePdfFile(file, 'résumé');
                   if (problem) { toast.error(problem); e.target.value = ''; setEditResumeFile(null); return; }
                   setEditResumeFile(file);
-                }} className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5" />
+                }} className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5" />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -886,7 +886,7 @@ export default function Candidates() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditFor(null)} disabled={editing}>Cancel</Button>
-              <Button type="submit" disabled={editing} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Button type="submit" disabled={editing} className="bg-brand text-white hover:bg-brand/90">
                 {editing ? 'Saving…' : 'Save changes'}
               </Button>
             </DialogFooter>
@@ -960,7 +960,7 @@ export default function Candidates() {
               type="button"
               disabled={bulkAttaching || !bulkAttachTarget}
               onClick={handleBulkAttach}
-              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+              className="bg-brand text-white hover:bg-brand/90 gap-1.5"
             >
               <Link2 className="h-4 w-4" />
               {bulkAttaching ? 'Attaching…' : `Attach ${selectedCandidateIds.length} Candidates`}
@@ -991,13 +991,13 @@ export default function Candidates() {
               <div className="grid gap-3 rounded-lg border bg-slate-50/60 p-3 text-sm sm:grid-cols-2">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Email</p>
-                  <button type="button" onClick={() => copyContact(viewFor.email, 'Email')} className="mt-0.5 break-all text-left font-medium hover:text-[#d21e2b] hover:underline">
+                  <button type="button" onClick={() => copyContact(viewFor.email, 'Email')} className="mt-0.5 break-all text-left font-medium hover:text-brand hover:underline">
                     {viewFor.email || '—'}
                   </button>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Phone</p>
-                  <button type="button" onClick={() => copyContact(viewFor.phone, 'Phone number')} className="mt-0.5 text-left font-medium hover:text-[#d21e2b] hover:underline">
+                  <button type="button" onClick={() => copyContact(viewFor.phone, 'Phone number')} className="mt-0.5 text-left font-medium hover:text-brand hover:underline">
                     {viewFor.phone || '—'}
                   </button>
                 </div>
@@ -1030,7 +1030,7 @@ export default function Candidates() {
                 View résumé
               </Button>
             )}
-            <Button type="button" onClick={() => openEdit(viewFor)} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+            <Button type="button" onClick={() => openEdit(viewFor)} className="bg-brand text-white hover:bg-brand/90">
               <Pencil />
               Edit candidate
             </Button>
@@ -1058,13 +1058,13 @@ export default function Candidates() {
               type="file"
               accept=".csv,text/csv"
               onChange={(event) => handleBulkFile(event.target.files?.[0])}
-              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+              className="max-w-sm cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
             />
 
             <Button
               type="button"
               variant="link"
-              className="px-0 text-[#d21e2b] underline underline-offset-4 hover:text-[#a81823]"
+              className="px-0 text-brand underline underline-offset-4 hover:text-brand-dark"
               onClick={downloadBulkTemplate}
             >
               Download CSV Template
@@ -1172,7 +1172,7 @@ export default function Candidates() {
                 importing ||
                 bulkRows.filter((row) => row.errors.length === 0).length === 0
               }
-              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+              className="bg-brand text-white hover:bg-brand/90"
             >
               {importing
                 ? 'Importing…'
@@ -1239,7 +1239,7 @@ export default function Candidates() {
                     if (problem) { toast.error(problem); e.target.value = ''; setResumeFile(null); return; }
                     setResumeFile(file);
                   }}
-                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
                 />
               </div>
             </div>
@@ -1255,7 +1255,7 @@ export default function Candidates() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Button type="submit" disabled={creating} className="bg-brand text-white hover:bg-brand/90">
                 {creating ? 'Creating…' : 'Create candidate'}
               </Button>
             </DialogFooter>
@@ -1347,7 +1347,7 @@ export default function Candidates() {
             <Button
               onClick={handleAttach}
               disabled={attaching || !attachTarget || availableRequisitions.length === 0}
-              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+              className="bg-brand text-white hover:bg-brand/90"
             >
               {attaching ? 'Attaching…' : 'Attach'}
             </Button>

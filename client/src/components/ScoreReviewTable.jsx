@@ -299,7 +299,7 @@ export default function ScoreReviewTable({ interview, attributes, passThreshold,
           {isManualStage ? (
             <button
               type="button" onClick={handleManualSaveAndApprove} disabled={meetingActive || approving || saving}
-              className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {approving ? 'Saving & Approving...' : isApproved ? 'Re-approve Stage Scores' : 'Save & Approve Stage'}
             </button>

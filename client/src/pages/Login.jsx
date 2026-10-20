@@ -42,11 +42,12 @@ export default function Login() {
 
       <div className="relative z-10 grid w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl md:grid-cols-2">
         {/* Banner panel — desktop */}
-        <div className="relative hidden flex-col justify-between overflow-hidden bg-[#d21e2b] p-10 text-white md:flex">
+        <div className="relative hidden flex-col justify-between overflow-hidden bg-brand-light p-10 text-brand-ink md:flex">
           <div className="relative z-10">
             <img src={logo} alt="OWNERS TALENT" className="h-12 w-auto" />
-            <h1 className="mt-10 text-3xl font-bold leading-tight">OWNERS TALENT</h1>
-            <p className="mt-3 max-w-xs text-sm text-white/80">
+            <div className="mt-10 h-1 w-12 rounded-full bg-brand-yellow" />
+            <h1 className="mt-5 text-3xl font-bold leading-tight text-brand">OWNERS TALENT</h1>
+            <p className="mt-3 max-w-xs text-sm text-brand-ink/70">
               One stage-gated hiring workflow — AI proposes the scores, your team makes the call.
             </p>
           </div>
@@ -55,7 +56,7 @@ export default function Login() {
         </div>
 
         {/* Banner strip — mobile */}
-        <div className="flex items-center bg-[#d21e2b] px-6 py-4 text-white md:hidden">
+        <div className="flex items-center border-b-4 border-brand-yellow bg-brand-light px-6 py-4 md:hidden">
           <img src={logo} alt="OWNERS TALENT" className="h-8 w-auto" />
         </div>
 
@@ -73,7 +74,7 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
               />
             </div>
             <div>
@@ -84,18 +85,18 @@ export default function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
               />
             </div>
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-md bg-[#d21e2b] px-3 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? 'Logging in...' : 'Log in'}
             </button>
           </form>
-          <Link to="/forgot-password" className="mt-4 text-center text-sm font-medium text-[#d21e2b] hover:underline">
+          <Link to="/forgot-password" className="mt-4 text-center text-sm font-medium text-brand hover:underline">
             Forgot your password?
           </Link>
         </div>

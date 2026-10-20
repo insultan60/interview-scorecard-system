@@ -204,7 +204,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-semibold text-foreground">{template.name}</h3>
                 {template.isDefault && (
-                  <Badge variant="secondary" className="gap-1 bg-[#d21e2b]/10 font-normal text-[#d21e2b] hover:bg-[#d21e2b]/10">
+                  <Badge variant="secondary" className="gap-1 bg-brand/10 font-normal text-brand hover:bg-brand/10">
                     <Star className="h-3 w-3" /> Default
                   </Badge>
                 )}
@@ -363,7 +363,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
             <div className="flex justify-end border-t border-border p-4">
               <Button
                 onClick={handleSave} disabled={saving || stages.some(s => s.passThreshold < 1 || s.passThreshold > 5 || !Number.isInteger(s.passThreshold))}
-                className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                className="bg-brand text-white hover:bg-brand/90"
               >
                 {saving ? 'Saving…' : 'Save changes'}
               </Button>
@@ -468,7 +468,7 @@ export default function Pipelines() {
         <div className="flex items-center gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-              <GitBranch className="h-7 w-7 text-[#d21e2b]" />
+              <GitBranch className="h-7 w-7 text-brand" />
               Hiring Stages
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -476,7 +476,7 @@ export default function Pipelines() {
             </p>
           </div>
         </div>
-        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+        <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
           <Plus />
           New Template
         </Button>
@@ -531,7 +531,7 @@ export default function Pipelines() {
                   A template defines the interview stages, their order, gates and weights.
                 </p>
               </div>
-              <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+              <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
                 <Plus />
                 New Template
               </Button>
@@ -603,7 +603,7 @@ export default function Pipelines() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Button type="submit" disabled={creating} className="bg-brand text-white hover:bg-brand/90">
                 {creating ? 'Creating…' : 'Create template'}
               </Button>
             </DialogFooter>

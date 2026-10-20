@@ -248,7 +248,7 @@ export default function CandidateAvailability() {
                 Select Interview Availability
               </CardTitle>
               <CardDescription className="text-sm">
-                Position: <span className="font-semibold text-slate-800">{data.requisitionTitle}</span> · Stage: <span className="font-semibold text-[#d21e2b]">{formatStageLabel(data.stageLabel)}</span>
+                Position: <span className="font-semibold text-slate-800">{data.requisitionTitle}</span> · Stage: <span className="font-semibold text-brand">{formatStageLabel(data.stageLabel)}</span>
               </CardDescription>
             </CardHeader>
 
@@ -341,7 +341,7 @@ export default function CandidateAvailability() {
                   <Button
                     type="submit"
                     disabled={submitting || (captcha.enabled && !captchaToken)}
-                    className="w-full bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white gap-2 font-medium"
+                    className="w-full bg-brand hover:bg-brand/90 text-white gap-2 font-medium"
                   >
                     <Send className="h-4 w-4" />
                     {submitting ? 'Submitting Availability…' : 'Submit Availability'}

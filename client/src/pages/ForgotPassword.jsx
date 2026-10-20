@@ -38,14 +38,14 @@ export default function ForgotPassword() {
             <div>
               <label htmlFor="reset-email" className="block text-sm font-medium text-foreground">Work email</label>
               <input id="reset-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]" />
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
-            <button type="submit" disabled={submitting} className="w-full rounded-md bg-[#d21e2b] px-3 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" disabled={submitting} className="w-full rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50">
               {submitting ? 'Sending...' : 'Send reset link'}
             </button>
           </form>
         )}
-        <Link to="/login" className="mt-5 block text-center text-sm font-medium text-[#d21e2b] hover:underline">Back to sign in</Link>
+        <Link to="/login" className="mt-5 block text-center text-sm font-medium text-brand hover:underline">Back to sign in</Link>
       </section>
     </main>
   );

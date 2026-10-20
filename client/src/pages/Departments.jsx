@@ -158,7 +158,7 @@ export default function Departments() {
         <div className="flex items-center gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-              <Building2 className="h-7 w-7 text-[#d21e2b]" />
+              <Building2 className="h-7 w-7 text-brand" />
               Departments
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -169,7 +169,7 @@ export default function Departments() {
           </div>
         </div>
         <Button
-          className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+          className="bg-brand text-white hover:bg-brand/90 gap-1.5"
           onClick={openCreateModal}
         >
           <Plus className="h-4 w-4" />
@@ -227,7 +227,7 @@ export default function Departments() {
               </p>
               {!search && (
                 <Button
-                  className="mt-4 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+                  className="mt-4 bg-brand text-white hover:bg-brand/90 gap-1.5"
                   onClick={openCreateModal}
                 >
                   <Plus className="h-4 w-4" />
@@ -390,7 +390,7 @@ export default function Departments() {
               <Button
                 type="submit"
                 disabled={saving}
-                className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white"
+                className="bg-brand hover:bg-brand/90 text-white"
               >
                 {saving
                   ? 'Saving…'

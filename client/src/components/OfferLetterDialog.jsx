@@ -189,7 +189,7 @@ export default function OfferLetterDialog({ application, jobTitle, onClose, onSe
               type="button"
               size="sm"
               variant={mode === 'template' ? 'default' : 'ghost'}
-              className={mode === 'template' ? 'bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90' : ''}
+              className={mode === 'template' ? 'bg-brand text-white hover:bg-brand/90' : ''}
               aria-pressed={mode === 'template'}
               disabled={busy || !canUseTemplates}
               onClick={() => setMode('template')}
@@ -200,7 +200,7 @@ export default function OfferLetterDialog({ application, jobTitle, onClose, onSe
               type="button"
               size="sm"
               variant={mode === 'upload' ? 'default' : 'ghost'}
-              className={mode === 'upload' ? 'bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90' : ''}
+              className={mode === 'upload' ? 'bg-brand text-white hover:bg-brand/90' : ''}
               aria-pressed={mode === 'upload'}
               disabled={busy}
               onClick={() => setMode('upload')}
@@ -294,7 +294,7 @@ export default function OfferLetterDialog({ application, jobTitle, onClose, onSe
                 accept="application/pdf,.pdf"
                 onChange={(event) => setFile(event.target.files?.[0] || null)}
                 disabled={busy}
-                className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
               />
               <p className="text-xs text-muted-foreground">PDF only, up to 5 MB.</p>
             </div>
@@ -306,7 +306,7 @@ export default function OfferLetterDialog({ application, jobTitle, onClose, onSe
             </Button>
             <Button
               type="submit"
-              className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+              className="bg-brand text-white hover:bg-brand/90"
               disabled={busy || (mode === 'template' ? !previewIsFresh : !file)}
             >
               {sending ? 'Sending…' : 'Send offer letter'}

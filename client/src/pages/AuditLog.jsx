@@ -25,7 +25,7 @@ const ACTIONS = [
 
 /** Actions that change a hiring outcome get visual weight; the rest stay neutral. */
 const ACTION_TONE = {
-  final_decision: 'bg-[#d21e2b]/10 text-[#d21e2b] hover:bg-[#d21e2b]/10',
+  final_decision: 'bg-brand/10 text-brand hover:bg-brand/10',
   requisition_deleted: 'bg-red-100 text-red-800 hover:bg-red-100',
   disposition_change: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
   score_override: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
@@ -153,7 +153,7 @@ export default function AuditLog() {
       <div className="flex items-center gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-            <ScrollText className="h-7 w-7 text-[#d21e2b]" />
+            <ScrollText className="h-7 w-7 text-brand" />
             Audit Log
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -261,7 +261,7 @@ export default function AuditLog() {
             <div className="flex items-end">
               <Button
                 onClick={() => load(1)}
-                className="w-full bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                className="w-full bg-brand text-white hover:bg-brand/90"
               >
                 Apply filters
               </Button>

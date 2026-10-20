@@ -83,9 +83,9 @@ export function TimePicker({ value = '10:00', onChange, className, allowEmpty = 
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-[#d21e2b]" /> Select Time
+              <Clock className="h-3.5 w-3.5 text-brand" /> Select Time
             </span>
-            <span className="text-xs font-bold text-[#d21e2b] bg-[#d21e2b]/10 px-2 py-0.5 rounded">
+            <span className="text-xs font-bold text-brand bg-brand/10 px-2 py-0.5 rounded">
               {displayString}
             </span>
           </div>
@@ -105,7 +105,7 @@ export function TimePicker({ value = '10:00', onChange, className, allowEmpty = 
                     className={cn(
                       'h-8 w-10 text-xs p-0 font-medium rounded-md transition-all shrink-0',
                       h === hour12
-                        ? 'bg-[#d21e2b] text-white font-semibold shadow-sm hover:bg-[#d21e2b]'
+                        ? 'bg-brand text-white font-semibold shadow-sm hover:bg-brand'
                         : 'text-slate-700 hover:bg-slate-100'
                     )}
                     onClick={() => choose('hour12', h)}
@@ -132,7 +132,7 @@ export function TimePicker({ value = '10:00', onChange, className, allowEmpty = 
                     className={cn(
                       'h-8 w-10 text-xs p-0 font-medium rounded-md transition-all shrink-0',
                       m === minute
-                        ? 'bg-[#d21e2b] text-white font-semibold shadow-sm hover:bg-[#d21e2b]'
+                        ? 'bg-brand text-white font-semibold shadow-sm hover:bg-brand'
                         : 'text-slate-700 hover:bg-slate-100'
                     )}
                     onClick={() => choose('minute', m)}
@@ -156,7 +156,7 @@ export function TimePicker({ value = '10:00', onChange, className, allowEmpty = 
                     className={cn(
                       'h-8 w-11 text-xs font-bold p-0 rounded-md transition-all',
                       p === period
-                        ? 'bg-[#d21e2b] text-white border-transparent shadow-sm hover:bg-[#d21e2b]'
+                        ? 'bg-brand text-white border-transparent shadow-sm hover:bg-brand'
                         : 'text-slate-600 border-slate-200 hover:bg-slate-100'
                     )}
                     onClick={() => choose('period', p)}
@@ -169,7 +169,7 @@ export function TimePicker({ value = '10:00', onChange, className, allowEmpty = 
           </div>
 
           <div className="flex justify-end pt-0.5">
-            <Button size="sm" className="bg-[#d21e2b] text-white text-xs h-7 px-3.5 rounded-md hover:bg-[#d21e2b]/90 font-medium shadow-sm" onClick={() => setOpen(false)}>
+            <Button size="sm" className="bg-brand text-white text-xs h-7 px-3.5 rounded-md hover:bg-brand/90 font-medium shadow-sm" onClick={() => setOpen(false)}>
               Done
             </Button>
           </div>

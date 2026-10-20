@@ -723,13 +723,13 @@ export default function InterviewRoom() {
           {(candidate.email || candidate.phone) && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
               {candidate.email && (
-                <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy email address">
+                <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-brand hover:underline" title="Copy email address">
                   <Mail className="h-4 w-4" />
                   {candidate.email}
                 </button>
               )}
               {candidate.phone && (
-                <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy phone number">
+                <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-brand hover:underline" title="Copy phone number">
                   <Phone className="h-4 w-4" />
                   {candidate.phone}
                 </button>
@@ -903,9 +903,9 @@ export default function InterviewRoom() {
             <CardContent>
               {/* Candidate Availability Section */}
               {interview.candidateAvailability?.preferredDate ? (
-                <div className="mb-4 rounded-lg border border-[#d21e2b]/30 bg-[#d21e2b]/5 p-3.5 text-sm">
+                <div className="mb-4 rounded-lg border border-brand/30 bg-brand/5 p-3.5 text-sm">
                   <div className="flex items-center justify-between font-semibold text-slate-900 mb-1">
-                    <span className="flex items-center gap-1.5 text-[#d21e2b]">
+                    <span className="flex items-center gap-1.5 text-brand">
                       <CalendarIcon className="h-4 w-4" />
                       Candidate Availability Submitted
                     </span>
@@ -946,7 +946,7 @@ export default function InterviewRoom() {
                       <button
                         type="button"
                         onClick={handleApplyCandidateAvailability}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-[#d21e2b] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#d21e2b]/90 shadow-sm"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand/90 shadow-sm"
                       >
                         <Clock className="h-3.5 w-3.5" />
                         Pre-fill & Use Candidate's Preferred Time
@@ -956,7 +956,7 @@ export default function InterviewRoom() {
                       type="button"
                       onClick={handleRequestAvailability}
                       disabled={requestingAvailability}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[#d21e2b]/40 bg-white px-2.5 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-white px-2.5 py-1.5 text-xs font-medium text-brand hover:bg-brand/5 disabled:opacity-50"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       {requestingAvailability ? 'Sending...' : 'Request Again'}
@@ -973,7 +973,7 @@ export default function InterviewRoom() {
                     type="button"
                     onClick={handleRequestAvailability}
                     disabled={requestingAvailability}
-                    className="inline-flex items-center gap-1.5 shrink-0 rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 shrink-0 rounded-md border border-brand/40 bg-white px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/5 disabled:opacity-50"
                   >
                     <Mail className="h-3.5 w-3.5" />
                     {requestingAvailability ? 'Sending...' : 'Send Request Email'}
@@ -986,7 +986,7 @@ export default function InterviewRoom() {
                   {interview.meetingStart && (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-semibold text-slate-900 border-b pb-2.5">
                       <span className="flex items-center gap-1.5">
-                        <CalendarIcon className="h-4 w-4 text-[#d21e2b]" />
+                        <CalendarIcon className="h-4 w-4 text-brand" />
                         {formatInZone(interview.meetingStart, zone, 'dddd, MMMM D, YYYY')}
                       </span>
                       <span className="flex items-center gap-1.5 text-slate-700">
@@ -1027,11 +1027,11 @@ export default function InterviewRoom() {
                     <input
                       type="text" value={meetingLinkInput} onChange={(e) => setMeetingLinkInput(e.target.value)}
                       placeholder="Paste an existing meeting link..."
-                      className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                      className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                     />
                     <button
                       type="button" onClick={() => handleCreateMeeting(false)} disabled={creatingMeeting}
-                      className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-sm font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Use Link
                     </button>
@@ -1119,15 +1119,15 @@ export default function InterviewRoom() {
                       <label htmlFor="additional-invitees" className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         Additional Invitees <span className="normal-case font-normal text-slate-400">(optional)</span>
                       </label>
-                      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:border-[#d21e2b] focus-within:ring-1 focus-within:ring-[#d21e2b]">
+                      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
                         {additionalInvitees.map((email) => (
-                          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-[#d21e2b]/10 px-2 py-1 text-xs font-medium text-[#a41420]">
+                          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-1 text-xs font-medium text-brand-dark">
                             {email}
                             <button
                               type="button"
                               aria-label={`Remove ${email}`}
                               onClick={() => setAdditionalInvitees((current) => current.filter((item) => item !== email))}
-                              className="text-[#a41420]/70 hover:text-[#a41420]"
+                              className="text-brand-dark/70 hover:text-brand-dark"
                             >
                               ×
                             </button>
@@ -1160,7 +1160,7 @@ export default function InterviewRoom() {
                   </div>
                   <button
                     type="button" onClick={() => handleCreateMeeting(true)} disabled={creatingMeeting}
-                    className="rounded-md bg-[#d21e2b] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {creatingMeeting ? 'Creating...' : 'Create & Invite via Google Calendar'}
                   </button>
@@ -1180,7 +1180,7 @@ export default function InterviewRoom() {
                 ) : (
                   <button
                     type="button" onClick={handleConfirmConsent} disabled={confirmingConsent}
-                    className="rounded-md bg-[#d21e2b] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {confirmingConsent ? 'Confirming...' : 'Confirm Candidate Consent'}
                   </button>
@@ -1199,7 +1199,7 @@ export default function InterviewRoom() {
           </CardHeader>
           <CardContent>
             {interview.artifactFileUrl ? (
-              <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm text-[#d21e2b] hover:underline">
+              <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm text-brand hover:underline">
                 View uploaded artifact
               </button>
             ) : (
@@ -1207,7 +1207,7 @@ export default function InterviewRoom() {
             )}
             <input
               type="file" accept="application/pdf,.pdf" onChange={handleUploadArtifact} disabled={uploadingArtifact}
-              className="mt-2 cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-2 cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-brand/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand hover:file:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </CardContent>
         </Card>
@@ -1248,7 +1248,7 @@ export default function InterviewRoom() {
                 type="button"
                 onClick={handleSavePassFail}
                 disabled={!passFailResult || hasActiveCalendarMeeting || passFailSaving}
-                className="ml-2 rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="ml-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {passFailSaving ? 'Saving...' : 'Save Decision'}
               </button>
@@ -1308,7 +1308,7 @@ export default function InterviewRoom() {
                 type="button"
                 onClick={handleFetchTranscript}
                 disabled={isTranscriptDisabled || fetchingTranscript || !interview.meetingUri}
-                className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-sm font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
                 title={isTranscriptDisabled ? 'Transcript is not needed for this step' : !interview.meetingUri ? 'Set a meeting first' : ''}
               >
                 {fetchingTranscript ? 'Fetching...' : 'Fetch Transcript'}
@@ -1319,7 +1319,7 @@ export default function InterviewRoom() {
                 onChange={handleUploadTranscript}
                 disabled={isTranscriptDisabled || uploadingTranscript}
                 title={isTranscriptDisabled ? 'Transcript is not needed for this step' : ''}
-                className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-brand/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand hover:file:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
           </CardContent>
@@ -1339,7 +1339,7 @@ export default function InterviewRoom() {
                 </div>
                 {interview.artifactFileUrl && (
                   <div>
-                    <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm font-medium text-[#d21e2b] hover:underline">
+                    <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm font-medium text-brand hover:underline">
                       View Uploaded Offer Letter
                     </button>
                   </div>
@@ -1351,7 +1351,7 @@ export default function InterviewRoom() {
                   <button
                     type="button"
                     onClick={() => setShowReupload(true)}
-                    className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                    className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/5"
                   >
                     Replace / Re-upload Offer Letter
                   </button>
@@ -1381,7 +1381,7 @@ export default function InterviewRoom() {
                       }
                       setOfferFile(selected);
                     }}
-                    className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                    className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-brand/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand hover:file:bg-brand/5"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -1389,7 +1389,7 @@ export default function InterviewRoom() {
                     type="button"
                     onClick={handleSendOffer}
                     disabled={sendingOffer || !offerFile || hasActiveCalendarMeeting}
-                    className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {sendingOffer
                       ? 'Sending...'
@@ -1429,7 +1429,7 @@ export default function InterviewRoom() {
         <div className="mt-4">
           <button
             type="button" onClick={handleRunScoring} disabled={!canScore || scoring}
-            className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {scoring ? 'Scoring...' : interview.scores?.length ? 'Re-run AI Scoring' : 'Run AI Scoring'}
           </button>
@@ -1478,7 +1478,7 @@ export default function InterviewRoom() {
           <CardContent>
             <button
               type="button" onClick={handleRecompute} disabled={recomputing}
-              className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-sm font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {recomputing ? 'Recomputing...' : 'Recompute Results'}
             </button>
@@ -1544,7 +1544,7 @@ export default function InterviewRoom() {
                   type="file"
                   accept="application/pdf,.pdf"
                   onChange={(e) => setEditCandidateResumeFile(e.target.files?.[0] || null)}
-                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
                 />
               </div>
             </div>
@@ -1559,7 +1559,7 @@ export default function InterviewRoom() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditCandidateOpen(false)} disabled={savingCandidate}>Cancel</Button>
-              <Button type="submit" disabled={savingCandidate} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Button type="submit" disabled={savingCandidate} className="bg-brand text-white hover:bg-brand/90">
                 {savingCandidate ? 'Saving…' : 'Save changes'}
               </Button>
             </DialogFooter>
