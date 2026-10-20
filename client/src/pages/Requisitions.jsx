@@ -106,7 +106,6 @@ export default function Requisitions() {
   const isCreatePage = location.pathname === '/requisitions/new';
   const isEditPage = Boolean(editId && location.pathname.includes('/edit'));
   const isFormPage = isCreatePage || isEditPage;
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [requisitions, setRequisitions] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -581,11 +580,11 @@ export default function Requisitions() {
           {/* ---------- header ---------- */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-                <ArrowLeft />
-              </Button>
               <div>
-                <h1 className="text-2xl font-semibold text-foreground">Job Openings</h1>
+                <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+                  <Briefcase className="h-7 w-7 text-[#d21e2b]" />
+                  Job Openings
+                </h1>
                 <p className="text-sm text-muted-foreground">
                   {loading ? 'Loading…' : `${requisitions.length} ${statusFilter ? STATUS_LABEL[statusFilter].toLowerCase() : 'total'}`}
                 </p>

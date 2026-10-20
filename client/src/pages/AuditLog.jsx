@@ -1,8 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { ArrowLeft, Calendar as CalendarIcon, ScrollText, SlidersHorizontal, X } from 'lucide-react';
+import { Calendar as CalendarIcon, ScrollText, SlidersHorizontal, X } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,8 +38,6 @@ const EMPTY_FILTERS = { requisitionId: '', applicationId: '', userId: '', action
 const ALL = '__all__'; // Radix Select forbids an empty-string item value
 
 export default function AuditLog() {
-  const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const [requisitions, setRequisitions] = useState([]);
   const [users, setUsers] = useState([]);
   const [applicationOptions, setApplicationOptions] = useState([]);
@@ -154,11 +151,11 @@ export default function AuditLog() {
     <div>
       {/* ---------- header ---------- */}
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-          <ArrowLeft />
-        </Button>
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Audit Log</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <ScrollText className="h-7 w-7 text-[#d21e2b]" />
+            Audit Log
+          </h1>
           <p className="text-sm text-muted-foreground">
             {loading ? 'Loading…' : `${total.toLocaleString()} entr${total === 1 ? 'y' : 'ies'}${activeCount ? ' matching filters' : ''}`}
           </p>

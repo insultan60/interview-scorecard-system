@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  ArrowLeft, Plug, SlidersHorizontal, FileText, DollarSign, Info, CheckCircle2, XCircle,
+  Settings as SettingsIcon, Plug, SlidersHorizontal, FileText, DollarSign, Info, CheckCircle2, XCircle,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -89,8 +88,6 @@ const DEFAULT_STAGE_MODEL_TIERS = {
 };
 
 export default function Settings() {
-  const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const { user } = useAuth();
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
@@ -187,11 +184,11 @@ export default function Settings() {
     <div>
       {/* ---------- header ---------- */}
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-          <ArrowLeft />
-        </Button>
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <SettingsIcon className="h-7 w-7 text-[#d21e2b]" />
+            Settings
+          </h1>
           <p className="text-sm text-muted-foreground">
             Credentials, scoring thresholds, retention and AI spend.
           </p>

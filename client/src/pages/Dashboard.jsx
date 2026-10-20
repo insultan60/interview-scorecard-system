@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Briefcase, Users, DollarSign, Activity, Plus, ChevronRight, UserPlus, ArrowUpRight,
+  Briefcase, Users, DollarSign, Activity, Plus, ChevronRight, UserPlus, ArrowUpRight, LayoutDashboard,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -94,7 +94,10 @@ export default function Dashboard() {
       {/* ---------- header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <LayoutDashboard className="h-7 w-7 text-[#d21e2b]" />
+            Dashboard
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Overview of hiring activity across all active job openings.
           </p>

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
+  Plus, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../hooks/useApi';
@@ -113,8 +113,6 @@ function parseCsv(text) {
 }
 
 export default function Candidates() {
-  const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -486,11 +484,11 @@ export default function Candidates() {
       {/* ---------- header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-            <ArrowLeft />
-          </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Candidates</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <Users className="h-7 w-7 text-[#d21e2b]" />
+              Candidates
+            </h1>
             <p className="text-sm text-muted-foreground">
               {loading ? 'Loading…' : `${pagination.total} ${search || requisitionFilter !== 'all' ? 'matching' : 'total'}`}
             </p>

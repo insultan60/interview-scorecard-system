@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Building2, Plus, Search, X, MoreVertical, Pencil, Trash2,
-  Briefcase, ArrowLeft,
+  Briefcase,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,7 +40,6 @@ function formatDate(date) {
 
 export default function Departments() {
   const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,11 +156,9 @@ export default function Departments() {
       {/* ---------- Header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <Building2 className="h-7 w-7 text-[#d21e2b]" />
               Departments
             </h1>
             <p className="text-sm text-muted-foreground">
