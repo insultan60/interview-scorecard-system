@@ -8,8 +8,8 @@ const sessions = require('../services/sessionService');
 
 const RESET_TTL_MINUTES = Math.max(5, Math.min(Number(process.env.PASSWORD_RESET_TTL_MINUTES) || 30, 120));
 const RESET_RESPONSE = 'If an active account uses that email address, a password-reset link has been sent.';
-const RESET_REQUEST_WINDOW_MS = 15 * 60 * 1000;
-const RESET_REQUEST_LIMIT = 5;
+const RESET_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000; // one day
+const RESET_REQUEST_LIMIT = 3; // reset emails per address per day; further requests are quietly ignored
 const resetRequestAttempts = new Map();
 
 function canRequestPasswordReset(ip) {
