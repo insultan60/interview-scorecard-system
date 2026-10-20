@@ -1,7 +1,7 @@
 {
-  "name": "interview-scorecard-server",
+  "name": "owners-talent-server",
   "version": "1.0.0",
-  "description": "Express + MongoDB backend for the Structured Interview & Scorecard System.",
+  "description": "Express + MongoDB backend for OWNERS TALENT.",
   "private": true,
   "main": "index.js",
   "engines": {

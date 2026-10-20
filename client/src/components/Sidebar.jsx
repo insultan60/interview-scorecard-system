@@ -64,16 +64,16 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
             src={redstarIcon}
             alt="Red Star Technologies"
             className="h-8 w-8 flex-shrink-0 object-contain"
-            title="Interview Scorecard - Red Star Technologies"
+            title="OWNERS TALENT - Red Star Technologies"
           />
           {!isCollapsed && (
             <div className="min-w-0 transition-opacity duration-200 hidden md:block">
-              <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">Interview Scorecard</h1>
+              <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">OWNERS TALENT</h1>
               <p className="text-[11px] text-gray-400">Red Star Technologies</p>
             </div>
           )}
           <div className="min-w-0 md:hidden">
-            <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">Interview Scorecard</h1>
+            <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">OWNERS TALENT</h1>
             <p className="text-[11px] text-gray-400">Red Star Technologies</p>
           </div>
         </div>

@@ -139,7 +139,7 @@ const testApi = asyncHandler(async (req, res) => {
     const { slackWebhookUrl: webhookUrl } = await getSecrets();
     if (!webhookUrl) return res.json({ service, status: 'error', error: 'VALIDATION_ERROR', message: 'SLACK_WEBHOOK_URL is not configured.' });
     try {
-      await axios.post(webhookUrl, { text: ':white_check_mark: Test connection from Interview Scorecard System.' }, { timeout: 10000 });
+      await axios.post(webhookUrl, { text: ':white_check_mark: Test connection from OWNERS TALENT.' }, { timeout: 10000 });
       return res.json({ service, status: 'ok' });
     } catch (err) {
       return res.json({ service, status: 'error', ...describeError(err) });

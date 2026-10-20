@@ -1,4 +1,4 @@
-# Interview Scorecard System — Complete Project Overview
+# OWNERS TALENT — Complete Project Overview
 
 > A full-stack, AI-assisted, stage-gated hiring platform built for **Red Star Technologies**.
 > This document explains what the app does, how it is built, how the code is organised, and how to run, configure and extend it. It is written so that someone who has never seen the project can understand all of it.
@@ -36,7 +36,7 @@ HR teams that track interviews in Excel run into two problems:
 2. **Process enforcement** – nothing stops someone skipping a stage, or hiring a candidate who failed a critical evaluation.
 
 ### The solution
-Interview Scorecard System replaces the spreadsheet with a structured pipeline where:
+OWNERS TALENT replaces the spreadsheet with a structured pipeline where:
 
 - **AI proposes, humans decide.** Claude (Anthropic) reads a transcript, résumé or questionnaire and proposes 1–5 scores with a short justification. A proposed score counts for nothing until a human approves or overrides it (public résumé/HR-questionnaire screens are the one exception — see §5.2).
 - **Gates block advancement.** A candidate cannot move to the next stage until the current stage average meets its pass threshold.

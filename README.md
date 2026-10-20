@@ -1,4 +1,4 @@
-# Interview Scorecard System
+# OWNERS TALENT
 
 An internal, AI-powered hiring tool built for **Red Star Technologies** that replaces manual Excel-based interview tracking with a structured, stage-gated scoring pipeline. The system uses **Claude AI (Anthropic)** to analyze interview transcripts and propose candidate scores, while enforcing strict workflow rules that prevent human bias and process shortcuts.
 

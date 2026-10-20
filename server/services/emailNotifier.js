@@ -146,11 +146,11 @@ async function sendApplicationConfirmationEmail({ candidateEmail, candidateName,
 
 /** Sends an internal user a one-time link for changing their password. */
 async function sendPasswordResetEmail({ userEmail, userName, resetUrl, expiresInMinutes }) {
-  const subject = 'Reset your Interview Scorecard password';
+  const subject = 'Reset your OWNERS TALENT password';
   const text = [
     `Hi ${userName || 'there'},`,
     '',
-    'We received a request to reset your Interview Scorecard password.',
+    'We received a request to reset your OWNERS TALENT password.',
     '',
     `Choose a new password here (this link expires in ${expiresInMinutes} minutes):`,
     resetUrl,

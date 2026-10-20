@@ -1,4 +1,4 @@
-# Nginx reverse-proxy template for deploying the Interview Scorecard System
+# Nginx reverse-proxy template for deploying OWNERS TALENT
 # (e.g. on an AWS EC2 instance). Not used for local development — in dev,
 # Vite's own dev-server proxy (client/vite.config.js) handles this instead.
 #

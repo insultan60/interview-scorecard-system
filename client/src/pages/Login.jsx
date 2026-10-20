@@ -48,7 +48,7 @@ export default function Login() {
               <img src={redstarIcon} alt="" className="h-6 w-6 brightness-0 invert" />
               <span className="text-sm font-semibold uppercase tracking-wider text-white/80">Red Star Technologies</span>
             </div>
-            <h1 className="mt-10 text-3xl font-bold leading-tight">Interview Scorecard System</h1>
+            <h1 className="mt-10 text-3xl font-bold leading-tight">OWNERS TALENT</h1>
             <p className="mt-3 max-w-xs text-sm text-white/80">
               One stage-gated hiring workflow — AI proposes the scores, your team makes the call.
             </p>
@@ -66,7 +66,7 @@ export default function Login() {
         {/* Form panel */}
         <div className="flex flex-col justify-center p-8 sm:p-10">
           <h2 className="text-xl font-semibold text-foreground">Sign in</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Interview Scorecard System</p>
+          <p className="mt-1 text-sm text-muted-foreground">OWNERS TALENT</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>

@@ -1,7 +1,7 @@
 {
-  "name": "interview-scorecard-client",
+  "name": "owners-talent-client",
   "version": "1.0.0",
-  "description": "React (Vite) + Tailwind frontend for the Structured Interview & Scorecard System.",
+  "description": "React (Vite) + Tailwind frontend for OWNERS TALENT.",
   "private": true,
   "type": "module",
   "scripts": {
