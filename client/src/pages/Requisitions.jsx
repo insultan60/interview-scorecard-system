@@ -695,8 +695,28 @@ export default function Requisitions() {
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="px-6 py-14 text-center">
-                  <p className="text-sm font-medium text-foreground">No matches for “{search}”</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Try a different title.</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {query
+                      ? `No matches for “${search.trim()}”`
+                      : departmentFilter !== 'all'
+                        ? `No job openings in ${departments.find((d) => String(d._id) === String(departmentFilter))?.name || 'this department'}`
+                        : jobOpeningFilter !== 'all'
+                          ? 'This job opening does not match the other filters'
+                          : 'No matching job openings'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {query
+                      ? 'Try a different title, or change the filters.'
+                      : 'Try a different filter, or clear the filters to see every job opening.'}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => { setSearch(''); setDepartmentFilter('all'); setJobOpeningFilter('all'); setPage(1); }}
+                  >
+                    Clear filters
+                  </Button>
                 </div>
               ) : (
                 <Table>
