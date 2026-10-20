@@ -1,6 +1,6 @@
 import RichTextViewer from '../components/RichTextViewer';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, Pencil } from 'lucide-react';
@@ -12,6 +12,7 @@ import AlertBanner from '../components/AlertBanner';
 import useRefreshWhile from '../hooks/useRefreshWhile';
 import { isScreeningActive, isScreeningFailed } from '../lib/screening';
 import PipelineStepper from '../components/PipelineStepper';
+import { goBackToJob, openInterviewReplacing } from '../lib/interviewNavigation';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,8 @@ function parseEmailList(value) {
 export default function InterviewRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const openInterview = (interviewId) => openInterviewReplacing(navigate, location, interviewId);
 
   const [interview, setInterview] = useState(null);
   const [requisition, setRequisition] = useState(null);
@@ -396,12 +399,12 @@ export default function InterviewRoom() {
         { validateStatus: () => true }
       );
       if (res.status === 201) {
-        navigate(`/interview/${res.data.interview._id}`);
+        openInterview(res.data.interview._id);
       } else if (res.status === 409 && res.data?.interviewId) {
         // Duplicate interview — open the one that already exists. Out-of-order
         // stage attempts also return 409, but carry no interviewId; those fall
         // through so their "Stage X must be approved first" message is shown.
-        navigate(`/interview/${res.data.interviewId}`);
+        openInterview(res.data.interviewId);
       } else {
         toast.error(res.data?.message || 'Could not start next stage.');
       }
@@ -546,7 +549,7 @@ export default function InterviewRoom() {
 
       if (res.data.passed && res.data.nextInterviewId) {
         toast.success('Candidate passed this stage! Moving to next stage...');
-        navigate(`/interview/${res.data.nextInterviewId}`);
+        openInterview(res.data.nextInterviewId);
       } else {
         await load();
         toast.success(
@@ -608,7 +611,7 @@ export default function InterviewRoom() {
 
       if (res.data.nextInterviewId) {
         toast.success('Moving to next stage...');
-        navigate(`/interview/${res.data.nextInterviewId}`);
+        openInterview(res.data.nextInterviewId);
       } else {
         await load();
       }
@@ -692,7 +695,7 @@ export default function InterviewRoom() {
     <div>
       <button
         type="button"
-        onClick={() => navigate(`/requisitions/${requisition._id}`)}
+        onClick={() => goBackToJob(navigate, location, requisition._id)}
         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -783,6 +786,8 @@ export default function InterviewRoom() {
               })
             )}
             stageLinks={stageLinks}
+            linkState={location.state}
+            linkReplace
             currentStageKey={application?.currentStageKey}
             onStartStage={handleStartNextStage}
             startingStageKey={startingStage ? application?.currentStageKey : null}
@@ -1455,7 +1460,7 @@ export default function InterviewRoom() {
               if (updatedInterview.status === 'approved') {
                 if (passed !== false && nextInterviewId) {
                   toast.success('Stage passed! Moving to next stage...');
-                  navigate(`/interview/${nextInterviewId}`);
+                  openInterview(nextInterviewId);
                 } else {
                   load();
                 }

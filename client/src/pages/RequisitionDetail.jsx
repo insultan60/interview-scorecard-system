@@ -33,6 +33,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatDate, formatDisposition, formatScore } from '../utils/formatters';
 import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
 import OfferLetterDialog from '../components/OfferLetterDialog.jsx';
+import { fromJobState } from '../lib/interviewNavigation';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -383,12 +384,12 @@ export default function RequisitionDetail() {
         { validateStatus: () => true }
       );
       if (res.status === 201) {
-        navigate(`/interview/${res.data.interview._id}`);
+        navigate(`/interview/${res.data.interview._id}`, { state: fromJobState(id) });
       } else if (res.status === 409 && res.data?.interviewId) {
         // Duplicate interview — open the one that already exists. Out-of-order
         // stage attempts also return 409, but carry no interviewId; those fall
         // through so their "Stage X must be approved first" message is shown.
-        navigate(`/interview/${res.data.interviewId}`);
+        navigate(`/interview/${res.data.interviewId}`, { state: fromJobState(id) });
       } else {
         toast.error(res.data?.message || 'Could not open interview.');
       }
@@ -511,7 +512,7 @@ export default function RequisitionDetail() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => navigate(`/requisitions/${requisition._id}/edit`)}
+          onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
           className="h-8 text-xs gap-1.5 text-slate-700 hover:text-slate-900 border-slate-300"
         >
           <Pencil className="h-3.5 w-3.5 text-slate-500" />
@@ -845,6 +846,7 @@ export default function RequisitionDetail() {
                               stages={requisition.stages}
                               progress={progressMap}
                               stageLinks={stageLinksByApp[app._id]}
+                              linkState={fromJobState(id)}
                               currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
                               onStartStage={() => handleGoToInterview(app)}
                               startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}

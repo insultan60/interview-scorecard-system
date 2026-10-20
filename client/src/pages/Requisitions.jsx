@@ -34,6 +34,7 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { formatDate } from '../utils/formatters';
 import screeningCriteriaConfig from '../constants/screeningCriteria.json';
+import { goBackToJob } from '../lib/interviewNavigation';
 
 const PAGE_SIZE = 10;
 const JOB_TITLE_MIN_LENGTH = 5;
@@ -523,7 +524,7 @@ export default function Requisitions() {
         if (updateRes.data?.warning) toast(updateRes.data.warning, { icon: '⚠️' });
         toast.success('Job Opening updated successfully!');
         loadRequisitions();
-        navigate(`/requisitions/${editId}`);
+        goBackToJob(navigate, location, editId); // back to the job page, not on top of the edit page
         return;
       }
 
@@ -910,7 +911,7 @@ export default function Requisitions() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => navigate(isEditPage ? `/requisitions/${editId}` : '/requisitions')}
+              onClick={() => (isEditPage ? goBackToJob(navigate, location, editId) : navigate('/requisitions'))}
               aria-label="Back"
             >
               <ArrowLeft />
@@ -1815,7 +1816,7 @@ export default function Requisitions() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate(isEditPage ? `/requisitions/${editId}` : '/requisitions')}
+                    onClick={() => (isEditPage ? goBackToJob(navigate, location, editId) : navigate('/requisitions'))}
                   >
                     Cancel
                   </Button>
