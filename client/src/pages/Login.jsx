@@ -63,7 +63,7 @@ export default function Login() {
         {/* Form panel */}
         <div className="flex flex-col justify-center p-8 sm:p-10">
           <h2 className="text-xl font-semibold text-foreground">Sign in</h2>
-          <p className="mt-1 text-sm text-muted-foreground">OWNERS TALENT</p>
+          <p className="mt-1 text-sm text-muted-foreground">Welcome back! Sign in to pick up where you left off.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
