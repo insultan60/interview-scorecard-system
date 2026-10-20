@@ -464,20 +464,24 @@ const list = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .lean();
 
-  const applications = await Application.find({ requisitionId: { $in: requisitions.map((r) => r._id) } })
-    .select('requisitionId disposition')
-    .lean();
+  // The database counts the applications per job and disposition, so only a few small rows come back,
+  // instead of loading every application just to count them in JavaScript.
+  const counts = await Application.aggregate([
+    { $match: { requisitionId: { $in: requisitions.map((r) => r._id) } } },
+    { $group: { _id: { requisitionId: '$requisitionId', disposition: '$disposition' }, count: { $sum: 1 } } },
+  ]);
 
   const statsByRequisition = new Map();
-  applications.forEach((a) => {
-    const key = String(a.requisitionId);
+  counts.forEach(({ _id, count }) => {
+    const key = String(_id.requisitionId);
     if (!statsByRequisition.has(key)) {
       statsByRequisition.set(key, { total: 0, inProgress: 0, HIRE: 0, MAYBE: 0, NO_HIRE: 0 });
     }
     const stats = statsByRequisition.get(key);
-    stats.total += 1;
-    if (a.disposition) stats[a.disposition] += 1;
-    else stats.inProgress += 1;
+    stats.total += count;
+    // No disposition yet (null, missing or empty) means the candidate is still in progress.
+    if (_id.disposition && stats[_id.disposition] !== undefined) stats[_id.disposition] += count;
+    else stats.inProgress += count;
   });
 
   res.json({

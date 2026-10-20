@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Plus, ArrowLeft, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import api from '../hooks/useApi';
+import { candidatesListOptions, requisitionsListOptions } from '../hooks/queries';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,12 +116,6 @@ export default function Candidates() {
   const navigate = useNavigate();
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
-  const [candidates, setCandidates] = useState([]);
-  const [requisitions, setRequisitions] = useState([]);
-  const [filterRequisitions, setFilterRequisitions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchingCandidates, setFetchingCandidates] = useState(false);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [resumeFile, setResumeFile] = useState(null);
@@ -152,35 +148,38 @@ export default function Candidates() {
   const [dateSort, setDateSort] = useState('newest');
   const [pageSize, setPageSize] = useState(() => getStoredPageSize());
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState(() => ({ total: 0, page: 1, limit: getStoredPageSize(), totalPages: 1 }));
-  const latestLoadRef = useRef(0);
 
-  async function loadCandidates(targetPage = page, targetLimit = pageSize) {
-    const requestId = ++latestLoadRef.current;
-    const isInitialLoad = candidates.length === 0 && loading;
-    if (isInitialLoad) setLoading(true);
-    else setFetchingCandidates(true);
-    try {
-      const res = await api.get('/candidates', {
-        params: {
-          page: targetPage,
-          limit: targetLimit,
-          search: debouncedSearch.trim() || undefined,
-          requisitionId: requisitionFilter !== 'all' ? requisitionFilter : undefined,
-          sort: dateSort,
-        },
-      });
-      if (requestId !== latestLoadRef.current) return;
-      setCandidates(res.data.candidates);
-      setFilterRequisitions(res.data.requisitionOptions || []);
-      setPagination(res.data.pagination || { total: 0, page: 1, limit: targetLimit, totalPages: 1 });
-      setPage(res.data.pagination?.page || 1);
-    } finally {
-      if (requestId === latestLoadRef.current) {
-        setLoading(false);
-        setFetchingCandidates(false);
-      }
-    }
+  // The list comes from the app-wide data cache (see lib/queryClient.js). A page that was loaded a moment ago
+  // (for example going back from page 2 to page 1) is shown without asking the API again. Any change made
+  // through the API client marks it out of date, and because it is on screen it is re-read at once.
+  const listParams = {
+    page,
+    limit: pageSize,
+    search: debouncedSearch.trim() || undefined,
+    requisitionId: requisitionFilter !== 'all' ? requisitionFilter : undefined,
+    sort: dateSort,
+  };
+  const listQuery = useQuery(candidatesListOptions(listParams));
+  const candidates = listQuery.data?.candidates ?? [];
+  const filterRequisitions = listQuery.data?.requisitionOptions ?? [];
+  const pagination = listQuery.data?.pagination ?? { total: 0, page: 1, limit: pageSize, totalPages: 1 };
+  const loading = listQuery.isPending; // only the very first load; later pages keep the current one on screen
+  // True only while a page that is not in the cache yet is loading (the pager buttons wait for it).
+  // A quiet refresh of a page that is already on screen does not lock them.
+  const fetchingCandidates = listQuery.isPlaceholderData;
+  const requisitions = useQuery(requisitionsListOptions('open')).data?.requisitions ?? [];
+
+  // The server corrects an out-of-range page (for example after deleting the last candidate on the last page).
+  useEffect(() => {
+    const serverPage = listQuery.data?.pagination?.page;
+    if (!listQuery.isPlaceholderData && serverPage && serverPage !== page) setPage(serverPage);
+  }, [listQuery.data, listQuery.isPlaceholderData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Kept as a function because the page, the pager buttons and every save/delete handler call it.
+  // Showing a page is just choosing it; the cache fetches it only when it does not have it.
+  function loadCandidates(targetPage = page, targetLimit = pageSize) {
+    if (targetLimit !== pageSize) setPageSize(targetLimit);
+    setPage(targetPage);
   }
 
   function handlePageSizeChange(val) {
@@ -189,12 +188,7 @@ export default function Candidates() {
     setStoredPageSize(nextSize);
     setPageSize(nextSize);
     setPage(1);
-    loadCandidates(1, nextSize);
   }
-
-  useEffect(() => {
-    api.get('/requisitions', { params: { status: 'open' } }).then((res) => setRequisitions(res.data.requisitions));
-  }, []);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setDebouncedSearch(search), 350);

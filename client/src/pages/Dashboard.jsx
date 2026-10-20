@@ -6,6 +6,7 @@ import {
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import api from '../hooks/useApi';
+import { fetchRequisitionsList, fetchSettingsList } from '../hooks/queries';
 import StatsCard from '../components/StatsCard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,10 +48,10 @@ export default function Dashboard() {
     async function load() {
       try {
         const [requisitionsRes, usageRes, auditRes, settingsRes] = await Promise.all([
-          api.get('/requisitions', { params: { status: 'open' } }),
+          fetchRequisitionsList('open'), // from the shared cache when it is still fresh
           api.get('/settings/ai-usage'),
           api.get('/audit', { params: { limit: 6 } }),
-          api.get('/settings'),
+          fetchSettingsList(),
         ]);
         if (cancelled) return;
 

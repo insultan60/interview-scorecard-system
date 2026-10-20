@@ -3,6 +3,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const morgan = require('morgan');
 
 const connectDB = require('./config/db');
@@ -41,6 +42,10 @@ const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? (process.env.NODE_
 if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
 
 app.use(helmet());
+
+// Compress responses (gzip) when the browser accepts it. JSON compresses to a fraction of its size, so big lists
+// download much faster. Only responses over 1 KB are compressed, so small ones cost nothing extra.
+app.use(compression({ threshold: 1024 }));
 
 /**
  * Only real frontend origins may call this API — never a wildcard.

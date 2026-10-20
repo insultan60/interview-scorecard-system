@@ -5,6 +5,7 @@ import {
   Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2, MoreVertical, Building2, Pencil, Clock, Calendar as CalendarIcon,
 } from 'lucide-react';
 import api from '../hooks/useApi';
+import { fetchRequisitionsList, fetchPipelinesList, fetchDepartmentsList } from '../hooks/queries';
 import dayjs from 'dayjs';
 import { TimePicker } from '@/components/ui/time-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -293,7 +294,7 @@ export default function Requisitions() {
   async function loadRequisitions() {
     setLoading(true);
     try {
-      const res = await api.get('/requisitions', { params: statusFilter ? { status: statusFilter } : {} });
+      const res = await fetchRequisitionsList(statusFilter); // from the shared cache when it is still fresh
       setRequisitions(res.data.requisitions);
       setOfficeLocations(res.data.registeredOfficeLocations || []);
     } finally {
@@ -307,13 +308,13 @@ export default function Requisitions() {
   }, [statusFilter]);
 
   useEffect(() => {
-    api.get('/pipelines').then((res) => setTemplates(res.data.templates));
+    fetchPipelinesList().then((res) => setTemplates(res.data.templates));
   }, []);
 
   useEffect(() => {
     async function loadDepartments() {
       try {
-        const res = await api.get('/departments');
+        const res = await fetchDepartmentsList();
         const list = res.data.departments || [];
         setDepartments((prev) => {
           const combined = [...list];

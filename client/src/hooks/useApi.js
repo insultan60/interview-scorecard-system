@@ -1,5 +1,6 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { invalidateAfterChange } from '../lib/queryClient';
 
 /**
  * Login lives in HTTP-only cookies set by the API (the page's scripts cannot
@@ -55,9 +56,16 @@ function endSession(skipRedirect) {
 }
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // A change (anything that is not a GET) makes the cached lists it affects out of date.
+    const method = String(response.config?.method || 'get').toLowerCase();
+    if (method !== 'get') invalidateAfterChange(response.config?.url);
+    return response;
+  },
   async (error) => {
     const config = error.config || {};
+    // A failed change may still have changed something, so the lists it could affect are re-read.
+    if (String(config.method || 'get').toLowerCase() !== 'get') invalidateAfterChange(config.url);
     const status = error.response?.status;
     const url = config.url || '';
     const isAuthCall = ['/auth/login', '/auth/refresh', '/auth/logout'].some((path) => url.includes(path));
