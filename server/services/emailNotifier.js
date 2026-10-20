@@ -42,11 +42,12 @@ async function getTransporter() {
  * is logged as a warning and reported back via the return value, so a
  * candidate-facing email can never take down the request that triggered it
  * (same philosophy as slackNotifier.js).
- * @param {{to:string, subject:string, text:string}} params
- * @returns {Promise<{sent:boolean, reason?:string}>}
+ * @param {{to:string, subject:string, text:string, attachments?: Array<{filename:string, content:Buffer}>}} params
+ * @returns {Promise<{sent:boolean, reason?:string, permanent?:boolean}>}
  */
-async function sendEmail({ to, subject, text }) {
-  if (!to) return { sent: false, reason: 'No recipient email on file.' };
+async function sendEmail({ to, subject, text, attachments }) {
+  // `permanent: true` tells the email queue not to retry: trying again cannot help.
+  if (!to) return { sent: false, reason: 'No recipient email on file.', permanent: true };
 
   const transporter = await getTransporter();
   if (!transporter) {
@@ -56,12 +57,18 @@ async function sendEmail({ to, subject, text }) {
 
   const { gmailUser } = await getSecrets();
   try {
-    await transporter.sendMail({ from: `"Red Star Technologies" <${gmailUser}>`, to, subject, text });
+    await transporter.sendMail({ from: `"Red Star Technologies" <${gmailUser}>`, to, subject, text, ...(attachments?.length ? { attachments } : {}) });
     logger.info(`[EmailNotifier] Sent "${subject}" to ${to}.`);
     return { sent: true };
   } catch (err) {
     logger.warn(`[EmailNotifier] Failed to send to ${to}: ${err.message}`);
-    return { sent: false, reason: 'Failed to send — check Gmail credentials in Settings.' };
+    // 550-554 = the mail server refused this recipient address, so retrying will never work.
+    const rejected = Number(err.responseCode) >= 550 && Number(err.responseCode) <= 554;
+    return {
+      sent: false,
+      reason: rejected ? 'The recipient address was rejected by the mail server.' : 'Failed to send — check Gmail credentials in Settings.',
+      permanent: rejected,
+    };
   }
 }
 
@@ -89,18 +96,22 @@ async function sendMeetingLinkEmail({ candidateEmail, candidateName, requisition
 }
 
 /**
- * Emails a candidate their formal job offer letter announcement & document link.
- * @param {{candidateEmail:string, candidateName:string, requisitionTitle:string, offerLetterUrl?:string}} params
+ * Emails a candidate their formal job offer letter. In production the PDF itself
+ * is attached (stored files are private, so a link would not open for the
+ * candidate); on staging / local the email carries a link instead.
+ * @param {{candidateEmail:string, candidateName:string, requisitionTitle:string, offerLetterUrl?:string, attachment?:{filename:string, content:Buffer}}} params
  * @returns {Promise<{sent:boolean, reason?:string}>}
  */
-async function sendOfferEmail({ candidateEmail, candidateName, requisitionTitle, offerLetterUrl }) {
+async function sendOfferEmail({ candidateEmail, candidateName, requisitionTitle, offerLetterUrl, attachment }) {
   const subject = `Job Offer — ${requisitionTitle}`;
   const text = [
     `Hi ${candidateName || 'there'},`,
     '',
     `Congratulations! We are delighted to extend a formal job offer for the ${requisitionTitle} position at Red Star Technologies.`,
     '',
-    offerLetterUrl ? `You can view and download your official Offer Letter here:\n${offerLetterUrl}` : '',
+    attachment
+      ? 'Your official Offer Letter is attached to this email as a PDF.'
+      : (offerLetterUrl ? `You can view and download your official Offer Letter here:\n${offerLetterUrl}` : ''),
     '',
     'Please review the details and let us know if you have any questions.',
     '',
@@ -108,7 +119,12 @@ async function sendOfferEmail({ candidateEmail, candidateName, requisitionTitle,
     'Red Star Technologies Hiring Team',
   ].filter(Boolean).join('\n');
 
-  return sendEmail({ to: candidateEmail, subject, text });
+  return sendEmail({
+    to: candidateEmail,
+    subject,
+    text,
+    attachments: attachment ? [{ filename: attachment.filename, content: attachment.content, contentType: 'application/pdf' }] : undefined,
+  });
 }
 
 /** Sends a confirmation after a candidate submits a public job application. */
@@ -130,11 +146,11 @@ async function sendApplicationConfirmationEmail({ candidateEmail, candidateName,
 
 /** Sends an internal user a one-time link for changing their password. */
 async function sendPasswordResetEmail({ userEmail, userName, resetUrl, expiresInMinutes }) {
-  const subject = 'Reset your Interview Scorecard password';
+  const subject = 'Reset your OWNERS TALENT password';
   const text = [
     `Hi ${userName || 'there'},`,
     '',
-    'We received a request to reset your Interview Scorecard password.',
+    'We received a request to reset your OWNERS TALENT password.',
     '',
     `Choose a new password here (this link expires in ${expiresInMinutes} minutes):`,
     resetUrl,
@@ -185,4 +201,9 @@ async function sendOnboardingFormEmail({ candidateEmail, candidateName, onboardi
   return sendEmail({ to: candidateEmail, subject, text });
 }
 
-module.exports = { sendEmail, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail, sendAvailabilityRequestEmail, sendOnboardingFormEmail };
+/** In production the offer letter is attached as a PDF instead of linked. */
+function shouldAttachOfferLetter() {
+  return process.env.NODE_ENV === 'production';
+}
+
+module.exports = { sendEmail, shouldAttachOfferLetter, sendMeetingLinkEmail, sendOfferEmail, sendApplicationConfirmationEmail, sendPasswordResetEmail, sendAvailabilityRequestEmail, sendOnboardingFormEmail };

@@ -167,7 +167,7 @@ export default function ScorecardEditor({ scorecard, stageLabels, onSave, saving
         type="button"
         onClick={handleSave}
         disabled={saving}
-        className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? 'Saving...' : 'Save Scorecard'}
       </button>

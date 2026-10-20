@@ -1,14 +1,25 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const User = require('../models/User');
+const { ACCESS_COOKIE } = require('../services/sessionService');
+
+/**
+ * Finds the access token on a request: an explicit "Authorization: Bearer ..."
+ * header wins (API tools), otherwise the HTTP-only access_token cookie the
+ * website uses.
+ */
+function readAccessToken(req) {
+  const [scheme, bearer] = (req.headers.authorization || '').split(' ');
+  if (scheme === 'Bearer' && bearer) return bearer;
+  return req.cookies?.[ACCESS_COOKIE] || null;
+}
 
 async function requireAuth(req, res, next) {
   try {
-    const header = req.headers.authorization || '';
-    const [scheme, token] = header.split(' ');
+    const token = readAccessToken(req);
 
-    if (scheme !== 'Bearer' || !token) {
-      return res.status(401).json({ error: 'AUTH_ERROR', message: 'Missing or malformed Authorization header.' });
+    if (!token) {
+      return res.status(401).json({ error: 'AUTH_ERROR', message: 'You are not signed in.' });
     }
 
     let payload;
@@ -41,7 +52,9 @@ async function requireAuth(req, res, next) {
  * @param {...string} allowedRoles
  * @returns {Function} Express middleware.
  */
-function requireRole(...allowedRoles) {
+function requireRole(...roles) {
+  // Accept both requireRole('a', 'b') and requireRole(['a', 'b']).
+  const allowedRoles = roles.flat();
   return function checkRole(req, res, next) {
     if (!req.user) {
       return res.status(401).json({ error: 'AUTH_ERROR', message: 'Not authenticated.' });

@@ -5,7 +5,8 @@ import {
   Settings as SettingsIcon, LogOut, X, ChevronLeft, ChevronRight, User, UserCog,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import redstarIcon from '../assets/redstar-icon.png';
+import logo from '../assets/logo.svg';
+import logoMark from '../assets/logo-mark.svg';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -59,23 +60,22 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
     >
       {/* Header */}
       <div className="relative flex items-center justify-between gap-2 px-3 py-3.5 border-b border-gray-100 min-h-[60px]">
-        <div className={`flex items-center gap-2.5 overflow-hidden ${isCollapsed ? 'md:justify-center md:w-full' : ''}`}>
-          <img
-            src={redstarIcon}
-            alt="Red Star Technologies"
-            className="h-8 w-8 flex-shrink-0 object-contain"
-            title="Interview Scorecard - Red Star Technologies"
-          />
-          {!isCollapsed && (
-            <div className="min-w-0 transition-opacity duration-200 hidden md:block">
-              <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">Interview Scorecard</h1>
-              <p className="text-[11px] text-gray-400">Red Star Technologies</p>
-            </div>
+        <div className={`flex items-center overflow-hidden ${isCollapsed ? 'md:justify-center md:w-full' : ''}`}>
+          {/* Collapsed (desktop): only the circle mark fits. Otherwise: the full logo, which already carries the name. */}
+          {isCollapsed && (
+            <img
+              src={logoMark}
+              alt="OWNERS TALENT"
+              title="OWNERS TALENT"
+              className="hidden h-8 w-8 flex-shrink-0 object-contain md:block"
+            />
           )}
-          <div className="min-w-0 md:hidden">
-            <h1 className="truncate text-sm font-bold text-gray-900 leading-tight">Interview Scorecard</h1>
-            <p className="text-[11px] text-gray-400">Red Star Technologies</p>
-          </div>
+          <img
+            src={logo}
+            alt="OWNERS TALENT"
+            title="OWNERS TALENT"
+            className={`h-9 w-auto max-w-full object-contain ${isCollapsed ? 'md:hidden' : ''}`}
+          />
         </div>
 
         {/* Mobile close button */}
@@ -114,7 +114,7 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
                 ? 'md:justify-center md:px-0 px-3'
                 : 'px-3'
               } ${isActive
-                ? 'bg-[#d21e2b] text-white shadow-sm'
+                ? 'bg-brand text-white shadow-sm'
                 : 'text-gray-600 hover:bg-gray-100'
               }`
             }
@@ -134,7 +134,7 @@ export default function Sidebar({ isOpen = false, onClose = () => { } }) {
           className={`flex items-center gap-2.5 rounded-lg p-2 bg-white mb-2 ${isCollapsed ? 'md:justify-center md:px-0' : ''
             }`}
         >
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#d21e2b]/10 text-[#d21e2b] font-bold text-xs shadow-xs">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand font-bold text-xs shadow-xs">
             {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-4 w-4" />}
           </div>
           <div className={`min-w-0 flex-1 ${isCollapsed ? 'md:hidden' : 'block'}`}>

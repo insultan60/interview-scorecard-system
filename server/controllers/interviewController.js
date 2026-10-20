@@ -10,7 +10,10 @@ const { asyncHandler, getEnabledStagesSorted } = require('../utils/helpers');
 const { ValidationError, TranscriptNotReadyError } = require('../utils/errors');
 const { assertCalendarMeetingCancelled } = require('../utils/meetingLifecycle');
 const { assertRequisitionOpen, assertRequisitionNotClosed } = require('../utils/requisitionStatus');
-const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
+const { enqueueEmail, cancelPendingEmails } = require('../services/emailQueue');
+const { getCalendarTimeZone } = require('../utils/calendarTimeZone');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
 const { scoreInterview } = require('../services/aiScorer');
@@ -28,12 +31,12 @@ function logParsedText(interviewId, source, text) {
 }
 
 /**
- * Emails the candidate their current meeting link. Never throws — a missing
- * candidate email or a send failure is reported in the return value, never
- * as an error on the caller (creating/resending a meeting must still succeed
- * even if the email itself can't go out).
+ * Queues an email with the candidate's current meeting link (it is sent in the
+ * background). Never throws — a missing candidate email or a queueing failure is
+ * reported in the return value, never as an error on the caller (creating or
+ * resending a meeting must still succeed even if the email can't go out).
  * @param {import('mongoose').Document} interview
- * @returns {Promise<{sent:boolean, reason?:string}>}
+ * @returns {Promise<{queued:boolean, reason?:string}>}
  */
 async function emailMeetingLinkToCandidate(interview) {
   try {
@@ -41,23 +44,27 @@ async function emailMeetingLinkToCandidate(interview) {
     const candidate = application?.candidateId;
     if (!candidate?.email) {
       logger.warn(`[Interview] No candidate email on file for application ${interview.applicationId} — skipping meeting email.`);
-      return { sent: false, reason: 'No candidate email on file.' };
+      return { queued: false, reason: 'No candidate email on file.' };
     }
     const requisition = await Requisition.findById(interview.requisitionId);
     const stageConfig = requisition?.stages.find((s) => s.key === interview.stageKey);
-    return await emailNotifier.sendMeetingLinkEmail({
-      candidateEmail: candidate.email,
-      candidateName: candidate.name,
-      requisitionTitle: requisition?.title || 'your role',
-      stageLabel: stageConfig?.label || interview.stageKey,
-      meetingUri: interview.meetingUri,
+    return await enqueueEmail({
+      type: 'meeting-link',
+      to: candidate.email,
+      payload: {
+        candidateEmail: candidate.email,
+        candidateName: candidate.name,
+        requisitionTitle: requisition?.title || 'your role',
+        stageLabel: stageConfig?.label || interview.stageKey,
+        meetingUri: interview.meetingUri,
+      },
     });
   } catch (err) {
     // The meeting itself is already saved — a failure anywhere in here (DB
     // lookup, credential read, transport setup) must never turn a successful
     // meeting creation into a 500 the caller has to retry.
-    logger.warn(`[Interview] Could not email meeting link for ${interview._id}: ${err.message}`);
-    return { sent: false, reason: 'Could not send the email — the meeting link was still saved.' };
+    logger.warn(`[Interview] Could not queue the meeting-link email for ${interview._id}: ${err.message}`);
+    return { queued: false, reason: 'Could not queue the email — the meeting link was still saved.' };
   }
 }
 
@@ -70,7 +77,7 @@ async function emailCalendarHost(interview, action) {
   try {
     const { gmailUser } = await getSecrets();
     const hostEmail = process.env.GOOGLE_CALENDAR_HOST_EMAIL || gmailUser;
-    if (!hostEmail) return { sent: false, reason: 'No Calendar host email configured.' };
+    if (!hostEmail) return { queued: false, reason: 'No Calendar host email configured.' };
 
     const application = await Application.findById(interview.applicationId).populate('candidateId', 'name');
     const requisition = await Requisition.findById(interview.requisitionId);
@@ -85,7 +92,7 @@ async function emailCalendarHost(interview, action) {
       }).format(new Date(interview.meetingStart))
       : 'Not specified';
 
-    const result = await emailNotifier.sendEmail({
+    const message = {
       to: hostEmail,
       subject: `${isCancelled ? 'Cancelled' : 'Scheduled'}: ${candidateName} — ${stageLabel}`,
       text: isCancelled
@@ -121,16 +128,17 @@ async function emailCalendarHost(interview, action) {
           'Regards,',
           'Red Star Technologies Hiring Team',
         ].join('\n'),
-    });
-    if (result.sent) {
-      logger.info(`[Interview] Calendar host notification (${action}) sent to ${hostEmail} for ${interview._id}.`);
+    };
+    const result = await enqueueEmail({ type: 'plain', to: hostEmail, payload: message });
+    if (result.queued) {
+      logger.info(`[Interview] Calendar host notification (${action}) queued for ${hostEmail} for ${interview._id}.`);
     } else {
-      logger.warn(`[Interview] Calendar host notification (${action}) was not sent to ${hostEmail} for ${interview._id}: ${result.reason || 'unknown email error'}`);
+      logger.warn(`[Interview] Calendar host notification (${action}) could not be queued for ${hostEmail} for ${interview._id}: ${result.reason || 'unknown error'}`);
     }
     return { ...result, hostEmail };
   } catch (err) {
     logger.warn(`[Interview] Could not notify Calendar host for ${interview._id}: ${err.message}`);
-    return { sent: false, reason: 'Could not notify the Calendar host.' };
+    return { queued: false, reason: 'Could not notify the Calendar host.' };
   }
 }
 
@@ -194,7 +202,8 @@ const list = asyncHandler(async (req, res) => {
 const getOne = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
-  res.json({ interview });
+  // calendarTimeZone: the zone meetings are booked in, so the page picks and shows times in it too.
+  res.json({ interview, calendarTimeZone: getCalendarTimeZone() });
 });
 
 /**
@@ -315,7 +324,7 @@ const createMeeting = asyncHandler(async (req, res) => {
   // Calendar sends the candidate the official invitation itself. Keep the
   // existing email fallback only for manually pasted meeting links.
   const emailResult = interview.calendarEventId
-    ? { sent: true, reason: 'Google Calendar invitation sent.' }
+    ? { queued: true, reason: 'Google Calendar invitation sent.' }
     : await emailMeetingLinkToCandidate(interview);
   const hostEmailResult = interview.calendarEventId
     ? await emailCalendarHost(interview, 'scheduled')
@@ -324,9 +333,9 @@ const createMeeting = asyncHandler(async (req, res) => {
   logger.info(`[Interview] Meeting set for ${interview._id}: ${interview.meetingUri}`);
   res.json({
     interview,
-    emailSent: emailResult.sent,
+    emailQueued: emailResult.queued,
     emailReason: emailResult.reason,
-    hostEmailSent: hostEmailResult?.sent,
+    hostEmailQueued: hostEmailResult?.queued,
     hostEmailReason: hostEmailResult?.reason,
     hostEmail: hostEmailResult?.hostEmail,
   });
@@ -390,7 +399,7 @@ const cancelMeeting = asyncHandler(async (req, res) => {
   logger.info(`[Interview] Meeting cancelled for ${interview._id}.`);
   res.json({
     interview,
-    hostEmailSent: hostEmailResult?.sent,
+    hostEmailQueued: hostEmailResult?.queued,
     hostEmailReason: hostEmailResult?.reason,
     hostEmail: hostEmailResult?.hostEmail,
   });
@@ -494,12 +503,15 @@ const uploadArtifact = asyncHandler(async (req, res) => {
   const interview = await Interview.findById(req.params.id);
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
   await assertInterviewMutable(interview, 'upload an artifact');
-  if (!req.file) throw new ValidationError(['artifact'], 'An artifact file is required (field name "artifact").');
+  assertPdfUpload(req.file, { field: 'artifact', label: 'artifact' });
 
   const oldArtifactPublicId = interview.artifactFilePublicId;
-  const uploaded = await uploadBuffer(req.file.buffer, { folder: 'interview-artifacts', filename: `${Date.now()}-${req.file.originalname}` });
-  interview.artifactFileUrl = uploaded.secureUrl;
+  const uploaded = await uploadFile({ file: req.file, folder: 'interview-artifacts' });
+  interview.artifactFileUrl = uploaded.url;
   interview.artifactFilePublicId = uploaded.publicId;
+  interview.artifactFileName = uploaded.name;
+  interview.artifactFileSize = uploaded.size;
+  interview.artifactFileMimeType = uploaded.mimeType;
 
   try {
     interview.transcriptText = await extractArtifactText(req.file.buffer, req.file.originalname);
@@ -597,10 +609,10 @@ const score = asyncHandler(async (req, res) => {
 
 /**
  * GET /api/interviews/google/callback
- * One-time OAuth consent callback for obtaining a fresh Google refresh
- * token through the app itself (alternative to the OAuth Playground flow).
- * The full refresh token is logged server-side, not returned in the HTTP
- * response body, so it doesn't linger in browser history/dev tools.
+ * One-time OAuth consent callback (alternative to the OAuth Playground flow).
+ * The refresh token is a long-lived credential, so it is NEVER logged or
+ * returned in full — only a short preview is returned to confirm the exchange
+ * worked. To obtain a usable token, use the Google OAuth Playground.
  */
 const googleOAuthCallback = asyncHandler(async (req, res) => {
   const { code } = req.query;
@@ -614,12 +626,12 @@ const googleOAuthCallback = asyncHandler(async (req, res) => {
   const { tokens } = await client.getToken(code);
 
   if (tokens.refresh_token) {
-    logger.info(`[Interview] Google OAuth callback obtained a new refresh token: ${tokens.refresh_token}`);
+    logger.info('[Interview] Google OAuth callback completed; a refresh token was issued (value not logged).');
   }
 
   res.json({
-    message: 'Google authorization succeeded. Copy the new refresh token from the server log into GOOGLE_REFRESH_TOKEN in .env and restart the server.',
-    refreshTokenPreview: tokens.refresh_token ? `${tokens.refresh_token.slice(0, 12)}...` : null,
+    message: 'Google authorization succeeded. The refresh token is not logged or returned for security — generate one with the Google OAuth Playground and set it in Settings or GOOGLE_REFRESH_TOKEN.',
+    refreshTokenIssued: Boolean(tokens.refresh_token),
   });
 });
 
@@ -633,53 +645,67 @@ const sendOffer = asyncHandler(async (req, res) => {
   if (!interview) return res.status(404).json({ error: 'NOT_FOUND', message: 'Interview not found.' });
   assertCalendarMeetingCancelled(interview, 'complete this stage');
 
-  if (!req.file) {
-    throw new ValidationError(['offerLetter'], 'An offer letter PDF document is required.');
-  }
-
-  const isPdf = req.file.mimetype === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
-  if (!isPdf) {
-    throw new ValidationError(['offerLetter'], 'Only PDF documents are supported for offer letters.');
-  }
-
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  if (req.file.size > MAX_FILE_SIZE) {
-    throw new ValidationError(['offerLetter'], 'Offer letter PDF file size must not exceed 5MB.');
-  }
+  assertPdfUpload(req.file, { field: 'offerLetter', label: 'offer letter' });
 
   const requisition = await Requisition.findById(interview.requisitionId);
   assertRequisitionNotClosed(requisition, 'send an offer');
 
-  // If a previous offer letter exists in Cloudinary, delete it first
-  if (interview.artifactFilePublicId) {
-    await destroyFile(interview.artifactFilePublicId);
-  }
-
-  // Upload offer letter PDF to Cloudinary
-  const uploaded = await uploadBuffer(req.file.buffer, {
-    folder: 'interview-offer-letters',
-    filename: `${Date.now()}-${req.file.originalname}`,
-  });
-  interview.artifactFileUrl = uploaded.secureUrl;
+  // Upload the NEW file first and delete the previous one only after the new one is saved, so a failed
+  // upload never leaves the interview pointing at a file that has already been deleted.
+  const previousPublicId = interview.artifactFilePublicId;
+  const uploaded = await uploadFile({ file: req.file, folder: 'interview-offer-letters' });
+  interview.artifactFileUrl = uploaded.url;
   interview.artifactFilePublicId = uploaded.publicId;
+  interview.artifactFileName = uploaded.name;
+  interview.artifactFileSize = uploaded.size;
+  interview.artifactFileMimeType = uploaded.mimeType;
 
   // Find candidate details to send email
   const application = await Application.findById(interview.applicationId).populate('candidateId', 'name email');
   const candidate = application?.candidateId;
 
-  let emailResult = { sent: false, reason: 'No candidate email on file.' };
+  // The email is queued and sent in the background. Production attaches the PDF
+  // itself (the queue keeps it until sent); other environments send a link.
+  let emailResult = { queued: false, reason: 'No candidate email on file.' };
   if (candidate?.email) {
-    emailResult = await emailNotifier.sendOfferEmail({
-      candidateEmail: candidate.email,
-      candidateName: candidate.name,
-      requisitionTitle: requisition?.title,
-      offerLetterUrl: interview.artifactFileUrl,
+    emailResult = await enqueueEmail({
+      type: 'offer-letter',
+      to: candidate.email,
+      payload: {
+        candidateEmail: candidate.email,
+        candidateName: candidate.name,
+        requisitionTitle: requisition?.title,
+        offerLetterUrl: interview.artifactFileUrl,
+      },
+      attachment: emailNotifier.shouldAttachOfferLetter()
+        ? { filename: req.file.originalname, content: req.file.buffer, contentType: 'application/pdf' }
+        : undefined,
+      related: application ? { kind: 'interview-offer', applicationId: application._id } : undefined,
     });
   }
 
   // Mark stage as approved
   interview.status = 'approved';
-  await interview.save();
+  try {
+    await interview.save();
+  } catch (err) {
+    // The new file was never recorded, so remove it; the previous letter is still in place.
+    await deleteFile(uploaded.publicId).catch((cleanupErr) => logger.warn(`[Interview] Could not remove unsaved offer letter ${uploaded.publicId}: ${cleanupErr.message}`));
+    throw err;
+  }
+
+  // The new letter is saved, so the previous file is no longer needed.
+  if (previousPublicId && previousPublicId !== uploaded.publicId) {
+    try {
+      await deleteFile(previousPublicId);
+    } catch (err) {
+      logger.warn(`[Interview] Could not remove previous offer letter for interview ${interview._id}: ${err.message}`);
+    }
+  }
+  // A resend replaces any earlier offer email that is still waiting or retrying, so the candidate gets one.
+  if (emailResult.queued && application) {
+    await cancelPendingEmails({ type: 'offer-letter', applicationId: application._id, exceptJobId: emailResult.jobId });
+  }
 
   await AuditLog.create({
     action: 'score_approve',
@@ -688,8 +714,8 @@ const sendOffer = asyncHandler(async (req, res) => {
     applicationId: interview.applicationId,
     targetType: 'interview',
     targetId: interview._id.toString(),
-    newValue: { status: 'approved', artifactFileUrl: interview.artifactFileUrl, emailSent: emailResult.sent },
-    reason: 'Offer letter uploaded, emailed to candidate, and stage approved.',
+    newValue: { status: 'approved', artifactFileUrl: interview.artifactFileUrl, emailQueued: emailResult.queued },
+    reason: 'Offer letter uploaded, email to candidate queued, and stage approved.',
   });
 
   const progress = application.stageProgress.find((p) => p.stageKey === interview.stageKey);
@@ -698,13 +724,13 @@ const sendOffer = asyncHandler(async (req, res) => {
   const nextInterviewId = await getOrCreateNextInterview(application, requisition, interview.stageKey, req.user._id);
   await recomputeAndPersist(application, requisition, req.user._id, 'Recomputed after offer stage completion.');
 
-  logger.info(`[Interview] Offer sent & stage approved for interview ${interview._id}. emailSent=${emailResult.sent}`);
+  logger.info(`[Interview] Offer uploaded & stage approved for interview ${interview._id}. emailQueued=${emailResult.queued}`);
   res.json({
     interview,
     application,
     passed: true,
     nextInterviewId,
-    emailSent: emailResult.sent,
+    emailQueued: emailResult.queued,
     emailReason: emailResult.reason,
   });
 });
@@ -728,20 +754,19 @@ const requestAvailability = asyncHandler(async (req, res) => {
   const clientHost = process.env.CLIENT_URL || req.headers.origin || 'http://localhost:5173';
   const availabilityUrl = `${clientHost}/interview/${interview._id}/availability`;
 
-  let emailResult = { sent: false, reason: 'No candidate email on file.' };
+  let emailResult = { queued: false, reason: 'No candidate email on file.' };
   if (candidateEmail) {
-    emailResult = await emailNotifier.sendAvailabilityRequestEmail({
-      candidateEmail,
-      candidateName,
-      requisitionTitle,
-      stageLabel,
-      availabilityUrl,
+    emailResult = await enqueueEmail({
+      type: 'availability-request',
+      to: candidateEmail,
+      payload: { candidateEmail, candidateName, requisitionTitle, stageLabel, availabilityUrl },
     });
   }
 
-  logger.info(`[Interview] Availability request created for interview ${interview._id} to ${candidateEmail}: ${availabilityUrl}. emailSent=${emailResult.sent}`);
+  logger.info(`[Interview] Availability request created for interview ${interview._id} to ${candidateEmail}: ${availabilityUrl}. emailQueued=${emailResult.queued}`);
   res.json({
-    sent: emailResult.sent,
+    queued: emailResult.queued,
+    emailReason: emailResult.reason,
     interview,
     availabilityUrl,
     candidateEmail,

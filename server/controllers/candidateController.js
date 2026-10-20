@@ -8,10 +8,11 @@ const logger = require('../utils/logger');
 const { asyncHandler } = require('../utils/helpers');
 const { ValidationError } = require('../utils/errors');
 const { assertRequisitionOpen } = require('../utils/requisitionStatus');
-const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
 const transcriptProvider = require('../services/transcriptProvider');
-const { sendOnboardingFormEmail } = require('../services/emailNotifier');
+const { enqueueEmail } = require('../services/emailQueue');
 
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -115,13 +116,20 @@ const create = asyncHandler(async (req, res) => {
   const validatedPhone = validatePhone(phone);
   const duplicate = await Candidate.findOne({ email: validatedEmail });
   if (duplicate) throw new ValidationError(['email'], 'A candidate with this email address already exists.');
+  assertPdfUpload(req.file, { field: 'resume', label: 'résumé', required: false });
 
   let resumeFileUrl;
   let resumeFilePublicId;
+  let resumeFileName;
+  let resumeFileSize;
+  let resumeFileMimeType;
   if (req.file) {
-    const uploaded = await uploadBuffer(req.file.buffer, { folder: 'resumes', filename: `${Date.now()}-${req.file.originalname}` });
-    resumeFileUrl = uploaded.secureUrl;
+    const uploaded = await uploadFile({ file: req.file, folder: 'resumes' });
+    resumeFileUrl = uploaded.url;
     resumeFilePublicId = uploaded.publicId;
+    resumeFileName = uploaded.name;
+    resumeFileSize = uploaded.size;
+    resumeFileMimeType = uploaded.mimeType;
   }
 
   const candidate = await Candidate.create({
@@ -131,6 +139,9 @@ const create = asyncHandler(async (req, res) => {
     notes,
     resumeFileUrl,
     resumeFilePublicId,
+    resumeFileName,
+    resumeFileSize,
+    resumeFileMimeType,
   });
 
   logger.info(`[Candidate] Created "${name}" (${candidate._id})${req.file ? ' with résumé' : ''}.`);
@@ -227,10 +238,14 @@ const update = asyncHandler(async (req, res) => {
   let resumeReplaced = false;
   let replacedResumePublicId = null;
   if (req.file) {
+    assertPdfUpload(req.file, { field: 'resume', label: 'résumé' });
     const oldPublicId = candidate.resumeFilePublicId;
-    const uploaded = await uploadBuffer(req.file.buffer, { folder: 'resumes', filename: `${Date.now()}-${req.file.originalname}` });
-    candidate.resumeFileUrl = uploaded.secureUrl;
+    const uploaded = await uploadFile({ file: req.file, folder: 'resumes' });
+    candidate.resumeFileUrl = uploaded.url;
     candidate.resumeFilePublicId = uploaded.publicId;
+    candidate.resumeFileName = uploaded.name;
+    candidate.resumeFileSize = uploaded.size;
+    candidate.resumeFileMimeType = uploaded.mimeType;
     resumeReplaced = true;
     replacedResumePublicId = oldPublicId;
   }
@@ -332,7 +347,11 @@ const removeFromRequisition = asyncHandler(async (req, res) => {
   const interviewResult = await Interview.deleteMany({ applicationId: application._id });
   await application.deleteOne();
 
-  const cleanupResults = await Promise.allSettled(artifactIds.map(destroyFileIfUnreferenced));
+  const cleanupResults = await Promise.allSettled([
+    ...artifactIds.map(destroyFileIfUnreferenced),
+    // The offer letter belongs to this application alone, so it goes with it.
+    ...(application.offerLetterPublicId ? [deleteFile(application.offerLetterPublicId).then(() => true)] : []),
+  ]);
   const deletedFiles = cleanupResults.filter((result) => result.status === 'fulfilled' && result.value).length;
   cleanupResults
     .filter((result) => result.status === 'rejected')
@@ -355,7 +374,7 @@ const remove = asyncHandler(async (req, res) => {
   const candidate = await Candidate.findById(req.params.id);
   if (!candidate) return res.status(404).json({ error: 'NOT_FOUND', message: 'Candidate not found.' });
 
-  const applications = await Application.find({ candidateId: candidate._id }).select('_id').lean();
+  const applications = await Application.find({ candidateId: candidate._id }).select('_id offerLetterPublicId').lean();
   const applicationIds = applications.map((application) => application._id);
   const interviews = await Interview.find({ applicationId: { $in: applicationIds } })
     .select('artifactFilePublicId')
@@ -364,8 +383,9 @@ const remove = asyncHandler(async (req, res) => {
   const fileIds = [...new Set([
     candidate.resumeFilePublicId,
     ...interviews.map((interview) => interview.artifactFilePublicId),
+    ...applications.map((application) => application.offerLetterPublicId), // offer letters belong to the application
   ].filter(Boolean))];
-  await Promise.all(fileIds.map((publicId) => destroyFile(publicId)));
+  await Promise.all(fileIds.map((publicId) => deleteFile(publicId)));
 
   await AuditLog.deleteMany({ applicationId: { $in: applicationIds } });
   const interviewResult = await Interview.deleteMany({ applicationId: { $in: applicationIds } });
@@ -386,43 +406,29 @@ const sendOnboardingForm = asyncHandler(async (req, res) => {
     throw new ValidationError(['candidateEmail'], 'Candidate email is required.');
   }
 
-  const result = await sendOnboardingFormEmail({
-    candidateEmail,
-    candidateName,
-    onboardingUrl,
-  });
-
-  if (applicationId && mongoose.isValidObjectId(applicationId)) {
+  // Mark it pending BEFORE queueing, so the queue's later "sent" update cannot be overwritten.
+  const hasApplication = applicationId && mongoose.isValidObjectId(applicationId);
+  if (hasApplication) {
     const application = await Application.findById(applicationId);
     if (application) {
-      application.onboardingFormDeliveryStatus = result.sent ? 'sent' : 'pending';
-      application.onboardingFormSentAt = result.sent ? new Date() : null;
+      application.onboardingFormDeliveryStatus = 'pending';
+      application.onboardingFormSentAt = null;
       await application.save();
     }
   }
 
+  // The email is sent in the background; the queue marks the application "sent" once it really goes out.
+  const result = await enqueueEmail({
+    type: 'onboarding-form',
+    to: candidateEmail,
+    payload: { candidateEmail, candidateName, onboardingUrl },
+    ...(hasApplication ? { related: { kind: 'onboarding-form', applicationId } } : {}),
+  });
+
   res.json({
-    sent: result.sent,
+    queued: result.queued,
     emailReason: result.reason || null,
   });
-});
-
-/** PATCH /api/candidates/onboarding-form-delivery */
-const recordOnboardingFormDelivery = asyncHandler(async (req, res) => {
-  const { applicationId, deliveryStatus } = req.body;
-  if (!applicationId || !mongoose.isValidObjectId(applicationId)) {
-    throw new ValidationError(['applicationId'], 'Valid applicationId is required.');
-  }
-  const application = await Application.findById(applicationId);
-  if (!application) {
-    return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
-  }
-
-  application.onboardingFormDeliveryStatus = deliveryStatus === 'sent' ? 'sent' : 'pending';
-  application.onboardingFormSentAt = deliveryStatus === 'sent' ? new Date() : null;
-  await application.save();
-
-  res.json({ application });
 });
 
 /**
@@ -483,6 +489,6 @@ const bulkAttach = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { list, create, bulkCreate, bulkAttach, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm, recordOnboardingFormDelivery };
+module.exports = { list, create, bulkCreate, bulkAttach, getOne, update, apply, removeFromRequisition, remove, sendOnboardingForm };
 
 

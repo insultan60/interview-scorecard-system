@@ -1,7 +1,8 @@
 const express = require('express');
 const interviewController = require('../controllers/interviewController');
 const { requireAuth } = require('../middleware/auth');
-const { upload } = require('../middleware/upload');
+const { upload, uploadPdf } = require('../middleware/upload');
+const { publicAvailabilityLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ router.get('/google/callback', interviewController.googleOAuthCallback);
 
 // Public candidate availability endpoints (no auth token required)
 router.get('/:id/availability/public', interviewController.getPublicAvailability);
-router.post('/:id/availability/public', interviewController.submitPublicAvailability);
+router.post('/:id/availability/public', publicAvailabilityLimiter, interviewController.submitPublicAvailability);
 
 router.use(requireAuth);
 
@@ -24,8 +25,8 @@ router.post('/:id/request-availability', interviewController.requestAvailability
 router.post('/:id/consent', interviewController.recordConsent);
 router.post('/:id/fetch-transcript', interviewController.fetchTranscript);
 router.post('/:id/upload-transcript', upload.single('transcript'), interviewController.uploadTranscript);
-router.post('/:id/upload-artifact', upload.single('artifact'), interviewController.uploadArtifact);
-router.post('/:id/send-offer', upload.single('offerLetter'), interviewController.sendOffer);
+router.post('/:id/upload-artifact', uploadPdf('artifact'), interviewController.uploadArtifact);
+router.post('/:id/send-offer', uploadPdf('offerLetter'), interviewController.sendOffer);
 router.post('/:id/score', interviewController.score);
 
 module.exports = router;

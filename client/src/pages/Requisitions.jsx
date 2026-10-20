@@ -5,6 +5,7 @@ import {
   Plus, ArrowLeft, Search, X, Briefcase, ChevronRight, Check, ChevronsUpDown, Users, Sparkles, Copy, Link2, Trash2, MoreVertical, Building2, Pencil, Clock, Calendar as CalendarIcon,
 } from 'lucide-react';
 import api from '../hooks/useApi';
+import { fetchRequisitionsList, fetchPipelinesList, fetchDepartmentsList } from '../hooks/queries';
 import dayjs from 'dayjs';
 import { TimePicker } from '@/components/ui/time-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -33,6 +34,7 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { formatDate } from '../utils/formatters';
 import screeningCriteriaConfig from '../constants/screeningCriteria.json';
+import { goBackToJob } from '../lib/interviewNavigation';
 
 const PAGE_SIZE = 10;
 const JOB_TITLE_MIN_LENGTH = 5;
@@ -105,7 +107,6 @@ export default function Requisitions() {
   const isCreatePage = location.pathname === '/requisitions/new';
   const isEditPage = Boolean(editId && location.pathname.includes('/edit'));
   const isFormPage = isCreatePage || isEditPage;
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [requisitions, setRequisitions] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -293,7 +294,7 @@ export default function Requisitions() {
   async function loadRequisitions() {
     setLoading(true);
     try {
-      const res = await api.get('/requisitions', { params: statusFilter ? { status: statusFilter } : {} });
+      const res = await fetchRequisitionsList(statusFilter); // from the shared cache when it is still fresh
       setRequisitions(res.data.requisitions);
       setOfficeLocations(res.data.registeredOfficeLocations || []);
     } finally {
@@ -307,13 +308,13 @@ export default function Requisitions() {
   }, [statusFilter]);
 
   useEffect(() => {
-    api.get('/pipelines').then((res) => setTemplates(res.data.templates));
+    fetchPipelinesList().then((res) => setTemplates(res.data.templates));
   }, []);
 
   useEffect(() => {
     async function loadDepartments() {
       try {
-        const res = await api.get('/departments');
+        const res = await fetchDepartmentsList();
         const list = res.data.departments || [];
         setDepartments((prev) => {
           const combined = [...list];
@@ -523,7 +524,7 @@ export default function Requisitions() {
         if (updateRes.data?.warning) toast(updateRes.data.warning, { icon: '⚠️' });
         toast.success('Job Opening updated successfully!');
         loadRequisitions();
-        navigate(`/requisitions/${editId}`);
+        goBackToJob(navigate, location, editId); // back to the job page, not on top of the edit page
         return;
       }
 
@@ -580,17 +581,17 @@ export default function Requisitions() {
           {/* ---------- header ---------- */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-                <ArrowLeft />
-              </Button>
               <div>
-                <h1 className="text-2xl font-semibold text-foreground">Job Openings</h1>
+                <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+                  <Briefcase className="h-7 w-7 text-brand" />
+                  Job Openings
+                </h1>
                 <p className="text-sm text-muted-foreground">
                   {loading ? 'Loading…' : `${requisitions.length} ${statusFilter ? STATUS_LABEL[statusFilter].toLowerCase() : 'total'}`}
                 </p>
               </div>
             </div>
-            <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => navigate('/requisitions/new')}>
+            <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => navigate('/requisitions/new')}>
               <Plus />
               New Job Opening
             </Button>
@@ -686,7 +687,7 @@ export default function Requisitions() {
                     </p>
                   </div>
                   {!statusFilter && (
-                    <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => navigate('/requisitions/new')}>
+                    <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => navigate('/requisitions/new')}>
                       <Plus />
                       New Job Opening
                     </Button>
@@ -694,8 +695,28 @@ export default function Requisitions() {
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="px-6 py-14 text-center">
-                  <p className="text-sm font-medium text-foreground">No matches for “{search}”</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Try a different title.</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {query
+                      ? `No matches for “${search.trim()}”`
+                      : departmentFilter !== 'all'
+                        ? `No job openings in ${departments.find((d) => String(d._id) === String(departmentFilter))?.name || 'this department'}`
+                        : jobOpeningFilter !== 'all'
+                          ? 'This job opening does not match the other filters'
+                          : 'No matching job openings'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {query
+                      ? 'Try a different title, or change the filters.'
+                      : 'Try a different filter, or clear the filters to see every job opening.'}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => { setSearch(''); setDepartmentFilter('all'); setJobOpeningFilter('all'); setPage(1); }}
+                  >
+                    Clear filters
+                  </Button>
                 </div>
               ) : (
                 <Table>
@@ -772,7 +793,7 @@ export default function Requisitions() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-slate-500 hover:text-[#d21e2b] hover:bg-slate-100"
+                                className="h-8 w-8 text-slate-500 hover:text-brand hover:bg-slate-100"
                                 title="Copy Candidate Apply Link"
                                 onClick={(e) => copyApplyLink(r._id, e)}
                               >
@@ -890,7 +911,7 @@ export default function Requisitions() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => navigate(isEditPage ? `/requisitions/${editId}` : '/requisitions')}
+              onClick={() => (isEditPage ? goBackToJob(navigate, location, editId) : navigate('/requisitions'))}
               aria-label="Back"
             >
               <ArrowLeft />
@@ -1141,7 +1162,7 @@ export default function Requisitions() {
                     <button
                       type="button"
                       onClick={() => togglePromptBox('jobDescription')}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline"
                     >
                       <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                       {promptOpen.jobDescription ? 'Close AI Prompt' : 'Generate with AI'}
@@ -1183,7 +1204,7 @@ export default function Requisitions() {
                           size="sm"
                           disabled={generatingField.jobDescription}
                           onClick={() => handleRunFieldAiGeneration('jobDescription')}
-                          className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                          className="bg-brand hover:bg-brand/90 text-white text-xs h-7 gap-1"
                         >
                           <Sparkles className="h-3 w-3" />
                           {generatingField.jobDescription ? 'Generating...' : 'Generate & Insert'}
@@ -1221,7 +1242,7 @@ export default function Requisitions() {
                     <button
                       type="button"
                       onClick={() => togglePromptBox('initialScreeningCriteria')}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline pt-0.5"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline pt-0.5"
                     >
                       <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                       {promptOpen.initialScreeningCriteria ? 'Close AI Prompt' : 'Generate with AI'}
@@ -1261,7 +1282,7 @@ export default function Requisitions() {
                           size="sm"
                           disabled={generatingField.initialScreeningCriteria}
                           onClick={() => handleRunFieldAiGeneration('initialScreeningCriteria')}
-                          className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                          className="bg-brand hover:bg-brand/90 text-white text-xs h-7 gap-1"
                         >
                           <Sparkles className="h-3 w-3" />
                           {generatingField.initialScreeningCriteria ? 'Generating...' : 'Generate & Insert'}
@@ -1329,7 +1350,7 @@ export default function Requisitions() {
                     variant="outline"
                     size="sm"
                     onClick={handleAddCriteria}
-                    className="text-xs gap-1.5 border-dashed border-slate-300 text-slate-700 hover:text-[#d21e2b] hover:border-[#d21e2b] w-full sm:w-auto"
+                    className="text-xs gap-1.5 border-dashed border-slate-300 text-slate-700 hover:text-brand hover:border-brand w-full sm:w-auto"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Add Screening Criteria
@@ -1403,7 +1424,7 @@ export default function Requisitions() {
                     <button
                       type="button"
                       onClick={() => togglePromptBox('questionnaire')}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#d21e2b] hover:underline pt-0.5"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline pt-0.5"
                     >
                       <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                       {promptOpen.questionnaire ? 'Close AI Prompt' : 'Generate with AI'}
@@ -1443,7 +1464,7 @@ export default function Requisitions() {
                           size="sm"
                           disabled={generatingField.questionnaire}
                           onClick={() => handleRunFieldAiGeneration('questionnaire')}
-                          className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white text-xs h-7 gap-1"
+                          className="bg-brand hover:bg-brand/90 text-white text-xs h-7 gap-1"
                         >
                           <Sparkles className="h-3 w-3" />
                           {generatingField.questionnaire ? 'Generating...' : 'Generate & Insert'}
@@ -1532,7 +1553,7 @@ export default function Requisitions() {
                     variant="outline"
                     size="sm"
                     onClick={handleAddQuestion}
-                    className="text-xs gap-1.5 border-dashed border-slate-300 text-slate-700 hover:text-[#d21e2b] hover:border-[#d21e2b] w-full sm:w-auto"
+                    className="text-xs gap-1.5 border-dashed border-slate-300 text-slate-700 hover:text-brand hover:border-brand w-full sm:w-auto"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Add Question
@@ -1587,7 +1608,7 @@ export default function Requisitions() {
                 <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3.5 shadow-sm">
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-[#d21e2b]" />
+                      <Clock className="h-4 w-4 text-brand" />
                       <Label className="text-sm font-semibold text-slate-900">
                         HR Interview Availability
                       </Label>
@@ -1795,11 +1816,11 @@ export default function Requisitions() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate(isEditPage ? `/requisitions/${editId}` : '/requisitions')}
+                    onClick={() => (isEditPage ? goBackToJob(navigate, location, editId) : navigate('/requisitions'))}
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+                  <Button type="submit" disabled={creating} className="bg-brand text-white hover:bg-brand/90">
                     {creating
                       ? (isEditPage ? 'Saving changes…' : 'Creating & generating…')
                       : (isEditPage ? 'Save Changes' : 'Create & generate scorecard')}

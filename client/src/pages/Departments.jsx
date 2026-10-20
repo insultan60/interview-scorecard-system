@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   Building2, Plus, Search, X, MoreVertical, Pencil, Trash2,
-  Briefcase, ArrowLeft,
+  Briefcase,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,7 +40,6 @@ function formatDate(date) {
 
 export default function Departments() {
   const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
 
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,11 +156,9 @@ export default function Departments() {
       {/* ---------- Header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <Building2 className="h-7 w-7 text-brand" />
               Departments
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -172,7 +169,7 @@ export default function Departments() {
           </div>
         </div>
         <Button
-          className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+          className="bg-brand text-white hover:bg-brand/90 gap-1.5"
           onClick={openCreateModal}
         >
           <Plus className="h-4 w-4" />
@@ -230,7 +227,7 @@ export default function Departments() {
               </p>
               {!search && (
                 <Button
-                  className="mt-4 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90 gap-1.5"
+                  className="mt-4 bg-brand text-white hover:bg-brand/90 gap-1.5"
                   onClick={openCreateModal}
                 >
                   <Plus className="h-4 w-4" />
@@ -393,7 +390,7 @@ export default function Departments() {
               <Button
                 type="submit"
                 disabled={saving}
-                className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white"
+                className="bg-brand hover:bg-brand/90 text-white"
               >
                 {saving
                   ? 'Saving…'

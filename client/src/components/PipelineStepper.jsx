@@ -32,6 +32,8 @@ const STATUS_STYLES = {
  *   stages: Array<{key:string, label:string, enabled:boolean}>,
  *   progress?: Record<string,string>,
  *   stageLinks?: Record<string,string>,
+ *   linkState?: object,      // router state sent with each stage link (see lib/interviewNavigation.js)
+ *   linkReplace?: boolean,   // replace the current history entry instead of adding one
  *   currentStageKey?: string,
  *   onStartStage?: (stageKey: string) => void,
  *   startingStageKey?: string|null,
@@ -40,7 +42,7 @@ const STATUS_STYLES = {
  *   hideScrollbar?: boolean,
  * }} props
  */
-export default function PipelineStepper({ stages, progress, stageLinks, currentStageKey, onStartStage, startingStageKey, disabled = false, compact, hideScrollbar = false }) {
+export default function PipelineStepper({ stages, progress, stageLinks, linkState, linkReplace = false, currentStageKey, onStartStage, startingStageKey, disabled = false, compact, hideScrollbar = false }) {
   const enabledStages = stages.filter((s) => s.enabled);
   let priorStageFailed = false;
 
@@ -70,14 +72,6 @@ export default function PipelineStepper({ stages, progress, stageLinks, currentS
             status = 'scheduled';
           }
 
-          console.log(`[DEBUG - PIPELINE STEPPER STAGE ${stage.key}]`, {
-            stageKey: stage.key,
-            rawProgress,
-            rawStatus,
-            finalStatus: status,
-            interviewId,
-            isBlocked,
-          });
 
           const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
           const Icon = style.icon;
@@ -92,7 +86,7 @@ export default function PipelineStepper({ stages, progress, stageLinks, currentS
 
           let content = circle;
           if (interviewId) {
-            content = <Link to={`/interview/${interviewId}`}>{circle}</Link>;
+            content = <Link to={`/interview/${interviewId}`} state={linkState} replace={linkReplace}>{circle}</Link>;
           } else if (canStart) {
             content = (
               <button type="button" onClick={() => onStartStage(stage.key)} disabled={isStarting}>

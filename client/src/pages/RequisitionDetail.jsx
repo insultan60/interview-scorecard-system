@@ -4,6 +4,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Search, X, Users, Link2, ChevronDown, Play, Trash2, UserRoundPlus, ClipboardList, FileText, Pencil, Building2 } from 'lucide-react';
 import api from '../hooks/useApi';
+import { openStoredFile } from '../lib/fileAccess';
+import ScreeningBadge from '../components/ScreeningBadge';
+import useRefreshWhile from '../hooks/useRefreshWhile';
+import { isScreeningActive, isScreeningFailed } from '../lib/screening';
 import PipelineStepper from '../components/PipelineStepper';
 import ScorecardEditor from '../components/ScorecardEditor';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -27,8 +31,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatDate, formatDisposition, formatScore } from '../utils/formatters';
-import { isBrowserEmailJSConfigured, sendOfferEmailClient } from '../services/emailService';
 import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
+import OfferLetterDialog from '../components/OfferLetterDialog.jsx';
+import { fromJobState } from '../lib/interviewNavigation';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -101,8 +106,6 @@ export default function RequisitionDetail() {
   const [decisionReasonDraft, setDecisionReasonDraft] = useState('');
   const [submittingDecision, setSubmittingDecision] = useState(false);
   const [offerFor, setOfferFor] = useState(null);
-  const [offerFile, setOfferFile] = useState(null);
-  const [sendingOffer, setSendingOffer] = useState(false);
   const [onboardingCandidate, setOnboardingCandidate] = useState(null);
 
   const [viewCandidateFor, setViewCandidateFor] = useState(null);
@@ -123,62 +126,6 @@ export default function RequisitionDetail() {
     if (!text) return;
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard.`);
-  }
-
-  async function handleSendOfferLetter(event) {
-    event.preventDefault();
-    if (!offerFor || !offerFile) {
-      toast.error('Choose the candidate\'s offer letter PDF first.');
-      return;
-    }
-    const isPdf = offerFile.type === 'application/pdf' || /\.pdf$/i.test(offerFile.name);
-    if (!isPdf) {
-      toast.error('Only PDF offer letters can be uploaded.');
-      return;
-    }
-    if (offerFile.size > 5 * 1024 * 1024) {
-      toast.error('The offer letter must be 5 MB or smaller.');
-      return;
-    }
-
-    setSendingOffer(true);
-    try {
-      const formData = new FormData();
-      formData.append('offerLetter', offerFile);
-      const response = await api.post(`/scoring/application/${offerFor._id}/send-offer-letter`, formData);
-      const { application, emailSent, emailReason } = response.data;
-
-      if (emailSent) {
-        toast.success('Offer letter uploaded and emailed to the candidate.');
-      } else {
-        const fallback = await sendOfferEmailClient({
-          candidateEmail: offerFor.candidateId?.email,
-          candidateName: offerFor.candidateId?.name,
-          requisitionTitle: data?.requisition?.title || 'the position',
-          offerLetterUrl: application?.offerLetterUrl,
-        });
-        if (fallback.sent) {
-          try {
-            await api.patch(`/scoring/application/${offerFor._id}/offer-letter-delivery`, { deliveryStatus: 'sent' });
-          } catch (deliveryError) {
-            console.warn('[Offer letter] Browser delivery was successful but its status could not be saved.', deliveryError);
-          }
-          toast.success('Offer letter uploaded and emailed through the browser fallback.');
-        } else if (!isBrowserEmailJSConfigured()) {
-          toast.error(`${emailReason || 'Server email could not be sent.'} Browser email fallback is not configured.`);
-        } else {
-          toast.error(fallback.reason || emailReason || 'The offer letter was uploaded, but the email could not be sent.');
-        }
-      }
-
-      setOfferFor(null);
-      setOfferFile(null);
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not upload and send the offer letter.');
-    } finally {
-      setSendingOffer(false);
-    }
   }
 
   async function handleConfirmDecision(applicationId) {
@@ -305,11 +252,11 @@ export default function RequisitionDetail() {
     setPage(1);
   }
 
-  async function load(targetPage = page, targetLimit = pageSize) {
+  async function load(targetPage = page, targetLimit = pageSize, silent = false) {
     const requestId = ++latestLoadRef.current;
     const isInitialLoad = !data;
     if (isInitialLoad) setLoading(true);
-    else setFetchingCandidates(true);
+    else if (!silent) setFetchingCandidates(true);
 
     try {
       const params = {
@@ -369,6 +316,9 @@ export default function RequisitionDetail() {
   useEffect(() => {
     load(1);
   }, [id, debouncedCandidateSearch, dispositionFilters, finalDecisionFilters, candidateIdFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // While the AI is still scoring a visible application, refresh quietly until it finishes.
+  useRefreshWhile((data?.applications || []).some(isScreeningActive), () => load(page, pageSize, true));
 
   useEffect(() => {
     if (activeTab !== 'scorecard' || scorecardData) return;
@@ -434,12 +384,12 @@ export default function RequisitionDetail() {
         { validateStatus: () => true }
       );
       if (res.status === 201) {
-        navigate(`/interview/${res.data.interview._id}`);
+        navigate(`/interview/${res.data.interview._id}`, { state: fromJobState(id) });
       } else if (res.status === 409 && res.data?.interviewId) {
         // Duplicate interview — open the one that already exists. Out-of-order
         // stage attempts also return 409, but carry no interviewId; those fall
         // through so their "Stage X must be approved first" message is shown.
-        navigate(`/interview/${res.data.interviewId}`);
+        navigate(`/interview/${res.data.interviewId}`, { state: fromJobState(id) });
       } else {
         toast.error(res.data?.message || 'Could not open interview.');
       }
@@ -562,7 +512,7 @@ export default function RequisitionDetail() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => navigate(`/requisitions/${requisition._id}/edit`)}
+          onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
           className="h-8 text-xs gap-1.5 text-slate-700 hover:text-slate-900 border-slate-300"
         >
           <Pencil className="h-3.5 w-3.5 text-slate-500" />
@@ -579,9 +529,9 @@ export default function RequisitionDetail() {
             toast.success('Public candidate application link copied to clipboard!');
           }}
           disabled={!canStartNewWork}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-brand"
         >
-          <Link2 className="h-3.5 w-3.5 text-[#d21e2b]" />
+          <Link2 className="h-3.5 w-3.5 text-brand" />
           Copy Candidate Apply Link
         </Button>
 
@@ -602,7 +552,7 @@ export default function RequisitionDetail() {
           size="sm"
           onClick={handleDuplicate}
           disabled={duplicating}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-[#d21e2b]"
+          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-brand"
         >
           <Copy className="h-3.5 w-3.5 text-slate-600" />
           {duplicating ? 'Duplicating…' : 'Duplicate Job Opening'}
@@ -871,10 +821,10 @@ export default function RequisitionDetail() {
                             <button
                               type="button"
                               onClick={() => setViewCandidateFor(app.candidateId)}
-                              className="group flex flex-col text-left cursor-pointer rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-100/80 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d21e2b]/40"
+                              className="group flex flex-col text-left cursor-pointer rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-100/80 transition-colors w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                               title={`View ${app.candidateId?.name || 'candidate'}'s details`}
                             >
-                              <div className="font-medium text-foreground group-hover:text-[#d21e2b] transition-colors">
+                              <div className="font-medium text-foreground group-hover:text-brand transition-colors">
                                 {app.candidateId?.name || app.candidateName || 'Unknown'}
                               </div>
                               <div className="text-xs text-muted-foreground break-all">{app.candidateId?.email || app.candidateEmail}</div>
@@ -896,6 +846,7 @@ export default function RequisitionDetail() {
                               stages={requisition.stages}
                               progress={progressMap}
                               stageLinks={stageLinksByApp[app._id]}
+                              linkState={fromJobState(id)}
                               currentStageKey={hasFailed || allStagesPassed ? null : app.currentStageKey}
                               onStartStage={() => handleGoToInterview(app)}
                               startingStageKey={goingToInterview === app._id ? app.currentStageKey : null}
@@ -913,6 +864,8 @@ export default function RequisitionDetail() {
                               <Badge variant="secondary" className={`font-normal ${DISPOSITION_BADGE[disposition] || ''}`}>
                                 {formatDisposition(disposition)}
                               </Badge>
+                            ) : (isScreeningActive(app) || isScreeningFailed(app)) ? (
+                              <ScreeningBadge application={app} />
                             ) : (
                               <span className="text-xs text-muted-foreground">In progress</span>
                             )}
@@ -969,7 +922,7 @@ export default function RequisitionDetail() {
                                     size="sm"
                                     onClick={() => handleConfirmDecision(app._id)}
                                     disabled={submittingDecision}
-                                    className="h-6 px-2 text-[11px] bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                                    className="h-6 px-2 text-[11px] bg-brand text-white hover:bg-brand/90"
                                   >
                                     {submittingDecision ? 'Saving…' : 'Confirm'}
                                   </Button>
@@ -995,7 +948,7 @@ export default function RequisitionDetail() {
                                   setDecisionDraft('hired');
                                   setDecisionReasonDraft('');
                                 }}
-                                className="h-7 text-xs border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                                className="h-7 text-xs border-brand/40 text-brand hover:bg-brand/5"
                               >
                                 Record Decision
                               </Button>
@@ -1028,7 +981,6 @@ export default function RequisitionDetail() {
                                       className="h-8 w-8 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
                                       onClick={() => {
                                         setOfferFor(app);
-                                        setOfferFile(null);
                                       }}
                                     >
                                       <FileText className="h-4 w-4" />
@@ -1073,7 +1025,7 @@ export default function RequisitionDetail() {
                                 variant="outline"
                                 size="icon"
                                 title={goingToInterview === app._id ? 'Opening interview…' : 'Go to Interview'}
-                                className="h-8 w-8 border-[#d21e2b]/40 text-[#d21e2b] hover:bg-[#d21e2b]/10 hover:text-[#d21e2b]"
+                                className="h-8 w-8 border-brand/40 text-brand hover:bg-brand/10 hover:text-brand"
                                 onClick={() => handleGoToInterview(app)}
                                 disabled={isGoDisabled}
                               >
@@ -1174,56 +1126,12 @@ export default function RequisitionDetail() {
             </Card>
           )}
 
-          <Dialog
-            open={!!offerFor}
-            onOpenChange={(open) => {
-              if (!open && !sendingOffer) {
-                setOfferFor(null);
-                setOfferFile(null);
-              }
-            }}
-          >
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Send offer letter</DialogTitle>
-                <DialogDescription>
-                  Upload a signed PDF for {offerFor?.candidateId?.name || 'this candidate'}. The candidate will receive a secure link by email.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSendOfferLetter} className="space-y-4">
-                <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-                  <p className="font-medium text-foreground">{offerFor?.candidateId?.name || 'Candidate'}</p>
-                  <p className="mt-1 text-muted-foreground">{data?.requisition?.title || 'Job opening'}</p>
-                  <p className="mt-1 break-all text-muted-foreground">{offerFor?.candidateId?.email || 'No email address on file'}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="offer-letter-file">Offer letter (PDF)</Label>
-                  <Input
-                    id="offer-letter-file"
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    onChange={(event) => setOfferFile(event.target.files?.[0] || null)}
-                    disabled={sendingOffer}
-                    className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
-                  />
-                  <p className="text-xs text-muted-foreground">PDF only, up to 5 MB. The candidate receives a professional email with a secure link to the letter.</p>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => { setOfferFor(null); setOfferFile(null); }}
-                    disabled={sendingOffer}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" disabled={sendingOffer || !offerFile}>
-                    {sendingOffer ? 'Uploading and sending…' : 'Send offer letter'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <OfferLetterDialog
+            application={offerFor}
+            jobTitle={data?.requisition?.title}
+            onClose={() => setOfferFor(null)}
+            onSent={load}
+          />
 
           {/* ---------- close confirmation ---------- */}
           <AlertDialog open={pendingClose} onOpenChange={setPendingClose}>
@@ -1240,7 +1148,7 @@ export default function RequisitionDetail() {
                 <AlertDialogAction
                   onClick={(e) => { e.preventDefault(); setPendingClose(false); applyStatus('closed'); }}
                   disabled={savingStatus}
-                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                  className="bg-brand text-white hover:bg-brand/90"
                 >
                   {savingStatus ? 'Closing…' : 'Close job'}
                 </AlertDialogAction>
@@ -1323,7 +1231,7 @@ export default function RequisitionDetail() {
                       <button
                         type="button"
                         onClick={() => copyContact(viewCandidateFor.email, 'Email')}
-                        className="mt-0.5 break-all text-left font-medium hover:text-[#d21e2b] hover:underline"
+                        className="mt-0.5 break-all text-left font-medium hover:text-brand hover:underline"
                       >
                         {viewCandidateFor.email || '—'}
                       </button>
@@ -1333,7 +1241,7 @@ export default function RequisitionDetail() {
                       <button
                         type="button"
                         onClick={() => copyContact(viewCandidateFor.phone, 'Phone number')}
-                        className="mt-0.5 text-left font-medium hover:text-[#d21e2b] hover:underline"
+                        className="mt-0.5 text-left font-medium hover:text-brand hover:underline"
                       >
                         {viewCandidateFor.phone || '—'}
                       </button>
@@ -1357,7 +1265,7 @@ export default function RequisitionDetail() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => window.open(viewCandidateFor.resumeFileUrl, '_blank', 'noreferrer')}
+                    onClick={() => openStoredFile('resume', viewCandidateFor._id)}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     View résumé
@@ -1370,7 +1278,7 @@ export default function RequisitionDetail() {
                     setViewCandidateFor(null);
                     openEditCandidate(c);
                   }}
-                  className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                  className="bg-brand text-white hover:bg-brand/90"
                 >
                   <Pencil className="h-4 w-4 mr-2" />
                   Edit candidate
@@ -1430,7 +1338,7 @@ export default function RequisitionDetail() {
                       type="file"
                       accept="application/pdf,.pdf"
                       onChange={(e) => setEditCandidateResumeFile(e.target.files?.[0] || null)}
-                      className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                      className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
                     />
                   </div>
                 </div>
@@ -1447,7 +1355,7 @@ export default function RequisitionDetail() {
                   <Button type="button" variant="outline" onClick={() => setEditCandidateFor(null)} disabled={editingCandidate}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={editingCandidate} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+                  <Button type="submit" disabled={editingCandidate} className="bg-brand text-white hover:bg-brand/90">
                     {editingCandidate ? 'Saving…' : 'Save changes'}
                   </Button>
                 </DialogFooter>

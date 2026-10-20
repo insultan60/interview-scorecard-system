@@ -239,7 +239,7 @@ export default function Users() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <UserCog className="h-7 w-7 text-[#d21e2b]" />
+            <UserCog className="h-7 w-7 text-brand" />
             Users & Roles
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -249,7 +249,7 @@ export default function Users() {
 
         <Button
           onClick={openAddModal}
-          className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white font-medium shadow-sm gap-2 shrink-0 self-start sm:self-auto"
+          className="bg-brand hover:bg-brand/90 text-white font-medium shadow-sm gap-2 shrink-0 self-start sm:self-auto"
         >
           <Plus className="h-4 w-4" /> Add User
         </Button>
@@ -503,7 +503,7 @@ export default function Users() {
         <DialogContent className="max-w-md bg-white p-6 shadow-xl rounded-xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <UserCog className="h-5 w-5 text-[#d21e2b]" />
+              <UserCog className="h-5 w-5 text-brand" />
               {editingUser ? 'Edit User & Permissions' : 'Add New User'}
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
@@ -632,7 +632,7 @@ export default function Users() {
                 type="submit"
                 size="sm"
                 disabled={saving}
-                className="bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white font-medium shadow-sm"
+                className="bg-brand hover:bg-brand/90 text-white font-medium shadow-sm"
               >
                 {saving ? 'Saving...' : editingUser ? 'Update User' : 'Create User'}
               </Button>

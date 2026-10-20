@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { TimePicker } from '@/components/ui/time-picker';
-import redstarIcon from '../assets/redstar-icon.png';
+import logo from '../assets/logo.svg';
 
 function formatStageLabel(label) {
   if (!label) return '';
@@ -164,7 +164,6 @@ export default function CandidateAvailability() {
         notes,
         captchaToken,
       });
-      console.log('[CandidateAvailability] Submit success:', res.data);
       setSubmitted(true);
       toast.success('Your availability has been submitted to the hiring team!');
     } catch (err) {
@@ -208,10 +207,7 @@ export default function CandidateAvailability() {
     <div className="min-h-screen bg-slate-50/60 font-sans text-slate-900">
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-10 shadow-sm">
         <div className="mx-auto max-w-4xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={redstarIcon} alt="Red Star Technologies" className="h-8 w-8 object-contain" />
-            <span className="font-semibold text-base tracking-tight">Red Star Technologies</span>
-          </div>
+          <img src={logo} alt="OWNERS TALENT" className="h-8 w-auto object-contain" />
         </div>
       </header>
 
@@ -252,7 +248,7 @@ export default function CandidateAvailability() {
                 Select Interview Availability
               </CardTitle>
               <CardDescription className="text-sm">
-                Position: <span className="font-semibold text-slate-800">{data.requisitionTitle}</span> · Stage: <span className="font-semibold text-[#d21e2b]">{formatStageLabel(data.stageLabel)}</span>
+                Position: <span className="font-semibold text-slate-800">{data.requisitionTitle}</span> · Stage: <span className="font-semibold text-brand">{formatStageLabel(data.stageLabel)}</span>
               </CardDescription>
             </CardHeader>
 
@@ -345,7 +341,7 @@ export default function CandidateAvailability() {
                   <Button
                     type="submit"
                     disabled={submitting || (captcha.enabled && !captchaToken)}
-                    className="w-full bg-[#d21e2b] hover:bg-[#d21e2b]/90 text-white gap-2 font-medium"
+                    className="w-full bg-brand hover:bg-brand/90 text-white gap-2 font-medium"
                   >
                     <Send className="h-4 w-4" />
                     {submitting ? 'Submitting Availability…' : 'Submit Availability'}

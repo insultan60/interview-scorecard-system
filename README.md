@@ -1,4 +1,4 @@
-# Interview Scorecard System
+# OWNERS TALENT
 
 An internal, AI-powered hiring tool built for **Red Star Technologies** that replaces manual Excel-based interview tracking with a structured, stage-gated scoring pipeline. The system uses **Claude AI (Anthropic)** to analyze interview transcripts and propose candidate scores, while enforcing strict workflow rules that prevent human bias and process shortcuts.
 
@@ -162,7 +162,7 @@ interview-scorecard-system/
 │   │   ├── retentionService.js      # Scheduled transcript purge
 │   │   └── slackNotifier.js         # Slack webhook notifications
 │   ├── seeds/
-│   │   └── seedDefaults.js          # Default admin, pipeline, settings
+│   │   └── seedDefaults.js          # Default owner, pipeline, settings
 │   ├── utils/
 │   │   ├── constants.js             # All enums, defaults, cost rates
 │   │   ├── errors.js                # Custom error classes
@@ -277,10 +277,10 @@ TRANSCRIPT_RETENTION_DAYS=90
 MONTHLY_AI_SPEND_CAP_USD=200
 AI_SPEND_WARN_PERCENT=80
 
-# Seed Admin User
-SEED_ADMIN_NAME=Admin
-SEED_ADMIN_EMAIL=admin@yourcompany.com
-SEED_ADMIN_PASSWORD=change_this_password
+# Seed Owner User (the first account)
+SEED_OWNER_NAME=Admin
+SEED_OWNER_EMAIL=admin@yourcompany.com
+SEED_OWNER_PASSWORD=change_this_password
 ```
 
 ---
@@ -307,7 +307,7 @@ npm run dev
 
 ## Seeding the Database
 
-Run the seed script once to create the default admin user, pipeline template, and app settings:
+Run the seed script once to create the default owner user, pipeline template, and app settings:
 
 ```bash
 cd server

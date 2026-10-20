@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, ChevronUp, ChevronDown, Star, Trash2, ArrowLeft, Search, X,
+  Plus, ChevronUp, ChevronDown, Star, Trash2, Search, X,
   GitBranch, MoreHorizontal,
 } from 'lucide-react';
 import api from '../hooks/useApi';
@@ -205,7 +204,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-semibold text-foreground">{template.name}</h3>
                 {template.isDefault && (
-                  <Badge variant="secondary" className="gap-1 bg-[#d21e2b]/10 font-normal text-[#d21e2b] hover:bg-[#d21e2b]/10">
+                  <Badge variant="secondary" className="gap-1 bg-brand/10 font-normal text-brand hover:bg-brand/10">
                     <Star className="h-3 w-3" /> Default
                   </Badge>
                 )}
@@ -364,7 +363,7 @@ function TemplateCard({ template, onChanged, onDeleted }) {
             <div className="flex justify-end border-t border-border p-4">
               <Button
                 onClick={handleSave} disabled={saving || stages.some(s => s.passThreshold < 1 || s.passThreshold > 5 || !Number.isInteger(s.passThreshold))}
-                className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                className="bg-brand text-white hover:bg-brand/90"
               >
                 {saving ? 'Saving…' : 'Save changes'}
               </Button>
@@ -400,8 +399,6 @@ function TemplateCard({ template, onChanged, onDeleted }) {
 }
 
 export default function Pipelines() {
-  const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -469,17 +466,17 @@ export default function Pipelines() {
       {/* ---------- header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-            <ArrowLeft />
-          </Button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Hiring Stages</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <GitBranch className="h-7 w-7 text-brand" />
+              Hiring Stages
+            </h1>
             <p className="text-sm text-muted-foreground">
               {loading ? 'Loading…' : `${templates.length} template${templates.length === 1 ? '' : 's'}`}
             </p>
           </div>
         </div>
-        <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+        <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
           <Plus />
           New Template
         </Button>
@@ -534,7 +531,7 @@ export default function Pipelines() {
                   A template defines the interview stages, their order, gates and weights.
                 </p>
               </div>
-              <Button className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90" onClick={() => setCreateOpen(true)}>
+              <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
                 <Plus />
                 New Template
               </Button>
@@ -606,7 +603,7 @@ export default function Pipelines() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Button type="submit" disabled={creating} className="bg-brand text-white hover:bg-brand/90">
                 {creating ? 'Creating…' : 'Create template'}
               </Button>
             </DialogFooter>

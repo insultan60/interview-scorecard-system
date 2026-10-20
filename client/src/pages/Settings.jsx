@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  ArrowLeft, Plug, SlidersHorizontal, FileText, DollarSign, Info, CheckCircle2, XCircle,
+  Settings as SettingsIcon, Plug, SlidersHorizontal, FileText, DollarSign, Info, CheckCircle2, XCircle,
 } from 'lucide-react';
 import api from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -89,10 +88,8 @@ const DEFAULT_STAGE_MODEL_TIERS = {
 };
 
 export default function Settings() {
-  const navigate = useNavigate();
-  const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
   const [settings, setSettings] = useState({});
   const [keyStatus, setKeyStatus] = useState({});
@@ -187,11 +184,11 @@ export default function Settings() {
     <div>
       {/* ---------- header ---------- */}
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={() => navigate(-1)} disabled={!canGoBack}>
-          <ArrowLeft />
-        </Button>
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <SettingsIcon className="h-7 w-7 text-brand" />
+            Settings
+          </h1>
           <p className="text-sm text-muted-foreground">
             Credentials, scoring thresholds, retention and AI spend.
           </p>
@@ -249,7 +246,7 @@ export default function Settings() {
                         size="sm"
                         onClick={() => testConnection(svc.key)}
                         disabled={!isAdmin || testing[svc.key]}
-                        className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+                        className="bg-brand text-white hover:bg-brand/90"
                       >
                         {testing[svc.key] ? 'Testing…' : 'Test connection'}
                       </Button>
@@ -553,7 +550,7 @@ function NumberSetting({ label, value, onSave, disabled, saving, step, min, max 
         {!disabled && changed && (
           <Button
             onClick={() => onSave(numDraft)} disabled={saving || isInvalid}
-            className="flex-shrink-0 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            className="flex-shrink-0 bg-brand text-white hover:bg-brand/90"
           >
             {saving ? '…' : 'Save'}
           </Button>
@@ -620,7 +617,7 @@ function ModelSetting({ label, hint, value, onSave, disabled, saving }) {
         {!disabled && changed && draft && (
           <Button
             onClick={() => onSave(draft)} disabled={saving}
-            className="flex-shrink-0 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            className="flex-shrink-0 bg-brand text-white hover:bg-brand/90"
           >
             {saving ? '…' : 'Save'}
           </Button>
@@ -660,7 +657,7 @@ function MaskedKeyInput({ label, masked, onSave, disabled, saving }) {
           />
           <Button
             size="sm" onClick={handleSave} disabled={saving || !draft}
-            className="flex-shrink-0 bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90"
+            className="flex-shrink-0 bg-brand text-white hover:bg-brand/90"
           >
             {saving ? '…' : 'Save'}
           </Button>

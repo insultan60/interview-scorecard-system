@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Briefcase, Users, DollarSign, Activity, Plus, ChevronRight, UserPlus, ArrowUpRight,
+  Briefcase, Users, DollarSign, Activity, Plus, ChevronRight, UserPlus, ArrowUpRight, LayoutDashboard,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import api from '../hooks/useApi';
+import { fetchRequisitionsList, fetchSettingsList } from '../hooks/queries';
 import StatsCard from '../components/StatsCard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,10 +48,10 @@ export default function Dashboard() {
     async function load() {
       try {
         const [requisitionsRes, usageRes, auditRes, settingsRes] = await Promise.all([
-          api.get('/requisitions', { params: { status: 'open' } }),
+          fetchRequisitionsList('open'), // from the shared cache when it is still fresh
           api.get('/settings/ai-usage'),
           api.get('/audit', { params: { limit: 6 } }),
-          api.get('/settings'),
+          fetchSettingsList(),
         ]);
         if (cancelled) return;
 
@@ -93,7 +94,10 @@ export default function Dashboard() {
       {/* ---------- header ---------- */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <LayoutDashboard className="h-7 w-7 text-brand" />
+            Dashboard
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Overview of hiring activity across all active job openings.
           </p>
@@ -105,7 +109,7 @@ export default function Dashboard() {
               Add candidate
             </Link>
           </Button>
-          <Button asChild className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+          <Button asChild className="bg-brand text-white hover:bg-brand/90">
             <Link to="/requisitions">
               <Plus />
               New job opening
@@ -154,7 +158,7 @@ export default function Dashboard() {
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Job Openings</CardTitle>
             {!loading && (
-              <Link to="/requisitions" className="text-xs font-semibold text-[#d21e2b] hover:underline flex items-center gap-0.5">
+              <Link to="/requisitions" className="text-xs font-semibold text-brand hover:underline flex items-center gap-0.5">
                 View all ({openRequisitions.length}) <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             )}
@@ -184,7 +188,7 @@ export default function Dashboard() {
                     <li key={r._id}>
                       <Link
                         to={`/requisitions/${r._id}`}
-                        className="flex items-center justify-between gap-3 px-6 py-3 transition-colors hover:bg-[#d21e2b]/5"
+                        className="flex items-center justify-between gap-3 px-6 py-3 transition-colors hover:bg-brand/5"
                       >
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-foreground">{r.title}</div>
@@ -214,7 +218,7 @@ export default function Dashboard() {
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Recent Activity</CardTitle>
             {!loading && (
-              <Link to="/audit-log" className="text-xs font-semibold text-[#d21e2b] hover:underline flex items-center gap-0.5">
+              <Link to="/audit-log" className="text-xs font-semibold text-brand hover:underline flex items-center gap-0.5">
                 View audit log <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             )}

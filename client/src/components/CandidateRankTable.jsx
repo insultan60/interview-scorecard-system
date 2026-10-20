@@ -120,7 +120,7 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
           <div className="flex gap-1">
             <button
               type="button" onClick={() => submitDecision(app._id)} disabled={submitting}
-              className="rounded-md bg-[#d21e2b] px-2 py-1 text-xs font-medium text-white hover:bg-[#d21e2b]/90 disabled:opacity-50"
+              className="rounded-md bg-brand px-2 py-1 text-xs font-medium text-white hover:bg-brand/90 disabled:opacity-50"
             >
               {submitting ? 'Saving...' : 'Confirm'}
             </button>
@@ -137,7 +137,7 @@ export default function CandidateRankTable({ ranking, onDecisionRecorded }) {
     return (
       <button
         type="button" onClick={() => openDecisionForm(app)}
-        className="rounded-md border border-[#d21e2b]/40 bg-white px-2 py-1 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5"
+        className="rounded-md border border-brand/40 bg-white px-2 py-1 text-xs font-medium text-brand hover:bg-brand/5"
       >
         Record Decision
       </button>

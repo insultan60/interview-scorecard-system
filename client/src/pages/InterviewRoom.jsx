@@ -1,12 +1,18 @@
 import RichTextViewer from '../components/RichTextViewer';
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { ArrowLeft, ChevronDown, Calendar as CalendarIcon, Clock, Mail, Phone, Pencil } from 'lucide-react';
 import api from '../hooks/useApi';
-import { sendMeetingEmailClient, sendHostMeetingEmailClient, sendOfferEmailClient, sendAvailabilityEmailClient, isBrowserEmailJSConfigured } from '../services/emailService';
+import { openStoredFile } from '../lib/fileAccess';
+import { validatePdfFile } from '../lib/fileRules';
+import { resolveZone, wallClockToInstant, pickedDay, formatInZone, defaultMeetingSlot } from '../lib/calendarTime';
+import AlertBanner from '../components/AlertBanner';
+import useRefreshWhile from '../hooks/useRefreshWhile';
+import { isScreeningActive, isScreeningFailed } from '../lib/screening';
 import PipelineStepper from '../components/PipelineStepper';
+import { goBackToJob, openInterviewReplacing } from '../lib/interviewNavigation';
 import ScoreReviewTable from '../components/ScoreReviewTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,12 +27,6 @@ import {
 } from '@/components/ui/dialog';
 import { formatDisposition } from '../utils/formatters';
 
-function formatLocalDateTime(date) {
-  const datePart = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
-  return `${datePart}T${timePart}`;
-}
-
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_NUMBER_PATTERN = /^\d{11}$/;
 
@@ -40,6 +40,8 @@ function parseEmailList(value) {
 export default function InterviewRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const openInterview = (interviewId) => openInterviewReplacing(navigate, location, interviewId);
 
   const [interview, setInterview] = useState(null);
   const [requisition, setRequisition] = useState(null);
@@ -55,6 +57,11 @@ export default function InterviewRoom() {
   const [selectedMeetingDate, setSelectedMeetingDate] = useState(() => dayjs().add(1, 'hour').startOf('hour').toDate());
   const [selectedStartTime, setSelectedStartTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').format('HH:mm'));
   const [selectedEndTime, setSelectedEndTime] = useState(() => dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('HH:mm'));
+  // Meetings are picked, checked and shown in the CALENDAR's time zone (sent by the server),
+  // not in the zone this computer is set to. Falls back to the computer's zone if the server sends none.
+  const [calendarTimeZone, setCalendarTimeZone] = useState(null);
+  const zone = resolveZone(calendarTimeZone);
+  const slotDefaultedRef = useRef(false);
   const [meetingStartInput, setMeetingStartInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').format('YYYY-MM-DDTHH:mm')}`);
   const [meetingEndInput, setMeetingEndInput] = useState(() => `${dayjs().add(1, 'hour').startOf('hour').add(30, 'minute').format('YYYY-MM-DDTHH:mm')}`);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
@@ -86,6 +93,7 @@ export default function InterviewRoom() {
   const load = useCallback(async () => {
     const { data: interviewData } = await api.get(`/interviews/${id}`);
     setInterview(interviewData.interview);
+    setCalendarTimeZone(interviewData.calendarTimeZone || null);
 
     const [reqResponse, scorecardResponse] = await Promise.all([
       api.get(`/requisitions/${interviewData.interview.requisitionId}`),
@@ -109,6 +117,19 @@ export default function InterviewRoom() {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Once the calendar's zone is known, start the date/time pickers on the next full hour in that zone.
+  useEffect(() => {
+    if (!calendarTimeZone || slotDefaultedRef.current) return;
+    slotDefaultedRef.current = true;
+    const slot = defaultMeetingSlot(resolveZone(calendarTimeZone));
+    setSelectedMeetingDate(slot.date);
+    setSelectedStartTime(slot.startTime);
+    setSelectedEndTime(slot.endTime);
+  }, [calendarTimeZone]);
+
+  // While the AI is still scoring this application in the background, refresh quietly until it finishes.
+  useRefreshWhile(isScreeningActive(application), () => load());
 
   useEffect(() => {
     if (!id) return;
@@ -207,17 +228,15 @@ export default function InterviewRoom() {
           return;
         }
 
-        const baseDate = selectedMeetingDate || new Date();
-        const year = baseDate.getFullYear();
-        const month = baseDate.getMonth();
-        const day = baseDate.getDate();
-        const [startH, startM] = (selectedStartTime || '10:00').split(':').map(Number);
-        startDateObj = new Date(year, month, day, startH, startM, 0, 0);
-
-        const [endH, endM] = (selectedEndTime || '10:30').split(':').map(Number);
-        endDateObj = new Date(year, month, day, endH, endM, 0, 0);
-        localStartTime = formatLocalDateTime(startDateObj);
-        localEndTime = formatLocalDateTime(endDateObj);
+        // The day clicked in the picker plus the times chosen are wall-clock values in the
+        // calendar's zone; turn them into the real moments (the same on any computer).
+        const day = pickedDay(selectedMeetingDate);
+        const startHHmm = selectedStartTime || '10:00';
+        const endHHmm = selectedEndTime || '10:30';
+        startDateObj = wallClockToInstant(day, startHHmm, zone);
+        endDateObj = wallClockToInstant(day, endHHmm, zone);
+        localStartTime = `${day}T${startHHmm}:00`;
+        localEndTime = `${day}T${endHHmm}:00`;
       }
 
       const pendingInvitees = parseEmailList(additionalInviteesInput);
@@ -237,7 +256,7 @@ export default function InterviewRoom() {
           localEndTime,
           meetingStart: startDateObj.toISOString(),
           meetingEnd: endDateObj.toISOString(),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timeZone: zone,
           additionalAttendeeEmails,
         }
         : { meetingUri: meetingLinkInput.trim() };
@@ -263,67 +282,22 @@ export default function InterviewRoom() {
       setMeetingLinkInput('');
       setAdditionalInvitees([]);
       setAdditionalInviteesInput('');
-      if (res.data.emailSent) {
-        console.log('[EmailNotifier] Meeting email successfully sent via BACKEND server.');
-        toast.success('Meeting set and emailed to candidate.');
+      if (res.data.emailQueued) {
+        toast.success('Meeting set. The candidate is being emailed.');
       } else {
         toast.success('Meeting set.');
-        if (isBrowserEmailJSConfigured()) {
-          console.log('[EmailNotifier] Backend email not sent. Attempting send via BROWSER EmailJS...');
-          const stageLabel = stageConfig?.label || res.data.interview?.stageKey || '';
-          const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
-          const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
-          const requisitionTitle = requisition?.title || '';
-          const clientRes = await sendMeetingEmailClient({
-            candidateEmail,
-            candidateName,
-            requisitionTitle,
-            stageLabel,
-            meetingUri: res.data.interview?.meetingUri || '',
-          });
-          if (clientRes.sent) {
-            console.log('[EmailNotifier] Meeting email successfully sent via BROWSER EmailJS.');
-            toast.success('Emailed candidate via Browser EmailJS.');
-          } else {
-            console.warn('[EmailNotifier] Browser EmailJS failed:', clientRes.reason);
-            toast.error(res.data.emailReason || clientRes.reason || 'Could not email the candidate.');
-          }
-        } else {
-          console.warn('[EmailNotifier] Meeting email not sent (Backend email failed and Browser EmailJS not configured).');
-          toast.error(res.data.emailReason || 'Could not email the candidate.');
-        }
+        toast.error(res.data.emailReason || 'Could not email the candidate.');
       }
-      await sendHostEmailFallback(res.data, 'scheduled', res.data.interview);
+      reportHostEmailFailure(res.data);
     } finally {
       setCreatingMeeting(false);
     }
   }
 
-  async function sendHostEmailFallback(result, action, meeting) {
-    if (result?.hostEmailSent !== false) return;
-
-    if (!isBrowserEmailJSConfigured()) {
-      console.warn('[EmailNotifier] Host email was not sent by the backend and Browser EmailJS is not configured:', result.hostEmailReason);
-      toast.error(`Host email was not sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
-      return;
-    }
-
-    const clientRes = await sendHostMeetingEmailClient({
-      hostEmail: result.hostEmail,
-      action,
-      candidateName: application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '',
-      requisitionTitle: requisition?.title || '',
-      stageLabel: stageConfig?.label || meeting?.stageKey || '',
-      meetingUri: meeting?.meetingUri || '',
-      meetingStart: meeting?.meetingStart,
-      meetingEnd: meeting?.meetingEnd,
-    });
-    if (clientRes.sent) {
-      toast.success('Host notification sent via Browser EmailJS.');
-    } else {
-      console.warn('[EmailNotifier] Browser EmailJS host notification failed:', clientRes.reason);
-      toast.error(`Host email was not sent: ${clientRes.reason}`);
-    }
+  /** The server queues the Calendar host's notification; tell the user if it could not be queued. */
+  function reportHostEmailFailure(result) {
+    if (result?.hostEmailQueued !== false) return;
+    toast.error(`Host email could not be sent: ${result.hostEmailReason || 'Email delivery is not configured.'}`);
   }
 
   function copyCandidateContact(value, label) {
@@ -353,35 +327,10 @@ export default function InterviewRoom() {
   async function handleResendMeetingEmail() {
     setSendingMeetingEmail(true);
     try {
-      if (isBrowserEmailJSConfigured()) {
-        console.log('[EmailNotifier] Resend email requested. Attempting send via BROWSER EmailJS...');
-        const stageLabel = stageConfig?.label || interview?.stageKey || '';
-        const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
-        const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
-        const requisitionTitle = requisition?.title || '';
-        const clientRes = await sendMeetingEmailClient({
-          candidateEmail,
-          candidateName,
-          requisitionTitle,
-          stageLabel,
-          meetingUri: interview?.meetingUri || '',
-        });
-        if (clientRes.sent) {
-          console.log('[EmailNotifier] Resend meeting email successfully sent via BROWSER EmailJS.');
-          toast.success('Email sent to candidate via Browser EmailJS.');
-          return;
-        }
-        console.warn('[EmailNotifier] Browser EmailJS failed. Falling back to BACKEND...', clientRes.reason);
-        toast.error(`Browser EmailJS failed (${clientRes.reason}). Falling back to backend...`);
-      }
-
-      console.log('[EmailNotifier] Resend email requested. Sending via BACKEND server API...');
       const res = await api.post(`/interviews/${id}/send-meeting-email`, {}, { validateStatus: () => true });
-      if (res.data?.sent) {
-        console.log('[EmailNotifier] Resend meeting email successfully sent via BACKEND server.');
-        toast.success('Email sent to candidate.');
+      if (res.data?.queued) {
+        toast.success('The email is being sent to the candidate.');
       } else {
-        console.warn('[EmailNotifier] Backend resend meeting email failed:', res.data?.reason);
         toast.error(res.data?.reason || res.data?.message || 'Could not send email.');
       }
     } finally {
@@ -391,39 +340,16 @@ export default function InterviewRoom() {
 
   async function handleRequestAvailability() {
     setRequestingAvailability(true);
-    console.log('[EmailNotifier] Requesting availability link from server for interview:', id);
     try {
       const res = await api.post(`/interviews/${id}/request-availability`);
-      console.log('[EmailNotifier] Server response for request-availability:', res.data);
       if (res.data?.interview) {
         setInterview(res.data.interview);
       }
 
-      if (res.data.sent) {
-        console.log('[EmailNotifier] Availability request email successfully sent via BACKEND server to:', res.data.candidateEmail);
-        toast.success(`Availability request email sent to ${res.data.candidateEmail || 'candidate'}!`);
+      if (res.data.queued) {
+        toast.success(`Availability request email is being sent to ${res.data.candidateEmail || 'the candidate'}.`);
       } else {
-        console.warn('[EmailNotifier] Backend email not sent. Reason:', res.data.emailReason);
-        if (isBrowserEmailJSConfigured()) {
-          console.log('[EmailNotifier] Attempting to send availability link via BROWSER EmailJS...');
-          const clientRes = await sendAvailabilityEmailClient({
-            candidateEmail: res.data.candidateEmail,
-            candidateName: res.data.candidateName,
-            requisitionTitle: res.data.requisitionTitle,
-            stageLabel: res.data.stageLabel,
-            availabilityUrl: res.data.availabilityUrl,
-          });
-          if (clientRes.sent) {
-            console.log('[EmailNotifier] Availability email successfully sent via BROWSER EmailJS.');
-            toast.success('Availability link sent to candidate via Browser EmailJS!');
-          } else {
-            console.warn('[EmailNotifier] Browser EmailJS failed:', clientRes.reason);
-            toast.error(`Could not email candidate (${res.data.emailReason || clientRes.reason || 'Gmail SMTP not configured in Settings'}).`);
-          }
-        } else {
-          console.warn('[EmailNotifier] Gmail SMTP not configured in Settings and Browser EmailJS not configured in .env');
-          toast.error(res.data.emailReason || 'Gmail SMTP not configured in Settings (GMAIL_USER & GMAIL_APP_PASSWORD required).');
-        }
+        toast.error(res.data.emailReason || 'Could not send the availability request email. Check that email sending is configured.');
       }
     } catch (err) {
       console.error('[EmailNotifier] Error requesting availability:', err);
@@ -473,12 +399,12 @@ export default function InterviewRoom() {
         { validateStatus: () => true }
       );
       if (res.status === 201) {
-        navigate(`/interview/${res.data.interview._id}`);
+        openInterview(res.data.interview._id);
       } else if (res.status === 409 && res.data?.interviewId) {
         // Duplicate interview — open the one that already exists. Out-of-order
         // stage attempts also return 409, but carry no interviewId; those fall
         // through so their "Stage X must be approved first" message is shown.
-        navigate(`/interview/${res.data.interviewId}`);
+        openInterview(res.data.interviewId);
       } else {
         toast.error(res.data?.message || 'Could not start next stage.');
       }
@@ -491,7 +417,6 @@ export default function InterviewRoom() {
     if (!window.confirm('Cancel this meeting? The link will be removed — you can create or paste a new one afterward.')) return;
     setCreatingMeeting(true);
     try {
-      const cancelledMeeting = interview;
       const res = await api.delete(`/interviews/${id}/meeting`, { validateStatus: () => true });
       if (res.status >= 400) {
         toast.error(res.data?.message || 'Could not cancel the meeting.');
@@ -499,7 +424,7 @@ export default function InterviewRoom() {
       }
       setInterview(res.data.interview);
       toast.success('Meeting cancelled.');
-      await sendHostEmailFallback(res.data, 'cancelled', cancelledMeeting);
+      reportHostEmailFailure(res.data);
     } finally {
       setCreatingMeeting(false);
     }
@@ -554,6 +479,12 @@ export default function InterviewRoom() {
   async function handleUploadArtifact(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const problem = validatePdfFile(file, 'artifact');
+    if (problem) {
+      toast.error(problem);
+      e.target.value = '';
+      return;
+    }
     setUploadingArtifact(true);
     try {
       const body = new FormData();
@@ -618,7 +549,7 @@ export default function InterviewRoom() {
 
       if (res.data.passed && res.data.nextInterviewId) {
         toast.success('Candidate passed this stage! Moving to next stage...');
-        navigate(`/interview/${res.data.nextInterviewId}`);
+        openInterview(res.data.nextInterviewId);
       } else {
         await load();
         toast.success(
@@ -664,37 +595,11 @@ export default function InterviewRoom() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      console.log('[EmailNotifier] Server send-offer response:', res.data);
-      console.log('[EmailNotifier] Uploaded Offer Artifact URL:', res.data.interview?.artifactFileUrl || interview?.artifactFileUrl || '');
 
-      if (res.data.emailSent) {
-        console.log('[EmailNotifier] Offer letter email successfully sent via BACKEND server.');
-        toast.success('Offer letter uploaded, emailed to candidate, and stage approved!');
+      if (res.data.emailQueued) {
+        toast.success('Offer letter uploaded, the candidate is being emailed, and the stage is approved!');
       } else {
-        if (isBrowserEmailJSConfigured()) {
-          console.log('[EmailNotifier] Backend offer email not sent. Server response:', res.data);
-          const candidateName = application?.candidateId?.name || application?.candidateName || application?.candidate?.name || '';
-          const candidateEmail = application?.candidateId?.email || application?.candidateEmail || application?.candidate?.email || '';
-          const requisitionTitle = requisition?.title || '';
-          const offerUrl = res.data.interview?.artifactFileUrl || interview?.artifactFileUrl || res.data.interview?.offerLetterUrl || '';
-          console.log('[EmailNotifier] Resolved offerUrl for Browser EmailJS:', offerUrl);
-          const clientRes = await sendOfferEmailClient({
-            candidateEmail,
-            candidateName,
-            requisitionTitle,
-            offerLetterUrl: offerUrl,
-          });
-          if (clientRes.sent) {
-            console.log('[EmailNotifier] Offer letter email successfully sent via BROWSER EmailJS.');
-            toast.success('Offer stage approved & emailed candidate via Browser EmailJS!');
-          } else {
-            console.warn('[EmailNotifier] Browser EmailJS offer email failed:', clientRes.reason);
-            toast.success(`Offer stage approved! (${res.data.emailReason || clientRes.reason || 'Email not sent.'})`);
-          }
-        } else {
-          console.warn('[EmailNotifier] Offer letter email not sent (Backend email failed and Browser EmailJS not configured).');
-          toast.success(`Offer stage approved! (${res.data.emailReason || 'Email not sent.'})`);
-        }
+        toast.success(`Offer stage approved! (${res.data.emailReason || 'Email not sent.'})`);
       }
 
       setInterview(res.data.interview);
@@ -706,7 +611,7 @@ export default function InterviewRoom() {
 
       if (res.data.nextInterviewId) {
         toast.success('Moving to next stage...');
-        navigate(`/interview/${res.data.nextInterviewId}`);
+        openInterview(res.data.nextInterviewId);
       } else {
         await load();
       }
@@ -790,7 +695,7 @@ export default function InterviewRoom() {
     <div>
       <button
         type="button"
-        onClick={() => navigate(`/requisitions/${requisition._id}`)}
+        onClick={() => goBackToJob(navigate, location, requisition._id)}
         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -818,13 +723,13 @@ export default function InterviewRoom() {
           {(candidate.email || candidate.phone) && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
               {candidate.email && (
-                <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy email address">
+                <button type="button" onClick={() => copyCandidateContact(candidate.email, 'Email')} className="inline-flex items-center gap-1.5 hover:text-brand hover:underline" title="Copy email address">
                   <Mail className="h-4 w-4" />
                   {candidate.email}
                 </button>
               )}
               {candidate.phone && (
-                <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-[#d21e2b] hover:underline" title="Copy phone number">
+                <button type="button" onClick={() => copyCandidateContact(candidate.phone, 'Phone number')} className="inline-flex items-center gap-1.5 hover:text-brand hover:underline" title="Copy phone number">
                   <Phone className="h-4 w-4" />
                   {candidate.phone}
                 </button>
@@ -833,6 +738,17 @@ export default function InterviewRoom() {
           )}
         </div>
       </div>
+
+      {isScreeningActive(application) && (
+        <div className="mt-4">
+          <AlertBanner type="info" message="The AI is scoring this application in the background. Scores will appear here shortly, so please wait before scoring by hand." />
+        </div>
+      )}
+      {isScreeningFailed(application) && (
+        <div className="mt-4">
+          <AlertBanner type="warning" message="Automatic AI scoring could not finish for this application. You can score it by hand below." />
+        </div>
+      )}
 
       <Card className="mt-4">
         <CardContent className="pt-6">
@@ -870,6 +786,8 @@ export default function InterviewRoom() {
               })
             )}
             stageLinks={stageLinks}
+            linkState={location.state}
+            linkReplace
             currentStageKey={application?.currentStageKey}
             onStartStage={handleStartNextStage}
             startingStageKey={startingStage ? application?.currentStageKey : null}
@@ -985,9 +903,9 @@ export default function InterviewRoom() {
             <CardContent>
               {/* Candidate Availability Section */}
               {interview.candidateAvailability?.preferredDate ? (
-                <div className="mb-4 rounded-lg border border-[#d21e2b]/30 bg-[#d21e2b]/5 p-3.5 text-sm">
+                <div className="mb-4 rounded-lg border border-brand/30 bg-brand/5 p-3.5 text-sm">
                   <div className="flex items-center justify-between font-semibold text-slate-900 mb-1">
-                    <span className="flex items-center gap-1.5 text-[#d21e2b]">
+                    <span className="flex items-center gap-1.5 text-brand">
                       <CalendarIcon className="h-4 w-4" />
                       Candidate Availability Submitted
                     </span>
@@ -1028,7 +946,7 @@ export default function InterviewRoom() {
                       <button
                         type="button"
                         onClick={handleApplyCandidateAvailability}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-[#d21e2b] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#d21e2b]/90 shadow-sm"
+                        className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand/90 shadow-sm"
                       >
                         <Clock className="h-3.5 w-3.5" />
                         Pre-fill & Use Candidate's Preferred Time
@@ -1038,7 +956,7 @@ export default function InterviewRoom() {
                       type="button"
                       onClick={handleRequestAvailability}
                       disabled={requestingAvailability}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[#d21e2b]/40 bg-white px-2.5 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-brand/40 bg-white px-2.5 py-1.5 text-xs font-medium text-brand hover:bg-brand/5 disabled:opacity-50"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       {requestingAvailability ? 'Sending...' : 'Request Again'}
@@ -1055,7 +973,7 @@ export default function InterviewRoom() {
                     type="button"
                     onClick={handleRequestAvailability}
                     disabled={requestingAvailability}
-                    className="inline-flex items-center gap-1.5 shrink-0 rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 shrink-0 rounded-md border border-brand/40 bg-white px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/5 disabled:opacity-50"
                   >
                     <Mail className="h-3.5 w-3.5" />
                     {requestingAvailability ? 'Sending...' : 'Send Request Email'}
@@ -1068,13 +986,14 @@ export default function InterviewRoom() {
                   {interview.meetingStart && (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-semibold text-slate-900 border-b pb-2.5">
                       <span className="flex items-center gap-1.5">
-                        <CalendarIcon className="h-4 w-4 text-[#d21e2b]" />
-                        {dayjs(interview.meetingStart).format('dddd, MMMM D, YYYY')}
+                        <CalendarIcon className="h-4 w-4 text-brand" />
+                        {formatInZone(interview.meetingStart, zone, 'dddd, MMMM D, YYYY')}
                       </span>
                       <span className="flex items-center gap-1.5 text-slate-700">
                         <Clock className="h-4 w-4 text-slate-400" />
-                        {dayjs(interview.meetingStart).format('h:mm A')}
-                        {interview.meetingEnd ? ` – ${dayjs(interview.meetingEnd).format('h:mm A')}` : ''}
+                        {formatInZone(interview.meetingStart, zone, 'h:mm A')}
+                        {interview.meetingEnd ? ` – ${formatInZone(interview.meetingEnd, zone, 'h:mm A')}` : ''}
+                        <span className="ml-1 text-xs font-normal text-slate-500">({zone})</span>
                       </span>
                     </div>
                   )}
@@ -1108,11 +1027,11 @@ export default function InterviewRoom() {
                     <input
                       type="text" value={meetingLinkInput} onChange={(e) => setMeetingLinkInput(e.target.value)}
                       placeholder="Paste an existing meeting link..."
-                      className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]"
+                      className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                     />
                     <button
                       type="button" onClick={() => handleCreateMeeting(false)} disabled={creatingMeeting}
-                      className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-sm font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Use Link
                     </button>
@@ -1180,6 +1099,7 @@ export default function InterviewRoom() {
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">All times are in {zone}.</p>
                     {(() => {
                       const toMins = (t) => {
                         if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
@@ -1199,15 +1119,15 @@ export default function InterviewRoom() {
                       <label htmlFor="additional-invitees" className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         Additional Invitees <span className="normal-case font-normal text-slate-400">(optional)</span>
                       </label>
-                      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:border-[#d21e2b] focus-within:ring-1 focus-within:ring-[#d21e2b]">
+                      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
                         {additionalInvitees.map((email) => (
-                          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-[#d21e2b]/10 px-2 py-1 text-xs font-medium text-[#a41420]">
+                          <span key={email} className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-1 text-xs font-medium text-brand-dark">
                             {email}
                             <button
                               type="button"
                               aria-label={`Remove ${email}`}
                               onClick={() => setAdditionalInvitees((current) => current.filter((item) => item !== email))}
-                              className="text-[#a41420]/70 hover:text-[#a41420]"
+                              className="text-brand-dark/70 hover:text-brand-dark"
                             >
                               ×
                             </button>
@@ -1240,7 +1160,7 @@ export default function InterviewRoom() {
                   </div>
                   <button
                     type="button" onClick={() => handleCreateMeeting(true)} disabled={creatingMeeting}
-                    className="rounded-md bg-[#d21e2b] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {creatingMeeting ? 'Creating...' : 'Create & Invite via Google Calendar'}
                   </button>
@@ -1260,7 +1180,7 @@ export default function InterviewRoom() {
                 ) : (
                   <button
                     type="button" onClick={handleConfirmConsent} disabled={confirmingConsent}
-                    className="rounded-md bg-[#d21e2b] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {confirmingConsent ? 'Confirming...' : 'Confirm Candidate Consent'}
                   </button>
@@ -1279,15 +1199,15 @@ export default function InterviewRoom() {
           </CardHeader>
           <CardContent>
             {interview.artifactFileUrl ? (
-              <a href={interview.artifactFileUrl} target="_blank" rel="noreferrer" className="text-sm text-[#d21e2b] hover:underline">
+              <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm text-brand hover:underline">
                 View uploaded artifact
-              </a>
+              </button>
             ) : (
               <p className="text-sm text-muted-foreground">No artifact uploaded yet.</p>
             )}
             <input
-              type="file" onChange={handleUploadArtifact} disabled={uploadingArtifact}
-              className="mt-2 cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+              type="file" accept="application/pdf,.pdf" onChange={handleUploadArtifact} disabled={uploadingArtifact}
+              className="mt-2 cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-brand/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand hover:file:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </CardContent>
         </Card>
@@ -1328,7 +1248,7 @@ export default function InterviewRoom() {
                 type="button"
                 onClick={handleSavePassFail}
                 disabled={!passFailResult || hasActiveCalendarMeeting || passFailSaving}
-                className="ml-2 rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="ml-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {passFailSaving ? 'Saving...' : 'Save Decision'}
               </button>
@@ -1388,7 +1308,7 @@ export default function InterviewRoom() {
                 type="button"
                 onClick={handleFetchTranscript}
                 disabled={isTranscriptDisabled || fetchingTranscript || !interview.meetingUri}
-                className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-sm font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
                 title={isTranscriptDisabled ? 'Transcript is not needed for this step' : !interview.meetingUri ? 'Set a meeting first' : ''}
               >
                 {fetchingTranscript ? 'Fetching...' : 'Fetch Transcript'}
@@ -1399,7 +1319,7 @@ export default function InterviewRoom() {
                 onChange={handleUploadTranscript}
                 disabled={isTranscriptDisabled || uploadingTranscript}
                 title={isTranscriptDisabled ? 'Transcript is not needed for this step' : ''}
-                className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+                className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-brand/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand hover:file:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
           </CardContent>
@@ -1419,9 +1339,9 @@ export default function InterviewRoom() {
                 </div>
                 {interview.artifactFileUrl && (
                   <div>
-                    <a href={interview.artifactFileUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-[#d21e2b] hover:underline">
+                    <button type="button" onClick={() => openStoredFile('artifact', interview._id)} className="text-sm font-medium text-brand hover:underline">
                       View Uploaded Offer Letter
-                    </a>
+                    </button>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">
@@ -1431,7 +1351,7 @@ export default function InterviewRoom() {
                   <button
                     type="button"
                     onClick={() => setShowReupload(true)}
-                    className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-xs font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5"
+                    className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/5"
                   >
                     Replace / Re-upload Offer Letter
                   </button>
@@ -1461,7 +1381,7 @@ export default function InterviewRoom() {
                       }
                       setOfferFile(selected);
                     }}
-                    className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-[#d21e2b]/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                    className="cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-brand/40 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand hover:file:bg-brand/5"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -1469,7 +1389,7 @@ export default function InterviewRoom() {
                     type="button"
                     onClick={handleSendOffer}
                     disabled={sendingOffer || !offerFile || hasActiveCalendarMeeting}
-                    className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {sendingOffer
                       ? 'Sending...'
@@ -1509,7 +1429,7 @@ export default function InterviewRoom() {
         <div className="mt-4">
           <button
             type="button" onClick={handleRunScoring} disabled={!canScore || scoring}
-            className="rounded-md bg-[#d21e2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {scoring ? 'Scoring...' : interview.scores?.length ? 'Re-run AI Scoring' : 'Run AI Scoring'}
           </button>
@@ -1533,7 +1453,6 @@ export default function InterviewRoom() {
             passThreshold={stageConfig?.passThreshold}
             meetingActive={hasActiveCalendarMeeting}
             onUpdated={(updatedInterview, stageAverage, passed, nextInterviewId, wasAlreadyApproved, updatedApplication) => {
-              console.log('[DEBUG - FRONTEND ONUPDATED]', { status: updatedInterview.status, passed, nextInterviewId, wasAlreadyApproved, updatedApplication });
               setInterview(updatedInterview);
               if (updatedApplication) {
                 setApplication(updatedApplication);
@@ -1541,7 +1460,7 @@ export default function InterviewRoom() {
               if (updatedInterview.status === 'approved') {
                 if (passed !== false && nextInterviewId) {
                   toast.success('Stage passed! Moving to next stage...');
-                  navigate(`/interview/${nextInterviewId}`);
+                  openInterview(nextInterviewId);
                 } else {
                   load();
                 }
@@ -1559,7 +1478,7 @@ export default function InterviewRoom() {
           <CardContent>
             <button
               type="button" onClick={handleRecompute} disabled={recomputing}
-              className="rounded-md border border-[#d21e2b]/40 bg-white px-3 py-1.5 text-sm font-medium text-[#d21e2b] hover:bg-[#d21e2b]/5 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-brand/40 bg-white px-3 py-1.5 text-sm font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {recomputing ? 'Recomputing...' : 'Recompute Results'}
             </button>
@@ -1625,7 +1544,7 @@ export default function InterviewRoom() {
                   type="file"
                   accept="application/pdf,.pdf"
                   onChange={(e) => setEditCandidateResumeFile(e.target.files?.[0] || null)}
-                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-[#d21e2b]/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-[#d21e2b] hover:file:bg-[#d21e2b]/5"
+                  className="cursor-pointer py-1.5 file:mr-3 file:cursor-pointer file:rounded file:border file:border-brand/40 file:bg-white file:px-2 file:py-0.5 file:text-xs file:font-medium file:text-brand hover:file:bg-brand/5"
                 />
               </div>
             </div>
@@ -1640,7 +1559,7 @@ export default function InterviewRoom() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditCandidateOpen(false)} disabled={savingCandidate}>Cancel</Button>
-              <Button type="submit" disabled={savingCandidate} className="bg-[#d21e2b] text-white hover:bg-[#d21e2b]/90">
+              <Button type="submit" disabled={savingCandidate} className="bg-brand text-white hover:bg-brand/90">
                 {savingCandidate ? 'Saving…' : 'Save changes'}
               </Button>
             </DialogFooter>

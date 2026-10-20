@@ -3,6 +3,7 @@ const User = require('../models/User');
 const { USER_ROLES } = require('../utils/constants');
 const { asyncHandler, sanitizeUser } = require('../utils/helpers');
 const logger = require('../utils/logger');
+const { revokeAllForUser } = require('../services/sessionService');
 
 /**
  * GET /api/users
@@ -138,7 +139,9 @@ const update = asyncHandler(async (req, res) => {
     targetUser.role = role;
   }
 
+  let endSessions = false; // sign the person out everywhere when their access is cut or their password changes
   if (active !== undefined) {
+    if (!Boolean(active) && targetUser.active) endSessions = true;
     targetUser.active = Boolean(active);
   }
 
@@ -148,9 +151,11 @@ const update = asyncHandler(async (req, res) => {
     }
     targetUser.passwordHash = await bcrypt.hash(password, 10);
     targetUser.passwordChangedAt = new Date();
+    endSessions = true;
   }
 
   await targetUser.save();
+  if (endSessions) await revokeAllForUser(targetUser._id);
   logger.info(`[Users] Updated user ${targetUser.email} (${targetUser.role}) by ${req.user.email} (${req.user.role})`);
   res.json({ user: sanitizeUser(targetUser), message: 'User updated successfully.' });
 });
@@ -186,6 +191,7 @@ const remove = asyncHandler(async (req, res) => {
   }
 
   await User.findByIdAndDelete(req.params.id);
+  await revokeAllForUser(targetUser._id);
   logger.info(`[Users] Deleted user ${targetUser.email} (${targetUser.role}) by ${req.user.email} (${req.user.role})`);
   res.json({ message: 'User deleted successfully.' });
 });

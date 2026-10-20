@@ -16,6 +16,16 @@ const applicationSchema = new mongoose.Schema({
     notes: String,
     submittedAt: Date,
   },
+  // Background AI screening of a public application (see services/applicationProcessor.js).
+  // Only set on applications that came through the public form.
+  screeningJob: {
+    status: { type: String, enum: ['pending', 'processing', 'completed', 'failed'] },
+    attempts: { type: Number, default: 0 },
+    lockedAt: Date,                  // when the current attempt started (detects a job left behind by a restart)
+    completedAt: Date,
+    lastError: String,
+    confirmationEmailSentAt: Date,   // so a retry never sends the confirmation twice
+  },
   stageProgress: [{
     stageKey: String,
     status: { type: String, enum: STAGE_PROGRESS_STATUS, default: 'pending' },
@@ -46,7 +56,12 @@ const applicationSchema = new mongoose.Schema({
   // Offer letters are application-level documents, not pipeline stages.
   offerLetterUrl: String,
   offerLetterPublicId: String,
+  offerLetterFileName: String,
+  offerLetterFileSize: Number,    // bytes, before any compression
+  offerLetterFileMimeType: String,
   offerLetterUploadedAt: Date,
+  offerLetterTemplateKey: String,                          // set when the letter was made from a template (null for an uploaded PDF)
+  offerLetterFields: mongoose.Schema.Types.Mixed,          // the values filled into that template
   offerLetterDeliveryStatus: { type: String, enum: ['pending', 'sent'] },
   offerLetterSentAt: Date,
 

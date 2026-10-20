@@ -37,18 +37,18 @@ export default function ResetPassword() {
           <div>
             <label htmlFor="new-password" className="block text-sm font-medium text-foreground">New password</label>
             <input id="new-password" type="password" minLength="8" required autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]" />
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
           <div>
             <label htmlFor="confirm-password" className="block text-sm font-medium text-foreground">Confirm new password</label>
             <input id="confirm-password" type="password" minLength="8" required autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-[#d21e2b] focus:outline-none focus:ring-1 focus:ring-[#d21e2b]" />
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
-          <button type="submit" disabled={submitting} className="w-full rounded-md bg-[#d21e2b] px-3 py-2 text-sm font-medium text-white hover:bg-[#d21e2b]/90 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="submit" disabled={submitting} className="w-full rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50">
             {submitting ? 'Updating...' : 'Update password'}
           </button>
         </form>
-        <Link to="/login" className="mt-5 block text-center text-sm font-medium text-[#d21e2b] hover:underline">Back to sign in</Link>
+        <Link to="/login" className="mt-5 block text-center text-sm font-medium text-brand hover:underline">Back to sign in</Link>
       </section>
     </main>
   );

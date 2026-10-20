@@ -12,7 +12,11 @@ const { FINAL_DECISIONS } = require('../utils/constants');
 const { computeStageAverage, isStagePassed, computeApplicationResult, rankApplications } = require('../services/scoringEngine');
 const slackNotifier = require('../services/slackNotifier');
 const emailNotifier = require('../services/emailNotifier');
-const { uploadBuffer, destroyFile } = require('../config/cloudinary');
+const { enqueueEmail, cancelPendingEmails } = require('../services/emailQueue');
+const { uploadFile, deleteFile } = require('../services/fileStorage');
+const { assertPdfUpload } = require('../utils/uploadValidation');
+const { generateOfferLetter } = require('../services/offerLetterService');
+const { listTemplates } = require('../services/offerLetterTemplates');
 
 /**
  * Recomputes an application's weightedTotal / allGatesPassed / disposition
@@ -183,7 +187,6 @@ const approve = asyncHandler(async (req, res) => {
     const nextInterviewId = await getOrCreateNextInterview(application, requisitionForType, interview.stageKey, req.user._id);
     await recomputeAndPersist(application, requisitionForType, req.user._id, 'Recomputed after status-only stage approval.');
 
-    console.log('[DEBUG - BACKEND APPROVE (STATUS ONLY)]', { interviewId: interview._id, passed: true, nextInterviewId });
     logger.info(`[Scoring] Marked status-only interview ${interview._id} approved (no scores). nextInterviewId=${nextInterviewId}`);
     return res.json({ interview, stageAverage: null, passed: true, application, nextInterviewId });
   }
@@ -221,7 +224,6 @@ const approve = asyncHandler(async (req, res) => {
     if (isManual && interview.scores && interview.scores.length > 0) {
       interview.status = 'scored';
     } else {
-      console.log('[DEBUG - BACKEND APPROVE BLOCKED]', { interviewId: interview._id, status: interview.status, scores: interview.scores });
       throw new ValidationError(['status'], 'Interview must be scored before it can be approved.');
     }
   }
@@ -261,7 +263,6 @@ const approve = asyncHandler(async (req, res) => {
 
   const result = await recomputeAndPersist(application, requisitionForType, req.user._id, 'Recomputed after stage approval.');
 
-  console.log('[DEBUG - BACKEND APPROVE SUCCESS]', { interviewId: interview._id, stageAverage, passed, nextInterviewId, weightedTotal: result.weightedTotal, disposition: result.disposition });
   logger.info(`[Scoring] Approved interview ${interview._id}. stageAverage=${stageAverage} passed=${passed} weightedTotal=${result.weightedTotal} disposition=${result.disposition} nextInterviewId=${nextInterviewId}`);
   res.json({ interview, stageAverage, passed, application, nextInterviewId });
 });
@@ -279,7 +280,6 @@ const override = asyncHandler(async (req, res) => {
   assertRequisitionNotClosed(requisition, 'override interview scores');
 
   const { overrides } = req.body;
-  console.log('[DEBUG - BACKEND OVERRIDE RECEIVED]', { interviewId: req.params.id, overrides, existingScoresCount: interview.scores?.length || 0 });
 
   if (!Array.isArray(overrides) || overrides.length === 0) {
     throw new ValidationError(['overrides'], 'overrides must be a non-empty array of { attributeId, approvedScore, reason }.');
@@ -328,7 +328,6 @@ const override = asyncHandler(async (req, res) => {
 
   interview.markModified('scores');
   await interview.save();
-  console.log('[DEBUG - BACKEND OVERRIDE SAVED]', { interviewId: interview._id, scoresCount: interview.scores.length, status: interview.status });
   logger.info(`[Scoring] Overrode ${overrides.length} score(s) on interview ${interview._id}.`);
   res.json({ interview });
 });
@@ -399,10 +398,43 @@ const decision = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/scoring/offer-letter-templates
+ * The offer letter templates staff can choose from, with the fields each one needs and
+ * whether its Word file is present on this server.
+ */
+const getOfferLetterTemplates = asyncHandler(async (req, res) => {
+  res.json({ templates: listTemplates() });
+});
+
+/**
+ * POST /api/scoring/application/:id/offer-letter-preview   { templateKey, fields }
+ * Makes the letter exactly as it would be sent and returns the PDF (base64), without storing or emailing anything.
+ */
+const previewOfferLetter = asyncHandler(async (req, res) => {
+  const application = await Application.findById(req.params.id).populate('candidateId', 'name');
+  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
+  if (application.finalDecision !== 'hired') {
+    throw new ValidationError(['finalDecision'], 'An offer letter can only be made after the candidate is marked Hired.');
+  }
+  const requisition = await Requisition.findById(application.requisitionId);
+  assertRequisitionNotClosed(requisition, 'make an offer letter');
+
+  const generated = await generateOfferLetter({
+    templateKey: req.body?.templateKey,
+    fields: req.body?.fields,
+    candidateName: application.candidateId?.name,
+  });
+  // JSON (not raw PDF bytes) so the app's API client keeps its normal error messages and session renewal.
+  res.set('Cache-Control', 'no-store');
+  res.json({ fileName: generated.fileName, pdfBase64: generated.pdf.toString('base64') });
+});
+
+/**
  * POST /api/scoring/application/:id/send-offer-letter
- * Uploads a signed offer document for a hired candidate and sends its secure
- * link through the server email service.  A non-fatal email failure is
- * returned to the browser so it can use its configured EmailJS fallback.
+ * Stores the offer letter for a hired candidate and emails it. The letter is either a PDF
+ * uploaded by staff (multipart, field "offerLetter") or made from a template on the server
+ * (JSON { templateKey, fields }). A non-fatal email failure is reported in the response
+ * (emailQueued / emailReason) and does not undo the upload.
  */
 const sendOfferLetter = asyncHandler(async (req, res) => {
   const application = await Application.findById(req.params.id).populate('candidateId', 'name email');
@@ -415,46 +447,75 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
   const requisition = await Requisition.findById(application.requisitionId);
   assertRequisitionNotClosed(requisition, 'send an offer letter');
 
-  if (!req.file) {
-    throw new ValidationError(['offerLetter'], 'Please upload the offer letter as a PDF.');
+  // The letter is either the PDF staff uploaded, or one made from a template (the template wins if both arrive).
+  let file = req.file;
+  let template = null;
+  if (req.body?.templateKey) {
+    const generated = await generateOfferLetter({
+      templateKey: req.body.templateKey,
+      fields: req.body.fields,
+      candidateName: application.candidateId?.name,
+    });
+    file = { buffer: generated.pdf, originalname: generated.fileName, size: generated.pdf.length, mimetype: 'application/pdf' };
+    template = { key: generated.templateKey, fields: generated.fields };
   }
 
-  const filename = req.file.originalname || '';
-  const isPdf = req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(filename);
-  if (!isPdf) {
-    throw new ValidationError(['offerLetter'], 'Only PDF offer letters can be uploaded.');
-  }
-  if (req.file.size > 5 * 1024 * 1024) {
-    throw new ValidationError(['offerLetter'], 'The offer letter must be 5 MB or smaller.');
+  assertPdfUpload(file, { field: 'offerLetter', label: 'offer letter' });
+
+  // Upload the NEW file first and delete the old one only after the new one is saved, so a failed
+  // upload never leaves the application pointing at a file that has already been deleted.
+  const previousPublicId = application.offerLetterPublicId;
+  const upload = await uploadFile({ file, folder: 'offer-letters' });
+
+  application.offerLetterTemplateKey = template ? template.key : null;
+  application.offerLetterFields = template ? template.fields : null;
+  application.offerLetterUrl = upload.url;
+  application.offerLetterPublicId = upload.publicId;
+  application.offerLetterFileName = upload.name;
+  application.offerLetterFileSize = upload.size;
+  application.offerLetterFileMimeType = upload.mimeType;
+  application.offerLetterUploadedAt = new Date();
+
+  // The delivery status stays "pending" until the email queue really sends the email
+  // (it then updates it to "sent"). Saved BEFORE queueing so that update cannot be overwritten.
+  application.offerLetterDeliveryStatus = 'pending';
+  application.offerLetterSentAt = null;
+  try {
+    await application.save();
+  } catch (err) {
+    // The new file was never recorded, so remove it; the previous letter is still in place.
+    await deleteFile(upload.publicId).catch((cleanupErr) => logger.warn(`[Scoring] Could not remove unsaved offer letter ${upload.publicId}: ${cleanupErr.message}`));
+    throw err;
   }
 
-  if (application.offerLetterPublicId) {
+  // The new letter is saved, so the previous file is no longer needed.
+  if (previousPublicId && previousPublicId !== upload.publicId) {
     try {
-      await destroyFile(application.offerLetterPublicId);
+      await deleteFile(previousPublicId);
     } catch (err) {
       logger.warn(`[Scoring] Could not remove previous offer letter for ${application._id}: ${err.message}`);
     }
   }
 
-  const upload = await uploadBuffer(req.file.buffer, {
-    folder: 'offer-letters',
-    filename: `offer-${application._id}-${Date.now()}.pdf`,
-  });
-
-  application.offerLetterUrl = upload.secureUrl;
-  application.offerLetterPublicId = upload.publicId;
-  application.offerLetterUploadedAt = new Date();
-
+  // The email is sent in the background. Production attaches the PDF itself (the queue keeps it
+  // until sent); other environments send a link.
   const candidate = application.candidateId;
-  const emailResult = await emailNotifier.sendOfferEmail({
-    candidateEmail: candidate?.email,
-    candidateName: candidate?.name,
-    requisitionTitle: requisition.title,
-    offerLetterUrl: upload.secureUrl,
+  const emailResult = await enqueueEmail({
+    type: 'offer-letter',
+    to: candidate?.email,
+    payload: {
+      candidateEmail: candidate?.email,
+      candidateName: candidate?.name,
+      requisitionTitle: requisition.title,
+      offerLetterUrl: upload.url,
+    },
+    attachment: emailNotifier.shouldAttachOfferLetter()
+      ? { filename: file.originalname, content: file.buffer, contentType: 'application/pdf' }
+      : undefined,
+    related: { kind: 'offer-letter', applicationId: application._id },
   });
-  application.offerLetterDeliveryStatus = emailResult.sent ? 'sent' : 'pending';
-  application.offerLetterSentAt = emailResult.sent ? new Date() : null;
-  await application.save();
+  // A resend replaces any earlier offer email that is still waiting or retrying, so the candidate gets one.
+  if (emailResult.queued) await cancelPendingEmails({ type: 'offer-letter', applicationId: application._id, exceptJobId: emailResult.jobId });
 
   await AuditLog.create({
     action: 'offer_letter_sent',
@@ -463,40 +524,12 @@ const sendOfferLetter = asyncHandler(async (req, res) => {
     applicationId: application._id,
     targetType: 'application',
     targetId: application._id.toString(),
-    newValue: { offerLetterUrl: upload.secureUrl, emailSent: emailResult.sent },
-    reason: 'Offer letter uploaded for a hired candidate.',
+    newValue: { offerLetterUrl: upload.url, emailQueued: emailResult.queued, ...(template ? { templateKey: template.key } : {}) },
+    reason: template ? 'Offer letter made from a template for a hired candidate.' : 'Offer letter uploaded for a hired candidate.',
   });
 
-  logger.info(`[Scoring] Offer letter uploaded for application ${application._id}; server email sent=${emailResult.sent}.`);
-  res.json({ application, emailSent: emailResult.sent, emailReason: emailResult.reason });
-});
-
-/** Records that the browser EmailJS fallback delivered the current offer letter. */
-const recordOfferLetterDelivery = asyncHandler(async (req, res) => {
-  const application = await Application.findById(req.params.id);
-  if (!application) return res.status(404).json({ error: 'NOT_FOUND', message: 'Application not found.' });
-  if (!application.offerLetterUrl) {
-    throw new ValidationError(['offerLetter'], 'Upload an offer letter before recording delivery.');
-  }
-  if (req.body?.deliveryStatus !== 'sent') {
-    throw new ValidationError(['deliveryStatus'], 'deliveryStatus must be sent.');
-  }
-
-  application.offerLetterDeliveryStatus = 'sent';
-  application.offerLetterSentAt = new Date();
-  await application.save();
-  await AuditLog.create({
-    action: 'offer_letter_sent',
-    userId: req.user._id,
-    requisitionId: application.requisitionId,
-    applicationId: application._id,
-    targetType: 'application',
-    targetId: application._id.toString(),
-    newValue: { offerLetterUrl: application.offerLetterUrl, emailSent: true, deliveryMethod: 'browser_fallback' },
-    reason: 'Offer letter sent through the browser email fallback.',
-  });
-
-  res.json({ application });
+  logger.info(`[Scoring] Offer letter ${template ? `made from template "${template.key}"` : 'uploaded'} for application ${application._id}; email queued=${emailResult.queued}.`);
+  res.json({ application, emailQueued: emailResult.queued, emailReason: emailResult.reason });
 });
 
 const passFail = asyncHandler(async (req, res) => {
@@ -602,7 +635,6 @@ const passFail = asyncHandler(async (req, res) => {
     }.`
   );
 
-  console.log('[DEBUG - BACKEND PASSFAIL]', { interviewId: interview._id, passed, nextInterviewId });
   logger.info(
     `[Scoring] HR marked pass_fail interview ${interview._id} ` +
     `passed=${passed} weightedTotal=${result.weightedTotal} ` +
@@ -716,5 +748,5 @@ const overrideInitialScreening = asyncHandler(async (req, res) => {
   res.json({ application, nextInterviewId });
 });
 
-module.exports = { approve, override, recompute, decision, sendOfferLetter, recordOfferLetterDelivery, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
+module.exports = { approve, override, recompute, decision, sendOfferLetter, getOfferLetterTemplates, previewOfferLetter, passFail, overrideInitialScreening, recomputeAndPersist, getOrCreateNextInterview };
 
