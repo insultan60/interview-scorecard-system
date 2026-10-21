@@ -19,6 +19,7 @@ const { rankApplications } = require('../services/scoringEngine');
 const { enqueueApplication } = require('../services/applicationProcessor');
 const { uploadFile, deleteFile } = require('../services/fileStorage');
 const { assertPdfUpload } = require('../utils/uploadValidation');
+const { cleanRichText } = require('../utils/sanitizeRichText');
 const { callClaude, getModelIds } = require('../services/claudeClient');
 const { getCaptchaConfig, verifyCaptcha } = require('../services/captchaService');
 const { destroyFileIfUnreferenced } = require('../services/fileReferenceCleanup');
@@ -337,9 +338,11 @@ function hasApplicationDeadlinePassed(deadline) {
 const create = asyncHandler(async (req, res) => {
   const {
     title, employmentType, fullTimeDetails, partTimeDetails, contractDetails, internshipDetails, temporaryDetails,
-    workplaceType, officeLocation, remoteRegion, jobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
+    workplaceType, officeLocation, remoteRegion, jobDescription: rawJobDescription, pipelineTemplateId, hireThreshold, maybeThreshold,
     initialScreeningCriteria, questionnaire, interviewAvailability, applicationDeadline, aiScreeningEnabled, status, departmentId,
   } = req.body;
+  // The description is rich text shown to candidates and staff: only the formatting the editor produces is kept.
+  const jobDescription = cleanRichText(rawJobDescription);
 
   const missingFields = [];
   if (typeof title !== 'string' || !title.trim()) missingFields.push('title');
@@ -688,7 +691,7 @@ const update = asyncHandler(async (req, res) => {
     // Keeps older API clients working while the UI uses structured workplace fields.
     requisition.location = location;
   }
-  if (jobDescription !== undefined) requisition.jobDescription = jobDescription;
+  if (jobDescription !== undefined) requisition.jobDescription = cleanRichText(jobDescription);
   if (hireThreshold !== undefined) requisition.hireThreshold = hireThreshold;
   if (maybeThreshold !== undefined) requisition.maybeThreshold = maybeThreshold;
   if (initialScreeningCriteria !== undefined) {
