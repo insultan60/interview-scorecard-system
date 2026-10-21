@@ -35,6 +35,8 @@ import 'react-quill-new/dist/quill.snow.css';
 import { formatDate } from '../utils/formatters';
 import screeningCriteriaConfig from '../constants/screeningCriteria.json';
 import { goBackToJob } from '../lib/interviewNavigation';
+import { useAuth } from '../context/AuthContext';
+import { canDeleteRecords } from '../lib/permissions';
 
 const PAGE_SIZE = 10;
 const JOB_TITLE_MIN_LENGTH = 5;
@@ -101,6 +103,8 @@ const EMPTY_FORM = {
 
 export default function Requisitions() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canDelete = canDeleteRecords(user); // only owners and admins may delete jobs
   const location = useLocation();
   const { id: editId } = useParams();
   const [searchParams] = useSearchParams();
@@ -829,13 +833,15 @@ export default function Requisitions() {
                                     <ChevronRight className="h-4 w-4 mr-2" />
                                     View Details
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={(e) => { e.stopPropagation(); setDeleteFor(r); }}
-                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete Job Opening
-                                  </DropdownMenuItem>
+                                  {canDelete && (
+                                    <DropdownMenuItem
+                                      onClick={(e) => { e.stopPropagation(); setDeleteFor(r); }}
+                                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete Job Opening
+                                    </DropdownMenuItem>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                               <Button
