@@ -5,6 +5,8 @@ import {
   Plus, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
+import { canDeleteRecords } from '../lib/permissions';
 import api from '../hooks/useApi';
 import { candidatesListOptions, requisitionsListOptions } from '../hooks/queries';
 import { Card, CardContent } from '@/components/ui/card';
@@ -113,6 +115,8 @@ function parseCsv(text) {
 }
 
 export default function Candidates() {
+  const { user } = useAuth();
+  const canDelete = canDeleteRecords(user); // only owners and admins may delete candidates
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -762,10 +766,12 @@ export default function Candidates() {
                               <Pencil />
                               Edit candidate
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDeleteFor(c)} className="text-red-600 focus:text-red-600">
-                              <Trash2 />
-                              Delete candidate
-                            </DropdownMenuItem>
+                            {canDelete && (
+                              <DropdownMenuItem onClick={() => setDeleteFor(c)} className="text-red-600 focus:text-red-600">
+                                <Trash2 />
+                                Delete candidate
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

@@ -3,6 +3,8 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Calendar as CalendarIcon, ScrollText, SlidersHorizontal, X } from 'lucide-react';
 import api from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { canListUsers } from '../lib/permissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -38,6 +40,8 @@ const EMPTY_FILTERS = { requisitionId: '', applicationId: '', userId: '', action
 const ALL = '__all__'; // Radix Select forbids an empty-string item value
 
 export default function AuditLog() {
+  const { user } = useAuth();
+  const showUserFilter = canListUsers(user); // the users list is owner/admin only on the server
   const [requisitions, setRequisitions] = useState([]);
   const [users, setUsers] = useState([]);
   const [applicationOptions, setApplicationOptions] = useState([]);
@@ -69,7 +73,7 @@ export default function AuditLog() {
 
   useEffect(() => {
     api.get('/requisitions').then((res) => setRequisitions(res.data.requisitions));
-    api.get('/users').then((res) => setUsers(res.data.users));
+    if (showUserFilter) api.get('/users').then((res) => setUsers(res.data.users));
     load(1);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -223,16 +227,18 @@ export default function AuditLog() {
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">User</Label>
-              <Select value={filters.userId || ALL} onValueChange={(v) => updateFilter('userId', v)}>
-                <SelectTrigger><SelectValue placeholder="All users" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All users</SelectItem>
-                  {users.map((u) => <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {showUserFilter && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">User</Label>
+                <Select value={filters.userId || ALL} onValueChange={(v) => updateFilter('userId', v)}>
+                  <SelectTrigger><SelectValue placeholder="All users" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All users</SelectItem>
+                    {users.map((u) => <SelectItem key={u._id} value={u._id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Date range</Label>

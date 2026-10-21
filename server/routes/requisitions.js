@@ -1,6 +1,6 @@
 const express = require('express');
 const requisitionController = require('../controllers/requisitionController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { uploadPdf } = require('../middleware/upload');
 const { publicApplyLimiter } = require('../middleware/rateLimit');
 
@@ -20,7 +20,8 @@ router.get('/', requisitionController.list);
 router.get('/:id/scorecard', requisitionController.getScorecard);
 router.get('/:id', requisitionController.getOne);
 router.patch('/:id', requisitionController.update);
-router.delete('/:id', requisitionController.remove);
+// Deleting a job also deletes its candidates' applications, scores, interviews and files, so only owners and admins may.
+router.delete('/:id', requireRole('owner', 'admin'), requisitionController.remove);
 router.post('/:id/duplicate', requisitionController.duplicate);
 router.post('/:id/generate-scorecard', requisitionController.generateScorecard);
 router.post('/:id/clone-scorecard', requisitionController.cloneScorecard);

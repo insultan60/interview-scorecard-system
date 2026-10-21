@@ -34,6 +34,8 @@ import { formatDate, formatDisposition, formatScore } from '../utils/formatters'
 import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
 import OfferLetterDialog from '../components/OfferLetterDialog.jsx';
 import { fromJobState } from '../lib/interviewNavigation';
+import { useAuth } from '../context/AuthContext';
+import { canDeleteRecords } from '../lib/permissions';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -79,6 +81,8 @@ function setStoredPageSize(size) {
 export default function RequisitionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canDelete = canDeleteRecords(user); // only owners and admins may delete jobs or remove candidates
   const [searchParams] = useSearchParams();
   const candidateIdFromUrl = searchParams.get('candidateId');
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
@@ -535,16 +539,18 @@ export default function RequisitionDetail() {
           Copy Candidate Apply Link
         </Button>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setDeleteOpen(true)}
-          className="h-8 text-xs gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
-        >
-          <Trash2 className="h-3.5 w-3.5 text-red-600" />
-          Delete Job Opening
-        </Button>
+        {canDelete && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setDeleteOpen(true)}
+            className="h-8 text-xs gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-red-600" />
+            Delete Job Opening
+          </Button>
+        )}
 
         {/* <Button
           type="button"
@@ -1031,16 +1037,18 @@ export default function RequisitionDetail() {
                               >
                                 <Play className="h-4 w-4 fill-current" />
                               </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                title="Remove candidate from job opening"
-                                className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => setRemoveCandidateApp(app)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {canDelete && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  title="Remove candidate from job opening"
+                                  className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                  onClick={() => setRemoveCandidateApp(app)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
