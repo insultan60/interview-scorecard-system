@@ -6,6 +6,8 @@ import {
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import api from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { canSeeAiSpend } from '../lib/permissions';
 import { fetchRequisitionsList, fetchSettingsList } from '../hooks/queries';
 import StatsCard from '../components/StatsCard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -34,6 +36,8 @@ function settingValue(settings, key, fallback) {
  * against the configured cap, and the most recent audit activity.
  */
 export default function Dashboard() {
+  const { user } = useAuth();
+  const showAiSpend = canSeeAiSpend(user); // AI spend and the cap are owner/admin only; asking for them as anyone else is refused
   const [loading, setLoading] = useState(true);
   const [openRequisitions, setOpenRequisitions] = useState([]);
   const [candidatesInFlight, setCandidatesInFlight] = useState(0);
@@ -49,9 +53,9 @@ export default function Dashboard() {
       try {
         const [requisitionsRes, usageRes, auditRes, settingsRes] = await Promise.all([
           fetchRequisitionsList('open'), // from the shared cache when it is still fresh
-          api.get('/settings/ai-usage'),
+          showAiSpend ? api.get('/settings/ai-usage') : null,
           api.get('/audit', { params: { limit: 6 } }),
-          fetchSettingsList(),
+          showAiSpend ? fetchSettingsList() : null,
         ]);
         if (cancelled) return;
 
@@ -65,18 +69,22 @@ export default function Dashboard() {
           requisitions.reduce((sum, r) => sum + (r.candidateStats?.inProgress || 0), 0)
         );
 
-        const currentMonthKey = dayjs().format('YYYY-MM');
-        setSpendThisMonth(
-          usageRes.data.rows
-            .filter((row) => row.month === currentMonthKey)
-            .reduce((sum, row) => sum + row.totalCostUsd, 0)
-        );
+        if (usageRes) {
+          const currentMonthKey = dayjs().format('YYYY-MM');
+          setSpendThisMonth(
+            usageRes.data.rows
+              .filter((row) => row.month === currentMonthKey)
+              .reduce((sum, row) => sum + row.totalCostUsd, 0)
+          );
+        }
 
         setRecentActivity(auditRes.data.entries);
         setAuditTotal(auditRes.data.total ?? auditRes.data.entries.length);
 
-        const cap = Number(settingValue(settingsRes.data.settings, 'monthlyAiSpendCapUsd', NaN));
-        setSpendCap(Number.isFinite(cap) ? cap : null);
+        if (settingsRes) {
+          const cap = Number(settingValue(settingsRes.data.settings, 'monthlyAiSpendCapUsd', NaN));
+          setSpendCap(Number.isFinite(cap) ? cap : null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -84,7 +92,7 @@ export default function Dashboard() {
 
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [showAiSpend]);
 
   const totalCandidates = openRequisitions.reduce((sum, r) => sum + (r.candidateStats?.total || 0), 0);
   const capHint = spendCap ? `of a $${spendCap} monthly cap` : undefined;
@@ -132,7 +140,7 @@ export default function Dashboard() {
           ))}
         </div>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={`mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 ${showAiSpend ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
           <StatsCard
             label="Active Job Openings" value={openRequisitions.length} icon={Briefcase}
             hint={totalCandidates > 0 ? `${totalCandidates} candidates attached` : 'No candidates attached yet'}
@@ -141,10 +149,12 @@ export default function Dashboard() {
             label="Candidates in Progress" value={candidatesInFlight} icon={Users}
             hint="Active applications, no final decision yet"
           />
-          <StatsCard
-            label="AI Spend This Month" value={`$${spendThisMonth.toFixed(2)}`} icon={DollarSign}
-            hint={capHint}
-          />
+          {showAiSpend && (
+            <StatsCard
+              label="AI Spend This Month" value={`$${spendThisMonth.toFixed(2)}`} icon={DollarSign}
+              hint={capHint}
+            />
+          )}
           <StatsCard
             label="Audit Entries" value={auditTotal} icon={Activity}
             hint="Every score, override and decision on record"
