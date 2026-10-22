@@ -498,8 +498,8 @@ export default function RequisitionDetail() {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 sm:flex-1 sm:justify-start">
           <span className="text-sm text-muted-foreground">Status</span>
           <Select value={requisition.status} onValueChange={handleStatusChange} disabled={savingStatus}>
             <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
@@ -512,73 +512,65 @@ export default function RequisitionDetail() {
           </Select>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          title="Edit job opening"
-          aria-label="Edit job opening"
-          onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
-          className="h-8 w-8 text-slate-600 hover:text-slate-900 border-slate-300"
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
+        <div className="flex justify-center">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="job">Job Opening</TabsTrigger>
+              <TabsTrigger value="scorecard">Scorecard</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
-        {/* The span carries the tooltip: a disabled button does not show its own. */}
-        <span
-          className="inline-flex"
-          title={canStartNewWork ? 'Copy candidate apply link' : 'Only open job openings have a public apply link'}
-        >
+        <div className="flex items-center gap-2 sm:flex-1 sm:justify-end">
           <Button
             type="button"
             variant="outline"
             size="icon"
-            aria-label="Copy candidate apply link"
-            onClick={() => {
-              const url = `${window.location.origin}/apply/${requisition._id}`;
-              navigator.clipboard.writeText(url);
-              toast.success('Public candidate application link copied to clipboard!');
-            }}
-            disabled={!canStartNewWork}
-            className="h-8 w-8 text-brand hover:text-brand"
+            title="Edit job opening"
+            aria-label="Edit job opening"
+            onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
+            className="h-8 w-8 text-slate-600 hover:text-slate-900 border-slate-300"
           >
-            <Link2 className="h-4 w-4" />
+            <Pencil className="h-4 w-4" />
           </Button>
-        </span>
 
-        {canDelete && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            title="Delete job opening"
-            aria-label="Delete job opening"
-            onClick={() => setDeleteOpen(true)}
-            className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+          {/* The span carries the tooltip: a disabled button does not show its own. */}
+          <span
+            className="inline-flex"
+            title={canStartNewWork ? 'Copy candidate apply link' : 'Only open job openings have a public apply link'}
           >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        )}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Copy candidate apply link"
+              onClick={() => {
+                const url = `${window.location.origin}/apply/${requisition._id}`;
+                navigator.clipboard.writeText(url);
+                toast.success('Public candidate application link copied to clipboard!');
+              }}
+              disabled={!canStartNewWork}
+              className="h-8 w-8 text-brand hover:text-brand"
+            >
+              <Link2 className="h-4 w-4" />
+            </Button>
+          </span>
 
-        {/* <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleDuplicate}
-          disabled={duplicating}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-brand"
-        >
-          <Copy className="h-3.5 w-3.5 text-slate-600" />
-          {duplicating ? 'Duplicating…' : 'Duplicate Job Opening'}
-        </Button> */}
+          {canDelete && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              title="Delete job opening"
+              aria-label="Delete job opening"
+              onClick={() => setDeleteOpen(true)}
+              className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-        <TabsList>
-          <TabsTrigger value="job">Job Opening</TabsTrigger>
-          <TabsTrigger value="scorecard">Scorecard</TabsTrigger>
-        </TabsList>
-      </Tabs>
 
       {activeTab === 'job' && (
         <div className="flex flex-col">
