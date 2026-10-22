@@ -58,19 +58,6 @@ npm run dev
 
 ---
 
-## 🔐 Default Credentials (Local / Seed)
-
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| **Owner** | `owner@example.com` | `change_this_password` |
-| **Hiring Manager** | `hiring.manager@redstartechnologies.com` | `12345678` |
-| **Recruiter** | `recruiter@redstartechnologies.com` | `12345678` |
-| **Interviewer** | `interviewer@redstartechnologies.com` | `12345678` |
-
-*(Change all passwords immediately after initial login).*
-
----
-
 ## 📁 Repository Structure
 
 ```
