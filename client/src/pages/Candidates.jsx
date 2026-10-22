@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
-  Plus, Search, X, MoreHorizontal, FileText, Copy, Link2, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
+  Plus, Search, X, MoreHorizontal, FileText, Copy, Briefcase, Users, Check, ChevronsUpDown, Trash2, Upload, Pencil,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -573,7 +573,7 @@ export default function Candidates() {
                   className="bg-brand text-white hover:bg-brand/90 gap-1.5"
                   onClick={() => { setBulkAttachTarget(''); setBulkReqPickerOpen(false); setBulkAttachOpen(true); }}
                 >
-                  <Link2 className="h-4 w-4" />
+                  <Briefcase className="h-4 w-4" />
                   Attach to Job Opening
                 </Button>
               </div>
@@ -732,16 +732,18 @@ export default function Candidates() {
                     <TableCell>
                       <div className="flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                         <Button
-                          variant="outline" size="sm"
-                          className="border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
+                          title="Attach to Job Opening"
+                          aria-label="Attach to Job Opening"
                           onClick={() => openAttach(c)}
                         >
-                          <Link2 />
-                          Attach
+                          <Briefcase className="h-4 w-4" />
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
                               <MoreHorizontal />
                               <span className="sr-only">More actions</span>
                             </Button>
@@ -968,7 +970,7 @@ export default function Candidates() {
               onClick={handleBulkAttach}
               className="bg-brand text-white hover:bg-brand/90 gap-1.5"
             >
-              <Link2 className="h-4 w-4" />
+              <Briefcase className="h-4 w-4" />
               {bulkAttaching ? 'Attaching…' : `Attach ${selectedCandidateIds.length} Candidates`}
             </Button>
           </DialogFooter>
