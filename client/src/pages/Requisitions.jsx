@@ -36,7 +36,7 @@ import { formatDate } from '../utils/formatters';
 import screeningCriteriaConfig from '../constants/screeningCriteria.json';
 import { goBackToJob } from '../lib/interviewNavigation';
 import { useAuth } from '../context/AuthContext';
-import { canDeleteRecords } from '../lib/permissions';
+import { canDeleteRecords, canManageRequisitions } from '../lib/permissions';
 
 const PAGE_SIZE = 10;
 const JOB_TITLE_MIN_LENGTH = 5;
@@ -105,6 +105,7 @@ export default function Requisitions() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canDelete = canDeleteRecords(user); // only owners and admins may delete jobs
+  const canManage = canManageRequisitions(user); // owner, admin, hiring manager, recruiter
   const location = useLocation();
   const { id: editId } = useParams();
   const [searchParams] = useSearchParams();
@@ -595,10 +596,12 @@ export default function Requisitions() {
                 </p>
               </div>
             </div>
-            <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => navigate('/requisitions/new')}>
-              <Plus />
-              New Job Opening
-            </Button>
+            {canManage && (
+              <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => navigate('/requisitions/new')}>
+                <Plus />
+                New Job Opening
+              </Button>
+            )}
           </div>
 
           {/* ---------- toolbar ---------- */}
@@ -690,7 +693,7 @@ export default function Requisitions() {
                         : 'Paste a job description and Claude will draft the scorecard for you.'}
                     </p>
                   </div>
-                  {!statusFilter && (
+                  {!statusFilter && canManage && (
                     <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => navigate('/requisitions/new')}>
                       <Plus />
                       New Job Opening
@@ -817,14 +820,18 @@ export default function Requisitions() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => navigate(`/requisitions/${r._id}/edit`)}>
-                                    <Pencil className="h-4 w-4 mr-2" />
-                                    Edit Job Opening
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={(e) => handleDuplicateRequisition(r._id, r.title, e)}>
-                                    <Copy className="h-4 w-4 mr-2" />
-                                    Duplicate Job Opening
-                                  </DropdownMenuItem>
+                                  {canManage && (
+                                    <>
+                                      <DropdownMenuItem onClick={() => navigate(`/requisitions/${r._id}/edit`)}>
+                                        <Pencil className="h-4 w-4 mr-2" />
+                                        Edit Job Opening
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={(e) => handleDuplicateRequisition(r._id, r.title, e)}>
+                                        <Copy className="h-4 w-4 mr-2" />
+                                        Duplicate Job Opening
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                   <DropdownMenuItem onClick={(e) => copyApplyLink(r._id, e)}>
                                     <Link2 className="h-4 w-4 mr-2" />
                                     Copy Apply Link

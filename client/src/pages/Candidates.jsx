@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { canDeleteRecords } from '../lib/permissions';
+import { canDeleteRecords, canManageCandidates } from '../lib/permissions';
 import api from '../hooks/useApi';
 import { candidatesListOptions, requisitionsListOptions } from '../hooks/queries';
 import { Card, CardContent } from '@/components/ui/card';
@@ -117,6 +117,7 @@ function parseCsv(text) {
 export default function Candidates() {
   const { user } = useAuth();
   const canDelete = canDeleteRecords(user); // only owners and admins may delete candidates
+  const canManage = canManageCandidates(user); // owner, admin, hiring manager, recruiter
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -498,16 +499,18 @@ export default function Candidates() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
-            <Upload />
-            Import CSV
-          </Button>
-          <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
-            <Plus />
-            New Candidate
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
+              <Upload />
+              Import CSV
+            </Button>
+            <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
+              <Plus />
+              New Candidate
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* ---------- search ---------- */}
@@ -559,7 +562,7 @@ export default function Candidates() {
       {/* ---------- list ---------- */}
       <Card className="mt-4">
         <CardContent className="p-0">
-          {selectedCandidateIds.length > 0 && (
+          {canManage && selectedCandidateIds.length > 0 && (
             <div className="mb-4 flex flex-col gap-2 rounded-lg border border-brand/30 bg-brand/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 font-medium text-foreground">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[11px] font-bold text-white">
@@ -731,16 +734,18 @@ export default function Candidates() {
 
                     <TableCell>
                       <div className="flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
-                          title="Attach to Job Opening"
-                          aria-label="Attach to Job Opening"
-                          onClick={() => openAttach(c)}
-                        >
-                          <Briefcase className="h-4 w-4" />
-                        </Button>
+                        {canManage && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 border-brand/40 text-brand hover:bg-brand/5 hover:text-brand"
+                            title="Attach to Job Opening"
+                            aria-label="Attach to Job Opening"
+                            onClick={() => openAttach(c)}
+                          >
+                            <Briefcase className="h-4 w-4" />
+                          </Button>
+                        )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -764,10 +769,12 @@ export default function Candidates() {
                               <Copy />
                               Copy phone
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEdit(c)}>
-                              <Pencil />
-                              Edit candidate
-                            </DropdownMenuItem>
+                            {canManage && (
+                              <DropdownMenuItem onClick={() => openEdit(c)}>
+                                <Pencil />
+                                Edit candidate
+                              </DropdownMenuItem>
+                            )}
                             {canDelete && (
                               <DropdownMenuItem onClick={() => setDeleteFor(c)} className="text-red-600 focus:text-red-600">
                                 <Trash2 />

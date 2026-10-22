@@ -6,6 +6,8 @@ import {
   Briefcase,
 } from 'lucide-react';
 import api from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { canManageDepartments } from '../lib/permissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +42,8 @@ function formatDate(date) {
 
 export default function Departments() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManage = canManageDepartments(user); // owner, admin, hiring manager
 
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -168,13 +172,15 @@ export default function Departments() {
             </p>
           </div>
         </div>
-        <Button
-          className="bg-brand text-white hover:bg-brand/90 gap-1.5"
-          onClick={openCreateModal}
-        >
-          <Plus className="h-4 w-4" />
-          New Department
-        </Button>
+        {canManage && (
+          <Button
+            className="bg-brand text-white hover:bg-brand/90 gap-1.5"
+            onClick={openCreateModal}
+          >
+            <Plus className="h-4 w-4" />
+            New Department
+          </Button>
+        )}
       </div>
 
       {/* ---------- Toolbar ---------- */}
@@ -281,21 +287,25 @@ export default function Departments() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditModal(dept)}>
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit Department
-                            </DropdownMenuItem>
+                            {canManage && (
+                              <DropdownMenuItem onClick={() => openEditModal(dept)}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit Department
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => navigate(`/requisitions?departmentId=${dept._id}`)}>
                               <Briefcase className="h-4 w-4 mr-2" />
                               View Job Openings
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setDeleteDept(dept)}
-                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Department
-                            </DropdownMenuItem>
+                            {canManage && (
+                              <DropdownMenuItem
+                                onClick={() => setDeleteDept(dept)}
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Department
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

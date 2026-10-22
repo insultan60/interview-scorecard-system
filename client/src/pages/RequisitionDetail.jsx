@@ -35,7 +35,7 @@ import SendOnboardingFormModal from '../components/SendOnboardingFormModal.jsx';
 import OfferLetterDialog from '../components/OfferLetterDialog.jsx';
 import { fromJobState } from '../lib/interviewNavigation';
 import { useAuth } from '../context/AuthContext';
-import { canDeleteRecords } from '../lib/permissions';
+import { canDeleteRecords, canManageRequisitions, canMakeDecisions } from '../lib/permissions';
 
 const DISPOSITION_BADGE = {
   HIRE: 'bg-green-100 text-green-800 hover:bg-green-100',
@@ -83,6 +83,8 @@ export default function RequisitionDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canDelete = canDeleteRecords(user); // only owners and admins may delete jobs or remove candidates
+  const canManage = canManageRequisitions(user);
+  const canDecide = canMakeDecisions(user);
   const [searchParams] = useSearchParams();
   const candidateIdFromUrl = searchParams.get('candidateId');
   const [canGoBack] = useState(() => typeof window !== 'undefined' && window.history.state?.idx > 0);
@@ -501,7 +503,7 @@ export default function RequisitionDetail() {
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 sm:flex-1 sm:justify-start">
           <span className="text-sm text-muted-foreground">Status</span>
-          <Select value={requisition.status} onValueChange={handleStatusChange} disabled={savingStatus}>
+          <Select value={requisition.status} onValueChange={handleStatusChange} disabled={savingStatus || !canManage}>
             <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="open">Open</SelectItem>
@@ -523,17 +525,19 @@ export default function RequisitionDetail() {
         </div>
 
         <div className="flex items-center gap-2 sm:flex-1 sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            title="Edit job opening"
-            aria-label="Edit job opening"
-            onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
-            className="h-8 w-8 text-slate-600 hover:text-slate-900 border-slate-300"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
+          {canManage && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              title="Edit job opening"
+              aria-label="Edit job opening"
+              onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
+              className="h-8 w-8 text-slate-600 hover:text-slate-900 border-slate-300"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
 
           {/* The span carries the tooltip: a disabled button does not show its own. */}
           <span

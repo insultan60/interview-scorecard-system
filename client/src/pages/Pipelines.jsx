@@ -5,6 +5,8 @@ import {
   GitBranch, MoreHorizontal,
 } from 'lucide-react';
 import api from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { canManagePipelines } from '../lib/permissions';
 import WeightConfig from '../components/WeightConfig';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -94,7 +96,7 @@ function equalizeScoredWeights(stages) {
 }
 
 /** One template's editable card: toggle/reorder stages, edit weights & gates, save/default/delete. */
-function TemplateCard({ template, onChanged, onDeleted }) {
+function TemplateCard({ template, onChanged, onDeleted, canManage = true }) {
   const [stages, setStages] = useState(() => pinRequiredStages(template.stages));
   const [autoWeights, setAutoWeights] = useState(template.autoWeights !== false);
   const [saving, setSaving] = useState(false);
@@ -221,28 +223,30 @@ function TemplateCard({ template, onChanged, onDeleted }) {
             </div>
           </button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="flex-shrink-0">
-                <MoreHorizontal />
-                <span className="sr-only">Template actions</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleSetDefault} disabled={template.isDefault}>
-                <Star />
-                {template.isDefault ? 'Already default' : 'Set as default'}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setConfirmDelete(true)}
-                disabled={template.isDefault}
-                className="text-red-600 focus:text-red-600"
-              >
-                <Trash2 />
-                {template.isDefault ? "Can't delete default" : 'Delete template'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canManage && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="flex-shrink-0">
+                  <MoreHorizontal />
+                  <span className="sr-only">Template actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleSetDefault} disabled={template.isDefault}>
+                  <Star />
+                  {template.isDefault ? 'Already default' : 'Set as default'}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={template.isDefault}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 />
+                  {template.isDefault ? "Can't delete default" : 'Delete template'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* ---------- body ---------- */}
@@ -357,17 +361,19 @@ function TemplateCard({ template, onChanged, onDeleted }) {
                   </div>
                 </RadioGroup>
               </div>
-              <WeightConfig stages={stages} onChangeWeight={changeWeight} readOnly={autoWeights} />
+              <WeightConfig stages={stages} onChangeWeight={changeWeight} readOnly={autoWeights || !canManage} />
             </div>
 
-            <div className="flex justify-end border-t border-border p-4">
-              <Button
-                onClick={handleSave} disabled={saving || stages.some(s => s.passThreshold < 1 || s.passThreshold > 5 || !Number.isInteger(s.passThreshold))}
-                className="bg-brand text-white hover:bg-brand/90"
-              >
-                {saving ? 'Saving…' : 'Save changes'}
-              </Button>
-            </div>
+            {canManage && (
+              <div className="flex justify-end border-t border-border p-4">
+                <Button
+                  onClick={handleSave} disabled={saving || stages.some(s => s.passThreshold < 1 || s.passThreshold > 5 || !Number.isInteger(s.passThreshold))}
+                  className="bg-brand text-white hover:bg-brand/90"
+                >
+                  {saving ? 'Saving…' : 'Save changes'}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -399,6 +405,8 @@ function TemplateCard({ template, onChanged, onDeleted }) {
 }
 
 export default function Pipelines() {
+  const { user } = useAuth();
+  const canManage = canManagePipelines(user); // owner, admin, hiring manager
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -476,10 +484,12 @@ export default function Pipelines() {
             </p>
           </div>
         </div>
-        <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
-          <Plus />
-          New Template
-        </Button>
+        {canManage && (
+          <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            New Template
+          </Button>
+        )}
       </div>
 
       {/* ---------- search ---------- */}
@@ -531,10 +541,12 @@ export default function Pipelines() {
                   A template defines the interview stages, their order, gates and weights.
                 </p>
               </div>
-              <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
-                <Plus />
-                New Template
-              </Button>
+              {canManage && (
+                <Button className="bg-brand text-white hover:bg-brand/90" onClick={() => setCreateOpen(true)}>
+                  <Plus />
+                  New Template
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : filtered.length === 0 ? (
@@ -546,7 +558,7 @@ export default function Pipelines() {
           </Card>
         ) : (
           paginated.map((t) => (
-            <TemplateCard key={t._id} template={t} onChanged={handleChanged} onDeleted={handleDeleted} />
+            <TemplateCard key={t._id} template={t} onChanged={handleChanged} onDeleted={handleDeleted} canManage={canManage} />
           ))
         )}
       </div>
