@@ -996,11 +996,23 @@ export default function Users() {
 
             {/* Password */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="user-password" className="text-xs font-semibold uppercase tracking-wider text-foreground">
-                  {editingUser ? 'New Password (Optional)' : 'Password'} {!editingUser && <span className="text-red-500">*</span>}
-                </Label>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-baseline gap-1.5 whitespace-nowrap shrink-0">
+                  <Label htmlFor="user-password" className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                    {editingUser ? 'New Password' : 'Password'}
+                  </Label>
+                  {editingUser ? (
+                    <span className="text-[11px] normal-case font-normal text-muted-foreground">(Optional)</span>
+                  ) : (
+                    <span className="text-red-500 font-bold">*</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px] whitespace-nowrap shrink-0">
+                  {editingUser && (
+                    <span className="text-muted-foreground">Leave empty to keep</span>
+                  )}
+                  {editingUser && <span className="text-muted-foreground/40">•</span>}
                   <button
                     type="button"
                     onClick={() => {
@@ -1009,14 +1021,11 @@ export default function Users() {
                       setShowPassword(true);
                       toast.success('Generated strong password');
                     }}
-                    className="text-[11px] text-brand hover:underline flex items-center gap-1 font-medium"
+                    className="text-brand hover:underline flex items-center gap-1 font-medium"
                   >
-                    <Sparkles className="h-3 w-3" />
-                    Auto-generate
+                    <Sparkles className="h-3 w-3 shrink-0" />
+                    <span>Auto-generate</span>
                   </button>
-                  {editingUser && (
-                    <span className="text-[10px] text-muted-foreground">Leave empty to keep</span>
-                  )}
                 </div>
               </div>
               <div className="relative">
