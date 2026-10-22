@@ -89,7 +89,7 @@ export default function RequisitionDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingScorecard, setSavingScorecard] = useState(false);
-  const [activeTab, setActiveTab] = useState('job');
+  const [activeTab, setActiveTab] = useState(candidateIdFromUrl ? 'candidates' : 'job');
   const [scorecardData, setScorecardData] = useState(null);
   const [loadingScorecard, setLoadingScorecard] = useState(false);
   const [goingToInterview, setGoingToInterview] = useState(null);
@@ -103,7 +103,7 @@ export default function RequisitionDetail() {
   const [pendingClose, setPendingClose] = useState(false);
   const [removeCandidateApp, setRemoveCandidateApp] = useState(null);
   const [removingCandidate, setRemovingCandidate] = useState(false);
-  const [jobInfoOpen, setJobInfoOpen] = useState(false);
+  const [jobInfoOpen, setJobInfoOpen] = useState(true);
 
   const [openDecisionRowId, setOpenDecisionRowId] = useState(null);
   const [decisionDraft, setDecisionDraft] = useState('hired');
@@ -516,6 +516,7 @@ export default function RequisitionDetail() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
               <TabsTrigger value="job">Job Opening</TabsTrigger>
+              <TabsTrigger value="candidates">Candidates</TabsTrigger>
               <TabsTrigger value="scorecard">Scorecard</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -573,8 +574,7 @@ export default function RequisitionDetail() {
       </div>
 
       {activeTab === 'job' && (
-        <div className="flex flex-col">
-          <Card className="order-2 mt-6 overflow-hidden border-slate-200 bg-white shadow-sm">
+        <Card className="mt-6 overflow-hidden border-slate-200 bg-white shadow-sm">
         <CardHeader className="flex-row items-center justify-between py-4">
           <CardTitle>Job Opening Information</CardTitle>
           <Button type="button" variant="outline" size="sm" onClick={() => setJobInfoOpen((open) => !open)} className="gap-1.5">
@@ -660,9 +660,11 @@ export default function RequisitionDetail() {
           </section>
         </CardContent>}
       </Card>
+      )}
 
       {/* ---------- candidates ---------- */}
-      <Card className="order-1 mt-6">
+      {activeTab === 'candidates' && (
+      <Card className="mt-6">
         <CardHeader className="space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
           <div>
             <CardTitle>Candidates</CardTitle>
@@ -1108,7 +1110,6 @@ export default function RequisitionDetail() {
               )}
         </CardContent>
       </Card>
-      </div>
       )}
 
       {/* ---------- scorecard ---------- */}
