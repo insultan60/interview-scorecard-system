@@ -515,40 +515,48 @@ export default function RequisitionDetail() {
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="icon"
+          title="Edit job opening"
+          aria-label="Edit job opening"
           onClick={() => navigate(`/requisitions/${requisition._id}/edit`, { state: fromJobState(requisition._id) })}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-slate-900 border-slate-300"
+          className="h-8 w-8 text-slate-600 hover:text-slate-900 border-slate-300"
         >
-          <Pencil className="h-3.5 w-3.5 text-slate-500" />
-          Edit Job Opening
+          <Pencil className="h-4 w-4" />
         </Button>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const url = `${window.location.origin}/apply/${requisition._id}`;
-            navigator.clipboard.writeText(url);
-            toast.success('Public candidate application link copied to clipboard!');
-          }}
-          disabled={!canStartNewWork}
-          className="h-8 text-xs gap-1.5 text-slate-700 hover:text-brand"
+        {/* The span carries the tooltip: a disabled button does not show its own. */}
+        <span
+          className="inline-flex"
+          title={canStartNewWork ? 'Copy candidate apply link' : 'Only open job openings have a public apply link'}
         >
-          <Link2 className="h-3.5 w-3.5 text-brand" />
-          Copy Candidate Apply Link
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Copy candidate apply link"
+            onClick={() => {
+              const url = `${window.location.origin}/apply/${requisition._id}`;
+              navigator.clipboard.writeText(url);
+              toast.success('Public candidate application link copied to clipboard!');
+            }}
+            disabled={!canStartNewWork}
+            className="h-8 w-8 text-brand hover:text-brand"
+          >
+            <Link2 className="h-4 w-4" />
+          </Button>
+        </span>
 
         {canDelete && (
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon"
+            title="Delete job opening"
+            aria-label="Delete job opening"
             onClick={() => setDeleteOpen(true)}
-            className="h-8 text-xs gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+            className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
           >
-            <Trash2 className="h-3.5 w-3.5 text-red-600" />
-            Delete Job Opening
+            <Trash2 className="h-4 w-4" />
           </Button>
         )}
 
