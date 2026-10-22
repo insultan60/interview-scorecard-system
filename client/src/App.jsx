@@ -36,8 +36,8 @@ export default function App() {
       <Route path="/interview/:id/availability" element={<CandidateAvailability />} />
       <Route path="/" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
       <Route path="/requisitions" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
-      <Route path="/requisitions/new" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
-      <Route path="/requisitions/:id/edit" element={<ProtectedPage><Requisitions /></ProtectedPage>} />
+      <Route path="/requisitions/new" element={<ProtectedPage allowedRoles={['owner', 'admin', 'hiring_manager', 'recruiter']}><Requisitions /></ProtectedPage>} />
+      <Route path="/requisitions/:id/edit" element={<ProtectedPage allowedRoles={['owner', 'admin', 'hiring_manager', 'recruiter']}><Requisitions /></ProtectedPage>} />
       <Route path="/requisitions/:id" element={<ProtectedPage><RequisitionDetail /></ProtectedPage>} />
       <Route path="/requisitions/:id/candidates" element={<ProtectedPage><RequisitionCandidates /></ProtectedPage>} />
       <Route path="/departments" element={<ProtectedPage><Departments /></ProtectedPage>} />
@@ -45,7 +45,7 @@ export default function App() {
       <Route path="/candidates" element={<ProtectedPage><Candidates /></ProtectedPage>} />
       <Route path="/interview/:id" element={<ProtectedPage><InterviewRoom /></ProtectedPage>} />
       <Route path="/users" element={<ProtectedPage allowedRoles={['owner', 'admin']}><Users /></ProtectedPage>} />
-      <Route path="/audit-log" element={<ProtectedPage><AuditLog /></ProtectedPage>} />
+      <Route path="/audit-log" element={<ProtectedPage allowedRoles={['owner', 'admin']}><AuditLog /></ProtectedPage>} />
       <Route path="/settings" element={<ProtectedPage allowedRoles={['owner', 'admin']}><Settings /></ProtectedPage>} />
     </Routes>
   );

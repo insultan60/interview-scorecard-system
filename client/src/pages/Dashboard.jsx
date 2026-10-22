@@ -7,7 +7,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import api from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
-import { canSeeAiSpend } from '../lib/permissions';
+import { canSeeAiSpend, canViewAuditLog, canManageRequisitions, canManageCandidates } from '../lib/permissions';
 import { fetchRequisitionsList, fetchSettingsList } from '../hooks/queries';
 import StatsCard from '../components/StatsCard';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -38,6 +38,9 @@ function settingValue(settings, key, fallback) {
 export default function Dashboard() {
   const { user } = useAuth();
   const showAiSpend = canSeeAiSpend(user); // AI spend and the cap are owner/admin only; asking for them as anyone else is refused
+  const canViewAudit = canViewAuditLog(user); // Audit log is owner/admin only
+  const canManageReqs = canManageRequisitions(user);
+  const canManageCands = canManageCandidates(user);
   const [loading, setLoading] = useState(true);
   const [openRequisitions, setOpenRequisitions] = useState([]);
   const [candidatesInFlight, setCandidatesInFlight] = useState(0);
@@ -54,7 +57,7 @@ export default function Dashboard() {
         const [requisitionsRes, usageRes, auditRes, settingsRes] = await Promise.all([
           fetchRequisitionsList('open'), // from the shared cache when it is still fresh
           showAiSpend ? api.get('/settings/ai-usage') : null,
-          api.get('/audit', { params: { limit: 6 } }),
+          canViewAudit ? api.get('/audit', { params: { limit: 6 } }) : null,
           showAiSpend ? fetchSettingsList() : null,
         ]);
         if (cancelled) return;
@@ -78,8 +81,10 @@ export default function Dashboard() {
           );
         }
 
-        setRecentActivity(auditRes.data.entries);
-        setAuditTotal(auditRes.data.total ?? auditRes.data.entries.length);
+        if (canViewAudit && auditRes?.data) {
+          setRecentActivity(auditRes.data.entries || []);
+          setAuditTotal(auditRes.data.total ?? auditRes.data.entries?.length ?? 0);
+        }
 
         if (settingsRes) {
           const cap = Number(settingValue(settingsRes.data.settings, 'monthlyAiSpendCapUsd', NaN));
@@ -111,18 +116,22 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link to="/candidates">
-              <UserPlus />
-              Add candidate
-            </Link>
-          </Button>
-          <Button asChild className="bg-brand text-white hover:bg-brand/90">
-            <Link to="/requisitions">
-              <Plus />
-              New job opening
-            </Link>
-          </Button>
+          {canManageCands && (
+            <Button asChild variant="outline">
+              <Link to="/candidates">
+                <UserPlus />
+                Add candidate
+              </Link>
+            </Button>
+          )}
+          {canManageReqs && (
+            <Button asChild className="bg-brand text-white hover:bg-brand/90">
+              <Link to="/requisitions">
+                <Plus />
+                New job opening
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -155,14 +164,16 @@ export default function Dashboard() {
               hint={capHint}
             />
           )}
-          <StatsCard
-            label="Audit Entries" value={auditTotal} icon={Activity}
-            hint="Every score, override and decision on record"
-          />
+          {canViewAudit && (
+            <StatsCard
+              label="Audit Entries" value={auditTotal} icon={Activity}
+              hint="Every score, override and decision on record"
+            />
+          )}
         </div>
       )}
 
-      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className={`mt-8 grid grid-cols-1 gap-6 ${canViewAudit ? 'lg:grid-cols-2' : ''}`}>
         {/* ---------- open requisitions ---------- */}
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -224,15 +235,16 @@ export default function Dashboard() {
         </Card>
 
         {/* ---------- recent activity ---------- */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle>Recent Activity</CardTitle>
-            {!loading && (
-              <Link to="/audit-log" className="text-xs font-semibold text-brand hover:underline flex items-center gap-0.5">
-                View audit log <ArrowUpRight className="h-3.5 w-3.5" />
-              </Link>
-            )}
-          </CardHeader>
+        {canViewAudit && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle>Recent Activity</CardTitle>
+              {!loading && (
+                <Link to="/audit-log" className="text-xs font-semibold text-brand hover:underline flex items-center gap-0.5">
+                  View audit log <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </CardHeader>
           <CardContent className="p-0">
             {loading ? (
               <div className="space-y-4 px-6 pb-6">
@@ -270,7 +282,8 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 }

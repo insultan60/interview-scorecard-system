@@ -1,6 +1,6 @@
 const express = require('express');
 const interviewController = require('../controllers/interviewController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload, uploadPdf } = require('../middleware/upload');
 const { publicAvailabilityLimiter } = require('../middleware/rateLimit');
 
@@ -15,18 +15,20 @@ router.post('/:id/availability/public', publicAvailabilityLimiter, interviewCont
 
 router.use(requireAuth);
 
+const canSchedule = requireRole('owner', 'admin', 'hiring_manager', 'recruiter');
+
 router.get('/', interviewController.list);
 router.get('/:id', interviewController.getOne);
-router.post('/', interviewController.create);
-router.post('/:id/meeting', interviewController.createMeeting);
-router.delete('/:id/meeting', interviewController.cancelMeeting);
-router.post('/:id/send-meeting-email', interviewController.sendMeetingEmail);
-router.post('/:id/request-availability', interviewController.requestAvailability);
+router.post('/', canSchedule, interviewController.create);
+router.post('/:id/meeting', canSchedule, interviewController.createMeeting);
+router.delete('/:id/meeting', canSchedule, interviewController.cancelMeeting);
+router.post('/:id/send-meeting-email', canSchedule, interviewController.sendMeetingEmail);
+router.post('/:id/request-availability', canSchedule, interviewController.requestAvailability);
 router.post('/:id/consent', interviewController.recordConsent);
 router.post('/:id/fetch-transcript', interviewController.fetchTranscript);
 router.post('/:id/upload-transcript', upload.single('transcript'), interviewController.uploadTranscript);
 router.post('/:id/upload-artifact', uploadPdf('artifact'), interviewController.uploadArtifact);
-router.post('/:id/send-offer', uploadPdf('offerLetter'), interviewController.sendOffer);
+router.post('/:id/send-offer', canSchedule, uploadPdf('offerLetter'), interviewController.sendOffer);
 router.post('/:id/score', interviewController.score);
 
 module.exports = router;

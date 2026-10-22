@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { to: '/pipelines', label: 'Hiring Stages', icon: GitBranch },
   { to: '/candidates', label: 'Candidates', icon: Users },
   { to: '/users', label: 'Users & Roles', icon: UserCog, roles: ['owner', 'admin'] },
-  { to: '/audit-log', label: 'Audit Log', icon: ScrollText },
+  { to: '/audit-log', label: 'Audit Log', icon: ScrollText, roles: ['owner', 'admin'] },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, roles: ['owner', 'admin'] },
 ];
 
